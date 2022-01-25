@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
@@ -24,6 +25,8 @@ import (
 
 	"example.com/scion-time/go/core"
 )
+
+const benchmarkEnabled = true
 
 type tsConfig struct {
 	MBGTimeSources []string `toml:"mbg_time_sources,omitempty"`
@@ -62,62 +65,65 @@ func newDaemonConnector(ctx context.Context, daemonAddr string) daemon.Connector
 
 func runServer(configFile, daemonAddr string, localAddr snet.UDPAddr) {
 	var err error
-	ctx := context.Background()
 
-	core.RegisterLocalClock(&core.SysClock{})
+	if !benchmarkEnabled {
+		ctx := context.Background()
 
-	localClock := core.LocalClockInstance()
-	_ = localClock.Now()
-	localClock.Adjust(0, 0, 0.0)
-	localClock.Sleep(0)
+		core.RegisterLocalClock(&core.SysClock{})
 
-	core.RegisterPLL(&core.StdPLL{})
-	pll := core.PLLInstance()
-	pll.Do(0, 0.0)
+		localClock := core.LocalClockInstance()
+		_ = localClock.Now()
+		localClock.Adjust(0, 0, 0.0)
+		localClock.Sleep(0)
 
-	var cfg tsConfig
-	err = config.LoadFile(configFile, &cfg)
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
-	for _, s := range cfg.MBGTimeSources {
-		log.Print("mbg_time_source: ", s)
-		timeSources = append(timeSources, mbgTimeSource(s))
-	}
-	for _, s := range cfg.NTPTimeSources {
-		log.Print("ntp_time_source: ", s)
-		timeSources = append(timeSources, ntpTimeSource(s))
-	}
+		core.RegisterPLL(&core.StdPLL{})
+		pll := core.PLLInstance()
+		pll.Do(0, 0.0)
 
-	for _, s := range timeSources {
-		refTime, sysTime, err := s.fetchTime()
+		var cfg tsConfig
+		err = config.LoadFile(configFile, &cfg)
 		if err != nil {
-			log.Fatalf("Failed to fetch clock offset from %v: %v", s, err)
+			log.Fatalf("Failed to load configuration: %v", err)
 		}
-		log.Printf("Clock offset to %v: refTime = %v, sysTime = %v", s, refTime, sysTime)
-	}
+		for _, s := range cfg.MBGTimeSources {
+			log.Print("mbg_time_source: ", s)
+			timeSources = append(timeSources, mbgTimeSource(s))
+		}
+		for _, s := range cfg.NTPTimeSources {
+			log.Print("ntp_time_source: ", s)
+			timeSources = append(timeSources, ntpTimeSource(s))
+		}
 
-	var peerIAs []addr.IA
-	var peerHosts []*net.UDPAddr
-	for _, s := range cfg.SCIONPeers {
-		log.Print("scion_peer: ", s)
-		addr, err := snet.ParseUDPAddr(s)
+		for _, s := range timeSources {
+			refTime, sysTime, err := s.fetchTime()
+			if err != nil {
+				log.Fatalf("Failed to fetch clock offset from %v: %v", s, err)
+			}
+			log.Printf("Clock offset to %v: refTime = %v, sysTime = %v", s, refTime, sysTime)
+		}
+
+		var peerIAs []addr.IA
+		var peerHosts []*net.UDPAddr
+		for _, s := range cfg.SCIONPeers {
+			log.Print("scion_peer: ", s)
+			addr, err := snet.ParseUDPAddr(s)
+			if err != nil {
+				log.Fatalf("Failed to parse peer address \"%s\": %v", s, err)
+			}
+			peerIAs = append(peerIAs, addr.IA)
+			peerHosts = append(peerHosts, addr.Host)
+		}
+
+		pathInfos, err := core.StartPather(newDaemonConnector(ctx, daemonAddr), peerIAs)
 		if err != nil {
-			log.Fatalf("Failed to parse peer address \"%s\": %v", s, err)
+			log.Fatal("Failed to start pather:", err)
 		}
-		peerIAs = append(peerIAs, addr.IA)
-		peerHosts = append(peerHosts, addr.Host)
+		go func() {
+			for {
+				<-pathInfos
+			}
+		}()
 	}
-
-	pathInfos, err := core.StartPather(newDaemonConnector(ctx, daemonAddr), peerIAs)
-	if err != nil {
-		log.Fatal("Failed to start pather:", err)
-	}
-	go func() {
-		for {
-			<-pathInfos
-		}
-	}()
 
 	err = core.StartIPServer(snet.CopyUDPAddr(localAddr.Host))
 	if err != nil {
@@ -159,7 +165,9 @@ func runClient(daemonAddr string, localAddr snet.UDPAddr, remoteAddr snet.UDPAdd
 	log.Printf("Selected path to %v:", remoteAddr.IA)
 	log.Printf("\t%v", sp)
 
-	localAddr.Host.Port = underlay.EndhostPort
+	if !benchmarkEnabled {
+		localAddr.Host.Port = underlay.EndhostPort
+	}
 
 	nextHop := sp.UnderlayNextHop()
 	if nextHop == nil && remoteAddr.IA.Equal(localAddr.IA) {
@@ -178,104 +186,125 @@ func runClient(daemonAddr string, localAddr snet.UDPAddr, remoteAddr snet.UDPAdd
 	defer conn.Close()
 	udp.EnableTimestamping(conn)
 
-	ntpreq := ntp.Packet{}
-	buf := make([]byte, ntp.PacketLen)
+	const numClientGoroutine = 8
+	const numRequestPerClient = 10000
+	sg := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(numClientGoroutine)
+	for i := numClientGoroutine; i > 0; i-- {
+		go func() {
+			defer wg.Done()
+			<-sg
+			for j := numRequestPerClient; j > 0; j-- {
+				ntpreq := ntp.Packet{}
+				buf := make([]byte, ntp.PacketLen)
 
-	clientTxTime := time.Now().UTC()
+				clientTxTime := time.Now().UTC()
 
-	ntpreq.SetVersion(ntp.VersionMax)
-	ntpreq.SetMode(ntp.ModeClient)
-	ntpreq.TransmitTime = ntp.Time64FromTime(clientTxTime)
-	ntp.EncodePacket(&buf, &ntpreq)
+				ntpreq.SetVersion(ntp.VersionMax)
+				ntpreq.SetMode(ntp.ModeClient)
+				ntpreq.TransmitTime = ntp.Time64FromTime(clientTxTime)
+				ntp.EncodePacket(&buf, &ntpreq)
 
-	pkt := &snet.Packet{
-		PacketInfo: snet.PacketInfo{
-			Source: snet.SCIONAddress{
-				IA:   localAddr.IA,
-				Host: addr.HostFromIP(localAddr.Host.IP),
-			},
-			Destination: snet.SCIONAddress{
-				IA:   remoteAddr.IA,
-				Host: addr.HostFromIP(remoteAddr.Host.IP),
-			},
-			Path: sp.Path(),
-			Payload: snet.UDPPayload{
-				SrcPort: uint16(localAddr.Host.Port),
-				DstPort: uint16(remoteAddr.Host.Port),
-				Payload: buf,
-			},
-		},
+				pkt := &snet.Packet{
+					PacketInfo: snet.PacketInfo{
+						Source: snet.SCIONAddress{
+							IA:   localAddr.IA,
+							Host: addr.HostFromIP(localAddr.Host.IP),
+						},
+						Destination: snet.SCIONAddress{
+							IA:   remoteAddr.IA,
+							Host: addr.HostFromIP(remoteAddr.Host.IP),
+						},
+						Path: sp.Path(),
+						Payload: snet.UDPPayload{
+							SrcPort: uint16(localAddr.Host.Port),
+							DstPort: uint16(remoteAddr.Host.Port),
+							Payload: buf,
+						},
+					},
+				}
+
+				err = pkt.Serialize()
+				if err != nil {
+					log.Printf("Failed to serialize packet: %v", err)
+					return
+				}
+
+				_, err = conn.Write(pkt.Bytes)
+				if err != nil {
+					log.Printf("Failed to write packet: %v", err)
+					return
+				}
+
+				pkt.Prepare()
+				oob := make([]byte, udp.TimestampOutOfBandDataLen())
+
+				n, oobn, flags, lastHop, err := conn.ReadMsgUDP(pkt.Bytes, oob)
+				if err != nil {
+					log.Printf("Failed to read packet: %v", err)
+					return
+				}
+				if flags != 0 {
+					log.Printf("Failed to read packet, flags: %v", flags)
+					return
+				}
+
+				oob = oob[:oobn]
+				clientRxTime, err := udp.TimeFromOutOfBandData(oob)
+				if err != nil {
+					log.Printf("Failed to receive packet timestamp")
+					clientRxTime = time.Now().UTC()
+				}
+				pkt.Bytes = pkt.Bytes[:n]
+
+				err = pkt.Decode()
+				if err != nil {
+					log.Printf("Failed to decode packet: %v", err)
+					return
+				}
+
+				udppkt, ok := pkt.Payload.(snet.UDPPayload)
+				if !ok {
+					log.Printf("Failed to read packet payload: not a UDP packet")
+					return
+				}
+
+				if !benchmarkEnabled {
+					log.Printf("Received payload at %v via %v with flags = %v:", clientRxTime, lastHop, flags)
+					fmt.Printf("%s", hex.Dump(udppkt.Payload))
+				}
+
+				var ntpresp ntp.Packet
+				err = ntp.DecodePacket(&ntpresp, udppkt.Payload)
+				if err != nil {
+					log.Printf("Failed to decode packet payload: %v", err)
+					return
+				}
+
+				if !benchmarkEnabled {
+					log.Printf("Received NTP packet: %+v", ntpresp)
+
+					serverRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
+					serverTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
+
+					clockOffset := ntp.ClockOffset(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
+					roundTripDelay := ntp.RoundTripDelay(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
+
+					log.Printf("%s,%s clock offset: %fs (%fms), round trip delay: %fs (%fms)",
+						remoteAddr.IA, remoteAddr.Host,
+						float64(clockOffset.Nanoseconds())/float64(time.Second.Nanoseconds()),
+						float64(clockOffset.Nanoseconds())/float64(time.Millisecond.Nanoseconds()),
+						float64(roundTripDelay.Nanoseconds())/float64(time.Second.Nanoseconds()),
+						float64(roundTripDelay.Nanoseconds())/float64(time.Millisecond.Nanoseconds()))
+				}
+			}
+		}()
 	}
-
-	err = pkt.Serialize()
-	if err != nil {
-		log.Printf("Failed to serialize packet: %v", err)
-		return
-	}
-
-	_, err = conn.Write(pkt.Bytes)
-	if err != nil {
-		log.Printf("Failed to write packet: %v", err)
-		return
-	}
-
-	pkt.Prepare()
-	oob := make([]byte, udp.TimestampOutOfBandDataLen())
-
-	n, oobn, flags, lastHop, err := conn.ReadMsgUDP(pkt.Bytes, oob)
-	if err != nil {
-		log.Printf("Failed to read packet: %v", err)
-		return
-	}
-	if flags != 0 {
-		log.Printf("Failed to read packet, flags: %v", flags)
-		return
-	}
-
-	oob = oob[:oobn]
-	clientRxTime, err := udp.TimeFromOutOfBandData(oob)
-	if err != nil {
-		log.Printf("Failed to receive packet timestamp")
-		clientRxTime = time.Now().UTC()
-	}
-	pkt.Bytes = pkt.Bytes[:n]
-
-	err = pkt.Decode()
-	if err != nil {
-		log.Printf("Failed to decode packet: %v", err)
-		return
-	}
-
-	udppkt, ok := pkt.Payload.(snet.UDPPayload)
-	if !ok {
-		log.Printf("Failed to read packet payload: not a UDP packet")
-		return
-	}
-
-	log.Printf("Received payload at %v via %v with flags = %v:", clientRxTime, lastHop, flags)
-	fmt.Printf("%s", hex.Dump(udppkt.Payload))
-
-	var ntpresp ntp.Packet
-	err = ntp.DecodePacket(&ntpresp, udppkt.Payload)
-	if err != nil {
-		log.Printf("Failed to decode packet payload: %v", err)
-		return
-	}
-
-	log.Printf("Received NTP packet: %+v", ntpresp)
-
-	serverRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
-	serverTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
-
-	clockOffset := ntp.ClockOffset(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
-	roundTripDelay := ntp.RoundTripDelay(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
-
-	log.Printf("%s,%s clock offset: %fs (%fms), round trip delay: %fs (%fms)",
-		remoteAddr.IA, remoteAddr.Host,
-		float64(clockOffset.Nanoseconds())/float64(time.Second.Nanoseconds()),
-		float64(clockOffset.Nanoseconds())/float64(time.Millisecond.Nanoseconds()),
-		float64(roundTripDelay.Nanoseconds())/float64(time.Second.Nanoseconds()),
-		float64(roundTripDelay.Nanoseconds())/float64(time.Millisecond.Nanoseconds()))
+	t0 := time.Now()
+	close(sg)
+	wg.Wait()
+	log.Print(time.Since(t0))
 }
 
 func exitWithUsage() {
