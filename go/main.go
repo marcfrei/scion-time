@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
+
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/config"
 	"github.com/scionproto/scion/go/lib/daemon"
@@ -178,21 +180,24 @@ func runClient(daemonAddr string, localAddr snet.UDPAddr, remoteAddr snet.UDPAdd
 		}
 	}
 
-	conn, err := net.DialUDP("udp", localAddr.Host, nextHop)
-	if err != nil {
-		log.Printf("Failed to dial UDP connection: %v", err)
-		return
-	}
-	defer conn.Close()
-	udp.EnableTimestamping(conn)
-
-	const numClientGoroutine = 8
-	const numRequestPerClient = 10000
+	const numClientGoroutine = 1
+	const numRequestPerClient = 10000 * 100
+	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(numClientGoroutine)
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
+			hg := hdrhistogram.New(1, 50000, 5)
+
+			conn, err := net.DialUDP("udp", localAddr.Host, nextHop)
+			if err != nil {
+				log.Printf("Failed to dial UDP connection: %v", err)
+				return
+			}
+			defer conn.Close()
+			udp.EnableTimestamping(conn)
+
 			defer wg.Done()
 			<-sg
 			for j := numRequestPerClient; j > 0; j-- {
@@ -282,14 +287,14 @@ func runClient(daemonAddr string, localAddr snet.UDPAddr, remoteAddr snet.UDPAdd
 					return
 				}
 
+				serverRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
+				serverTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
+
+				clockOffset := ntp.ClockOffset(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
+				roundTripDelay := ntp.RoundTripDelay(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
+
 				if !benchmarkEnabled {
 					log.Printf("Received NTP packet: %+v", ntpresp)
-
-					serverRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
-					serverTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
-
-					clockOffset := ntp.ClockOffset(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
-					roundTripDelay := ntp.RoundTripDelay(clientTxTime, serverRxTime, serverTxTime, clientRxTime)
 
 					log.Printf("%s,%s clock offset: %fs (%fms), round trip delay: %fs (%fms)",
 						remoteAddr.IA, remoteAddr.Host,
@@ -297,8 +302,13 @@ func runClient(daemonAddr string, localAddr snet.UDPAddr, remoteAddr snet.UDPAdd
 						float64(clockOffset.Nanoseconds())/float64(time.Millisecond.Nanoseconds()),
 						float64(roundTripDelay.Nanoseconds())/float64(time.Second.Nanoseconds()),
 						float64(roundTripDelay.Nanoseconds())/float64(time.Millisecond.Nanoseconds()))
+				} else {
+					hg.RecordValue(roundTripDelay.Microseconds())
 				}
 			}
+			mu.Lock()
+    	defer mu.Unlock()
+    	hg.PercentilesPrint(os.Stdout, 1, 1.0)
 		}()
 	}
 	t0 := time.Now()
