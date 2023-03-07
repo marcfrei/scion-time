@@ -329,6 +329,24 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr) {
 	}
 }
 
+func runIPNtsTool(localAddr, remoteAddr *snet.UDPAddr) {
+	var err error
+	ctx := context.Background()
+
+	lclk := &clock.SystemClock{Log: log}
+	timebase.RegisterClock(lclk)
+
+	laddr := localAddr.Host
+	raddr := remoteAddr.Host
+	c := &client.IPNtsClient{
+		KeyExchange: nil,
+	}
+	_, err = client.MeasureClockOffsetNtsIP(ctx, log, c, laddr, raddr)
+	if err != nil {
+		log.Fatal("failed to measure clock offset", zap.Stringer("to", raddr), zap.Error(err))
+	}
+}
+
 func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr) {
 	var err error
 	ctx := context.Background()
@@ -446,6 +464,7 @@ func main() {
 		drkeyMode       string
 		drkeyServerAddr snet.UDPAddr
 		drkeyClientAddr snet.UDPAddr
+		nts             bool
 	)
 
 	serverFlags := flag.NewFlagSet("server", flag.ExitOnError)
@@ -475,6 +494,7 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.Var(&remoteAddr, "remote", "Remote address")
+	toolFlags.BoolVar(&nts, "nts", false, "Use nts (default is ntp)")
 
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	benchmarkFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
@@ -535,7 +555,11 @@ func main() {
 				exitWithUsage()
 			}
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr)
+			if nts {
+				runIPNtsTool(&localAddr, &remoteAddr)
+			} else {
+				runIPTool(&localAddr, &remoteAddr)
+			}
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
