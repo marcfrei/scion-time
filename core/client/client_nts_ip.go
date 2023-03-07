@@ -91,18 +91,6 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpreq.SetMode(ntp.ModeClient)
 	ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 
-	if false {
-		ntpreq.LVM = 227
-		ntpreq.TransmitTime.Seconds = 2155189238
-		ntpreq.TransmitTime.Fraction = 349935905
-		ntpreq.ReceiveTime.Seconds = 633437444
-		ntpreq.ReceiveTime.Fraction = 3671234141
-		ntpreq.ReferenceTime.Seconds = 633437444
-		ntpreq.ReferenceTime.Fraction = 3671234141
-		ntpreq.OriginTime.Seconds = 633437444
-		ntpreq.OriginTime.Fraction = 3671234141
-	}
-
 	var uqext ntp.UniqueIdentifier
 
 	// Generate and remember a unique identifier for our packet
