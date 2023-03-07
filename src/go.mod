@@ -11,11 +11,14 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/prometheus/client_golang v1.14.0
 	github.com/scionproto/scion v0.8.0
+	gitlab.com/hacklunch/ntske v0.0.0-20200720174649-056ebf14a421
 	go.uber.org/zap v1.24.0
 	golang.org/x/sys v0.4.0
 	google.golang.org/grpc v1.52.3
 	google.golang.org/protobuf v1.28.1
 )
+
+require github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1 // indirect
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -30,6 +33,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.39.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/secure-io/siv-go v0.0.0-20180922214919-5ff40651e2c4
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	go.uber.org/atomic v1.10.0 // indirect
