@@ -64,6 +64,8 @@ func keyExchange(server string, c *tls.Config, debug bool) (*ntske.KeyExchange, 
 func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	localAddr, remoteAddr *net.UDPAddr) (
 	offset time.Duration, weight float64, err error) {
+
+	// set up connection
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localAddr.IP})
 	if err != nil {
 		return offset, weight, err
@@ -80,37 +82,15 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	if err != nil {
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
+	remoteAddr.Port = int(c.KeyExchange.Meta.Port)
+	remoteAddr.IP = net.ParseIP(c.KeyExchange.Meta.Server)
 
 	buf := make([]byte, 228)
-
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
 
-	ntpreq := ntp.Packet{}
-	ntpreq.SetVersion(ntp.VersionMax)
-	ntpreq.SetMode(ntp.ModeClient)
-	ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
-
-	var uqext ntp.UniqueIdentifier
-
-	// Generate and remember a unique identifier for our packet
-	_, err = uqext.Generate()
-	ntpreq.AddExt(uqext)
-
-	var cookie ntp.Cookie
-
-	cookie.Cookie = c.KeyExchange.Meta.Cookie[0]
-	ntpreq.AddExt(cookie)
-
-	var auth ntp.Authenticator
-
-	auth.Key = c.KeyExchange.Meta.C2sKey
-	ntpreq.AddExt(auth)
-
-	ntp.EncodePacketNTS(&buf, &ntpreq)
-
-	remoteAddr.Port = int(c.KeyExchange.Meta.Port)
-	remoteAddr.IP = net.ParseIP(c.KeyExchange.Meta.Server)
+	ntpreq := createPacket(c, cTxTime0)
+	ntp.EncodePacketNTS(&buf, &ntpreq)	
 
 	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
 	if err != nil {
@@ -125,6 +105,7 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		log.Error("failed to read packet tx timestamp", zap.Error(err))
 	}
 
+	// receive validate and unpack packet
 	numRetries := 0
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -198,6 +179,35 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpresp}),
 		)
 
+		return calcOffset(ntpresp, cTxTime1, cRxTime, log, reference)
+	}
+}
+
+func createPacket(c *IPNtsClient, cTxTime0 time.Time) (ntp.Packet) {
+	ntpreq := ntp.Packet{}
+	ntpreq.SetVersion(ntp.VersionMax)
+	ntpreq.SetMode(ntp.ModeClient)
+	ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
+
+	var uqext ntp.UniqueIdentifier
+
+	uqext.Generate()
+	ntpreq.AddExt(uqext)
+
+	var cookie ntp.Cookie
+
+	cookie.Cookie = c.KeyExchange.Meta.Cookie[0]
+	ntpreq.AddExt(cookie)
+
+	var auth ntp.Authenticator
+
+	auth.Key = c.KeyExchange.Meta.C2sKey
+	ntpreq.AddExt(auth)
+	return ntpreq
+}
+
+func calcOffset(ntpresp ntp.Packet, cTxTime1 time.Time, cRxTime time.Time, log *zap.Logger, reference string) (offset time.Duration, weight float64, err error) {
+
 		sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
 		sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
 
@@ -224,8 +234,5 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 
 		offset, weight = filter(log, reference, t0, t1, t2, t3)
 
-		break
+		return offset, weight, nil
 	}
-
-	return offset, weight, nil
-}
