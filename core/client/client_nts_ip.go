@@ -90,7 +90,7 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	cTxTime0 := timebase.Now()
 
 	ntpreq := createPacket(c, cTxTime0)
-	ntp.EncodePacketNTS(&buf, &ntpreq)	
+	ntp.EncodePacketNTS(&buf, &ntpreq)
 
 	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
 	if err != nil {
@@ -148,7 +148,8 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		}
 
 		var ntpresp ntp.Packet
-		err = ntp.DecodePacketNTS(&ntpresp, buf, c.KeyExchange.Meta.S2cKey)
+		var cookies [][]byte = make([][]byte, 0, 6)
+		err = ntp.DecodePacketNTS(&ntpresp, buf, &cookies, c.KeyExchange.Meta.S2cKey)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				log.Info("failed to decode packet payload", zap.Error(err))
@@ -179,11 +180,16 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpresp}),
 		)
 
+		c.KeyExchange.Meta.Cookie = c.KeyExchange.Meta.Cookie[1:]
+		for _, cookie := range cookies {
+			c.KeyExchange.Meta.Cookie = append(c.KeyExchange.Meta.Cookie, cookie)
+		}
+
 		return calcOffset(ntpresp, cTxTime1, cRxTime, log, reference)
 	}
 }
 
-func createPacket(c *IPNtsClient, cTxTime0 time.Time) (ntp.Packet) {
+func createPacket(c *IPNtsClient, cTxTime0 time.Time) ntp.Packet {
 	ntpreq := ntp.Packet{}
 	ntpreq.SetVersion(ntp.VersionMax)
 	ntpreq.SetMode(ntp.ModeClient)
@@ -208,31 +214,31 @@ func createPacket(c *IPNtsClient, cTxTime0 time.Time) (ntp.Packet) {
 
 func calcOffset(ntpresp ntp.Packet, cTxTime1 time.Time, cRxTime time.Time, log *zap.Logger, reference string) (offset time.Duration, weight float64, err error) {
 
-		sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
-		sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
+	sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
+	sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
 
-		var t0, t1, t2, t3 time.Time
+	var t0, t1, t2, t3 time.Time
 
-		t0 = cTxTime1
-		t1 = sRxTime
-		t2 = sTxTime
-		t3 = cRxTime
+	t0 = cTxTime1
+	t1 = sRxTime
+	t2 = sTxTime
+	t3 = cRxTime
 
-		err = ntp.ValidateResponseTimestamps(t0, t1, t1, t3)
-		if err != nil {
-			return offset, weight, err
-		}
-
-		off := ntp.ClockOffset(t0, t1, t2, t3)
-		rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
-
-		log.Debug("evaluated response",
-			zap.String("from", reference),
-			zap.Duration("clock offset", off),
-			zap.Duration("round trip delay", rtd),
-		)
-
-		offset, weight = filter(log, reference, t0, t1, t2, t3)
-
-		return offset, weight, nil
+	err = ntp.ValidateResponseTimestamps(t0, t1, t1, t3)
+	if err != nil {
+		return offset, weight, err
 	}
+
+	off := ntp.ClockOffset(t0, t1, t2, t3)
+	rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
+
+	log.Debug("evaluated response",
+		zap.String("from", reference),
+		zap.Duration("clock offset", off),
+		zap.Duration("round trip delay", rtd),
+	)
+
+	offset, weight = filter(log, reference, t0, t1, t2, t3)
+
+	return offset, weight, nil
+}

@@ -196,7 +196,7 @@ func EncodePacketNTS(b *[]byte, pkt *Packet) {
 	copy((*b)[0:228], buf.Bytes())
 }
 
-func DecodePacketNTS(pkt *Packet, b []byte, keys2c Key) error {
+func DecodePacketNTS(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
 	if len(b) < PacketLen {
 		return errUnexpectedPacketSize
 	}
@@ -250,12 +250,22 @@ func DecodePacketNTS(pkt *Packet, b []byte, keys2c Key) error {
 				return err
 			}
 
-			_, err = aessiv.Open(nil, a.Nonce, a.CipherText, b[:pos])
+			decrytedBuf, err := aessiv.Open(nil, a.Nonce, a.CipherText, b[:pos])
 			if err != nil {
 				return err
 			}
-
 			pkt.AddExt(a)
+			b = append(b, decrytedBuf...)
+			msgbuf = bytes.NewReader(b[(pos + int(eh.Length)):])
+
+		case ExtCookie:
+			cookie := Cookie{ExtHdr: eh}
+			err = cookie.unpack(msgbuf)
+			if err != nil {
+				return fmt.Errorf("unpack Cookie: %s", err)
+			}
+			pkt.AddExt(cookie)
+			*cookies = append(*cookies, cookie.Cookie)
 
 		default:
 			// Unknown extension field. Skip it.
@@ -442,6 +452,19 @@ func (c Cookie) pack(buf *bytes.Buffer) error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *Cookie) unpack(buf *bytes.Reader) error {
+	if c.ExtHdr.Type != ExtCookie {
+		return fmt.Errorf("expected unpacked EF header")
+	}
+	valueLen := c.ExtHdr.Length - uint16(binary.Size(c.ExtHdr))
+	cookie := make([]byte, valueLen)
+	if err := binary.Read(buf, binary.BigEndian, cookie); err != nil {
+		return err
+	}
+	c.Cookie = cookie
 	return nil
 }
 
