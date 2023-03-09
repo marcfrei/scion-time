@@ -17,7 +17,7 @@ import (
 	"gitlab.com/hacklunch/ntske"
 )
 
-type IPNtsClient struct {
+type IPNTSClient struct {
 	KeyExchange *ntske.KeyExchange
 }
 
@@ -61,7 +61,7 @@ func keyExchange(server string, c *tls.Config, debug bool) (*ntske.KeyExchange, 
 	return ke, nil
 }
 
-func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
+func (c *IPNTSClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	localAddr, remoteAddr *net.UDPAddr) (
 	offset time.Duration, weight float64, err error) {
 
@@ -189,7 +189,7 @@ func (c *IPNtsClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	}
 }
 
-func createPacket(c *IPNtsClient, cTxTime0 time.Time) ntp.Packet {
+func createPacket(c *IPNTSClient, cTxTime0 time.Time) ntp.Packet {
 	ntpreq := ntp.Packet{}
 	ntpreq.SetVersion(ntp.VersionMax)
 	ntpreq.SetMode(ntp.ModeClient)

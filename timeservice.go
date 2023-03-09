@@ -329,7 +329,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr) {
 	}
 }
 
-func runIPNtsTool(localAddr, remoteAddr *snet.UDPAddr) {
+func runIPNTSTool(localAddr, remoteAddr *snet.UDPAddr) {
 	var err error
 	ctx := context.Background()
 
@@ -338,10 +338,10 @@ func runIPNtsTool(localAddr, remoteAddr *snet.UDPAddr) {
 
 	laddr := localAddr.Host
 	raddr := remoteAddr.Host
-	c := &client.IPNtsClient{
+	c := &client.IPNTSClient{
 		KeyExchange: nil,
 	}
-	_, err = client.MeasureClockOffsetNtsIP(ctx, log, c, laddr, raddr)
+	_, err = client.MeasureClockOffsetNTSIP(ctx, log, c, laddr, raddr)
 	if err != nil {
 		log.Fatal("failed to measure clock offset", zap.Stringer("to", raddr), zap.Error(err))
 	}
@@ -556,7 +556,7 @@ func main() {
 			}
 			initLogger(verbose)
 			if nts {
-				runIPNtsTool(&localAddr, &remoteAddr)
+				runIPNTSTool(&localAddr, &remoteAddr)
 			} else {
 				runIPTool(&localAddr, &remoteAddr)
 			}

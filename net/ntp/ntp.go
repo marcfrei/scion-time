@@ -161,12 +161,12 @@ func DecodePacket(pkt *Packet, b []byte) error {
 }
 
 func EncodePacketNTS(b *[]byte, pkt *Packet) {
-	var NtsPacketLen int = 228
+	var NTSPacketLen int = 228
 
-	if cap(*b) < NtsPacketLen {
-		*b = make([]byte, NtsPacketLen)
+	if cap(*b) < NTSPacketLen {
+		*b = make([]byte, NTSPacketLen)
 	} else {
-		*b = (*b)[:NtsPacketLen]
+		*b = (*b)[:NTSPacketLen]
 	}
 
 	(*b)[0] = byte(pkt.LVM)

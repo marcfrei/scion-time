@@ -56,8 +56,8 @@ func printmeta(meta ntske.Data, log *zap.Logger) {
 	}
 }
 
-func MeasureClockOffsetNtsIP(ctx context.Context, log *zap.Logger,
-	ntpc *IPNtsClient, localAddr, remoteAddr *net.UDPAddr) (
+func MeasureClockOffsetNTSIP(ctx context.Context, log *zap.Logger,
+	ntpc *IPNTSClient, localAddr, remoteAddr *net.UDPAddr) (
 	time.Duration, error) {
 	var err error
 	var off time.Duration
@@ -66,7 +66,7 @@ func MeasureClockOffsetNtsIP(ctx context.Context, log *zap.Logger,
 	// - TCP TLS handshake
 	// - KE
 	// - Must store port and server somewhere
-	//    - could use the ntske Data struct and store in IPNtsClient
+	//    - could use the ntske Data struct and store in IPNTSClient
 	if ntpc.KeyExchange == nil {
 		tlsconfig, err := tlsSetup(false)
 		if err != nil {
