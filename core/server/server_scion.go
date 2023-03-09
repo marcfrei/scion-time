@@ -279,7 +279,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			}
 
 			var ntpreq ntp.Packet
-			err = ntp.DecodePacket(&ntpreq, udpLayer.Payload)
+			err = ntp.DecodePacket(&ntpreq, udpLayer.Payload, nil, nil)
 			if err != nil {
 				log.Info("failed to decode packet payload", zap.Error(err))
 				continue

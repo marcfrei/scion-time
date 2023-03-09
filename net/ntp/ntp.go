@@ -18,6 +18,7 @@ const (
 	ServerPort = 123
 
 	PacketLen = 48
+	NTSPacketLen = 228
 
 	LeapIndicatorNoWarning    = 0
 	LeapIndicatorInsertSecond = 1
@@ -110,63 +111,17 @@ func RoundTripDelay(t0, t1, t2, t3 time.Time) time.Duration {
 }
 
 func EncodePacket(b *[]byte, pkt *Packet) {
-	if cap(*b) < PacketLen {
-		*b = make([]byte, PacketLen)
+	var pktlen int
+	if pkt.Extension != nil {
+		pktlen = NTSPacketLen
 	} else {
-		*b = (*b)[:PacketLen]
+		pktlen = PacketLen
 	}
 
-	(*b)[0] = byte(pkt.LVM)
-	(*b)[1] = byte(pkt.Stratum)
-	(*b)[2] = byte(pkt.Poll)
-	(*b)[3] = byte(pkt.Precision)
-	binary.BigEndian.PutUint16((*b)[4:], pkt.RootDelay.Seconds)
-	binary.BigEndian.PutUint16((*b)[6:], pkt.RootDelay.Fraction)
-	binary.BigEndian.PutUint16((*b)[8:], pkt.RootDispersion.Seconds)
-	binary.BigEndian.PutUint16((*b)[10:], pkt.RootDispersion.Fraction)
-	binary.BigEndian.PutUint32((*b)[12:], pkt.ReferenceID)
-	binary.BigEndian.PutUint32((*b)[16:], pkt.ReferenceTime.Seconds)
-	binary.BigEndian.PutUint32((*b)[20:], pkt.ReferenceTime.Fraction)
-	binary.BigEndian.PutUint32((*b)[24:], pkt.OriginTime.Seconds)
-	binary.BigEndian.PutUint32((*b)[28:], pkt.OriginTime.Fraction)
-	binary.BigEndian.PutUint32((*b)[32:], pkt.ReceiveTime.Seconds)
-	binary.BigEndian.PutUint32((*b)[36:], pkt.ReceiveTime.Fraction)
-	binary.BigEndian.PutUint32((*b)[40:], pkt.TransmitTime.Seconds)
-	binary.BigEndian.PutUint32((*b)[44:], pkt.TransmitTime.Fraction)
-}
-
-func DecodePacket(pkt *Packet, b []byte) error {
-	if len(b) != PacketLen {
-		return errUnexpectedPacketSize
-	}
-
-	pkt.LVM = uint8(b[0])
-	pkt.Stratum = uint8(b[1])
-	pkt.Poll = int8(b[2])
-	pkt.Precision = int8(b[3])
-	pkt.RootDelay.Seconds = binary.BigEndian.Uint16(b[4:])
-	pkt.RootDelay.Fraction = binary.BigEndian.Uint16(b[6:])
-	pkt.RootDispersion.Seconds = binary.BigEndian.Uint16(b[8:])
-	pkt.RootDispersion.Fraction = binary.BigEndian.Uint16(b[10:])
-	pkt.ReferenceID = binary.BigEndian.Uint32(b[12:])
-	pkt.ReferenceTime.Seconds = binary.BigEndian.Uint32(b[16:])
-	pkt.ReferenceTime.Fraction = binary.BigEndian.Uint32(b[20:])
-	pkt.OriginTime.Seconds = binary.BigEndian.Uint32(b[24:])
-	pkt.OriginTime.Fraction = binary.BigEndian.Uint32(b[28:])
-	pkt.ReceiveTime.Seconds = binary.BigEndian.Uint32(b[32:])
-	pkt.ReceiveTime.Fraction = binary.BigEndian.Uint32(b[36:])
-	pkt.TransmitTime.Seconds = binary.BigEndian.Uint32(b[40:])
-	pkt.TransmitTime.Fraction = binary.BigEndian.Uint32(b[44:])
-	return nil
-}
-
-func EncodePacketNTS(b *[]byte, pkt *Packet) {
-	var NTSPacketLen int = 228
-
-	if cap(*b) < NTSPacketLen {
-		*b = make([]byte, NTSPacketLen)
+	if cap(*b) < pktlen {
+		*b = make([]byte, pktlen)
 	} else {
-		*b = (*b)[:NTSPacketLen]
+		*b = (*b)[:pktlen]
 	}
 
 	(*b)[0] = byte(pkt.LVM)
@@ -193,10 +148,10 @@ func EncodePacketNTS(b *[]byte, pkt *Packet) {
 		_ = ef.pack(buf)
 	}
 
-	copy((*b)[0:228], buf.Bytes())
+	copy((*b)[0:pktlen], buf.Bytes())
 }
 
-func DecodePacketNTS(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
+func DecodePacket(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
 	if len(b) < PacketLen {
 		return errUnexpectedPacketSize
 	}

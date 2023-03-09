@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"net"
 	"net/netip"
 	"time"
@@ -13,12 +15,17 @@ import (
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/udp"
 )
 
 type IPClient struct {
 	InterleavedMode bool
-	prev            struct {
+	IsAuthorized    bool
+	auth            struct {
+		keyExchangeNTS *ntske.KeyExchange
+	}
+	prev struct {
 		reference string
 		cTxTime   ntp.Time64
 		cRxTime   ntp.Time64
@@ -33,6 +40,52 @@ type ipClientMetrics struct {
 	respsAccepted            prometheus.Counter
 	respsAcceptedInterleaved prometheus.Counter
 }
+
+func tlsSetup(insecure bool) (*tls.Config, error) {
+	// Enable experimental TLS 1.3
+	//os.Setenv("GODEBUG", os.Getenv("GODEBUG")+",tls13=1")
+
+	c := &tls.Config{}
+
+	if insecure {
+		c.InsecureSkipVerify = true
+	}
+
+	return c, nil
+}
+
+func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*ntske.KeyExchange, error) {
+	ke, err := ntske.Connect(server, c, debug)
+	if err != nil {
+		log.Error("Connection failure", zap.String("Server", server), zap.Error(err))
+		return nil, err
+	}
+
+	err = ke.Exchange()
+	if err != nil {
+		log.Error("NTS-KE exchange error", zap.Error(err))
+		return nil, err
+	}
+
+	if len(ke.Meta.Cookie) == 0 {
+		log.Error("Received no cookies")
+		return nil, errors.New("received no cookies")
+	}
+
+	if ke.Meta.Algo != ntske.AES_SIV_CMAC_256 {
+		log.Error("unknown algorithm in NTS-KE")
+		return nil, errors.New("unknown algorithm in NTS-KE")
+	}
+
+	err = ke.ExportKeys()
+	if err != nil {
+		log.Error("export key failure", zap.Error(err))
+		return nil, err
+	}
+
+	return ke, nil
+}
+
 
 func compareAddrs(x, y netip.Addr) int {
 	if x.Is4In6() {
@@ -51,6 +104,8 @@ func (c *IPClient) ResetInterleavedMode() {
 func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	localAddr, remoteAddr *net.UDPAddr) (
 	offset time.Duration, weight float64, err error) {
+
+	// set up connection
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localAddr.IP})
 	if err != nil {
 		return offset, weight, err
@@ -68,7 +123,16 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
-	buf := make([]byte, ntp.PacketLen)
+	var pktlen int
+	if c.IsAuthorized {
+		remoteAddr.Port = int(c.auth.keyExchangeNTS.Meta.Port)
+		remoteAddr.IP = net.ParseIP(c.auth.keyExchangeNTS.Meta.Server)
+		pktlen = ntp.NTSPacketLen
+	} else {
+		pktlen = ntp.PacketLen
+	}
+
+	buf := make([]byte, pktlen)
 
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
@@ -84,6 +148,21 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	} else {
 		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 	}
+
+	if c.IsAuthorized {
+		var uqext ntp.UniqueIdentifier
+		uqext.Generate()
+		ntpreq.AddExt(uqext)
+
+		var cookie ntp.Cookie
+		cookie.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[0]
+		ntpreq.AddExt(cookie)
+
+		var auth ntp.Authenticator
+		auth.Key = c.auth.keyExchangeNTS.Meta.C2sKey
+		ntpreq.AddExt(auth)
+	}
+
 	ntp.EncodePacket(&buf, &ntpreq)
 
 	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
@@ -141,7 +220,12 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		}
 
 		var ntpresp ntp.Packet
-		err = ntp.DecodePacket(&ntpresp, buf)
+		var key []byte
+		var cookies [][]byte = make([][]byte, 0, 6)
+		if c.IsAuthorized {
+			key = c.auth.keyExchangeNTS.Meta.S2cKey
+		}
+		err = ntp.DecodePacket(&ntpresp, buf, &cookies, key)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				log.Info("failed to decode packet payload", zap.Error(err))
@@ -149,6 +233,14 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 				continue
 			}
 			return offset, weight, err
+		}
+
+		if c.IsAuthorized {
+			c.auth.keyExchangeNTS.Meta.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[1:]
+			for _, cookie := range cookies {
+				c.auth.keyExchangeNTS.Meta.Cookie = append(c.auth.keyExchangeNTS.Meta.Cookie, cookie)
+			}
+
 		}
 
 		interleaved := false

@@ -52,47 +52,33 @@ func printmeta(meta ntske.Data, log *zap.Logger) {
 	}
 }
 
-func MeasureClockOffsetNTSIP(ctx context.Context, log *zap.Logger,
-	ntpc *IPNTSClient, localAddr, remoteAddr *net.UDPAddr) (
-	time.Duration, error) {
-	var err error
-	var off time.Duration
-
-	// First do key exchange and save Keys and cookies in ntpc struct
-	// - TCP TLS handshake
-	// - KE
-	// - Must store port and server somewhere
-	//    - could use the ntske Data struct and store in IPNTSClient
-	if ntpc.KeyExchange == nil {
-		tlsconfig, err := tlsSetup(false)
-		if err != nil {
-			log.Fatal("Couldn't set up TLS: ", zap.Error(err))
-		}
-
-		server := "nts.netnod.se" //For TLS certificate we need the string IP address. Otherwise use remoteAddr.IP.String()
-
-		ke, err := keyExchange(server, tlsconfig, true, log)
-		if err != nil {
-			log.Error("NTS-KE exchange error: ", zap.Error(err))
-		}
-		printmeta(ke.Meta, log)
-		ntpc.KeyExchange = ke
-	}
-	// Do query using cookies and possibly request new ones
-
-	o, _, e := ntpc.measureClockOffsetIP(ctx, log, localAddr, remoteAddr)
-	if e == nil {
-		off, err = o, e
-	} else {
-		log.Info("failed to measure clock offset", zap.Stringer("to", remoteAddr), zap.Error(e))
-	}
-
-	return off, err
-}
-
 func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpc *IPClient, localAddr, remoteAddr *net.UDPAddr) (
 	time.Duration, error) {
+
+	if ntpc.IsAuthorized {
+		// First do key exchange and save Keys and cookies in ntpc struct
+		// - TCP TLS handshake
+		// - KE
+		// - Must store port and server somewhere
+		//    - could use the ntske Data struct and store in IPNTSClient
+		if ntpc.auth.keyExchangeNTS == nil {
+			tlsconfig, err := tlsSetup(false)
+			if err != nil {
+				log.Fatal("Couldn't set up TLS: ", zap.Error(err))
+			}
+
+			server := "nts.netnod.se" //For TLS certificate we need the string IP address. Otherwise use remoteAddr.IP.String()
+
+			ke, err := keyExchange(server, tlsconfig, true, log)
+			if err != nil {
+				log.Error("NTS-KE exchange error: ", zap.Error(err))
+			}
+			printmeta(ke.Meta, log)
+			ntpc.auth.keyExchangeNTS = ke
+		}
+	}
+	
 	var err error
 	var off time.Duration
 	var nerr, n int

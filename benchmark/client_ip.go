@@ -76,7 +76,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr) {
 				buf = buf[:n]
 
 				var ntpresp ntp.Packet
-				err = ntp.DecodePacket(&ntpresp, buf)
+				err = ntp.DecodePacket(&ntpresp, buf, nil, nil)
 				if err != nil {
 					log.Printf("Failed to decode packet payload: %v", err)
 					return
