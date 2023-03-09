@@ -106,9 +106,6 @@ github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVK
 github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
-gitlab.com/hacklunch/ntske v0.0.0-20200720174649-056ebf14a421 h1:VLKlTOu3hqeO34XShJh+KzTTl3cYdap4XMkZzp4a8T4=
-gitlab.com/hacklunch/ntske v0.0.0-20200720174649-056ebf14a421/go.mod h1:QyZVYV7pa5YbRb5aJ9yWPdEC2XRsxcTlex6ghDmXLbg=
-gitlab.com/hacklunch/ntske v0.0.0-20201006122939-e09fea38c855/go.mod h1:QyZVYV7pa5YbRb5aJ9yWPdEC2XRsxcTlex6ghDmXLbg=
 go.uber.org/atomic v1.4.0/go.mod h1:gD2HeocX3+yG+ygLZcrzQJaqmWj9AIm7n08wl/qW/PE=
 go.uber.org/atomic v1.10.0 h1:9qC72Qh0+3MqyJbAn8YU5xVq1frD8bn3JtD2oXtafVQ=
 go.uber.org/atomic v1.10.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=

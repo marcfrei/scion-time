@@ -11,7 +11,6 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/prometheus/client_golang v1.14.0
 	github.com/scionproto/scion v0.8.0
-	gitlab.com/hacklunch/ntske v0.0.0-20200720174649-056ebf14a421
 	go.uber.org/zap v1.24.0
 	golang.org/x/sys v0.4.0
 	google.golang.org/grpc v1.52.3

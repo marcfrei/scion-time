@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/pkg/snet"
-	"gitlab.com/hacklunch/ntske"
 
 	"go.uber.org/zap"
 
 	"example.com/scion-time/base/crypto"
 	"example.com/scion-time/base/timemath"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )

@@ -12,9 +12,8 @@ import (
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/udp"
-
-	"gitlab.com/hacklunch/ntske"
 )
 
 type IPNTSClient struct {
