@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"net"
 	"time"
 
@@ -34,28 +34,33 @@ func tlsSetup(insecure bool) (*tls.Config, error) {
 	return c, nil
 }
 
-func keyExchange(server string, c *tls.Config, debug bool) (*ntske.KeyExchange, error) {
+func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*ntske.KeyExchange, error) {
 	ke, err := ntske.Connect(server, c, debug)
 	if err != nil {
-		return nil, fmt.Errorf("connection failure to %v: %v", server, err)
+		log.Error("Connection failure", zap.String("Server", server), zap.Error(err))
+		return nil, err
 	}
 
 	err = ke.Exchange()
 	if err != nil {
-		return nil, fmt.Errorf("NTS-KE exchange error: %v", err)
+		log.Error("NTS-KE exchange error", zap.Error(err))
+		return nil, err
 	}
 
 	if len(ke.Meta.Cookie) == 0 {
-		return nil, fmt.Errorf("received no cookies")
+		log.Error("Received no cookies")
+		return nil, errors.New("received no cookies")
 	}
 
 	if ke.Meta.Algo != ntske.AES_SIV_CMAC_256 {
-		return nil, fmt.Errorf("unknown algorithm in NTS-KE")
+		log.Error("unknown algorithm in NTS-KE")
+		return nil, errors.New("unknown algorithm in NTS-KE")
 	}
 
 	err = ke.ExportKeys()
 	if err != nil {
-		return nil, fmt.Errorf("export key failure: %v", err)
+		log.Error("export key failure", zap.Error(err))
+		return nil, err
 	}
 
 	return ke, nil

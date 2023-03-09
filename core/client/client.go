@@ -2,9 +2,10 @@ package client
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -37,22 +38,17 @@ var (
 )
 
 func printmeta(meta ntske.Data, log *zap.Logger) {
-	fmt.Printf("NTSKE exchange yielded:\n"+
-		"  c2s: %x\n"+
-		"  s2c: %x\n"+
-		"  server: %v\n"+
-		"  port: %v\n"+
-		"  algo: %v\n",
-		string(meta.C2sKey),
-		string(meta.S2cKey),
-		meta.Server,
-		meta.Port,
-		meta.Algo,
-	)
+	log.Debug("NTSKE exchange yielded:",
+		zap.String("c2s", hex.EncodeToString(meta.C2sKey)),
+		zap.String("s2c", hex.EncodeToString(meta.S2cKey)),
+		zap.String("server", meta.Server),
+		zap.Uint16("port", meta.Port),
+		zap.Uint16("algo", meta.Algo))
 
-	fmt.Printf("  %v cookies:\n", len(meta.Cookie))
+	log.Debug("Cookies: ", zap.Int("number of ", len(meta.Cookie)))
+
 	for i, cookie := range meta.Cookie {
-		fmt.Printf("  #%v: %x\n", i+1, cookie)
+		log.Debug(strconv.Itoa(i), zap.String(".", hex.EncodeToString(cookie)))
 	}
 }
 
@@ -75,7 +71,7 @@ func MeasureClockOffsetNTSIP(ctx context.Context, log *zap.Logger,
 
 		server := "nts.netnod.se" //For TLS certificate we need the string IP address. Otherwise use remoteAddr.IP.String()
 
-		ke, err := keyExchange(server, tlsconfig, true)
+		ke, err := keyExchange(server, tlsconfig, true, log)
 		if err != nil {
 			log.Error("NTS-KE exchange error: ", zap.Error(err))
 		}

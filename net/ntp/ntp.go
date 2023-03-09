@@ -333,7 +333,7 @@ func (h *ExtHdr) unpack(buf *bytes.Reader) error {
 func (h ExtHdr) Header() ExtHdr { return h }
 
 func (h ExtHdr) string() string {
-	return fmt.Sprintf("  Extension field type: %v, len: %v\n", h.Type, h.Length)
+	return fmt.Sprintf("Extension field type: %v, len: %v\n", h.Type, h.Length)
 }
 
 func (packet *Packet) AddExt(ext ExtensionField) {
