@@ -18,7 +18,6 @@ const (
 	ServerPort = 123
 
 	PacketLen = 48
-	NTSPacketLen = 228
 
 	LeapIndicatorNoWarning    = 0
 	LeapIndicatorInsertSecond = 1
@@ -111,12 +110,7 @@ func RoundTripDelay(t0, t1, t2, t3 time.Time) time.Duration {
 }
 
 func EncodePacket(b *[]byte, pkt *Packet) {
-	var pktlen int
-	if pkt.Extension != nil {
-		pktlen = NTSPacketLen
-	} else {
-		pktlen = PacketLen
-	}
+	var pktlen int = PacketLen
 
 	if cap(*b) < pktlen {
 		*b = make([]byte, pktlen)
@@ -146,6 +140,13 @@ func EncodePacket(b *[]byte, pkt *Packet) {
 	buf.Write((*b)[0:48])
 	for _, ef := range pkt.Extension {
 		_ = ef.pack(buf)
+	}
+
+	pktlen = buf.Len()
+	if cap(*b) < pktlen {
+		*b = make([]byte, pktlen)
+	} else {
+		*b = (*b)[:pktlen]
 	}
 
 	copy((*b)[0:pktlen], buf.Bytes())
@@ -426,6 +427,40 @@ func (c *Cookie) unpack(buf *bytes.Reader) error {
 type CookiePlaceholder struct {
 	ExtHdr
 	Cookie []byte
+}
+
+func (c CookiePlaceholder) string() string {
+	return fmt.Sprintf("-- CookiePlacholder EF\n")
+}
+
+func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
+	value := new(bytes.Buffer)
+	origlen, err := value.Write(c.Cookie)
+	if err != nil {
+		return err
+	}
+
+	// Round up to nearest word boundary
+	newlen := (origlen + 3) & ^3
+	padding := make([]byte, newlen-origlen)
+
+	c.ExtHdr.Type = ExtCookiePlaceholder
+	c.ExtHdr.Length = 4 + uint16(newlen)
+	err = c.ExtHdr.pack(buf)
+	if err != nil {
+		return err
+	}
+
+	_, err = buf.ReadFrom(value)
+	if err != nil {
+		return err
+	}
+	_, err = buf.Write(padding)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type Key []byte

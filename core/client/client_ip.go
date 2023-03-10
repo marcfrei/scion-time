@@ -86,7 +86,6 @@ func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*nt
 	return ke, nil
 }
 
-
 func compareAddrs(x, y netip.Addr) int {
 	if x.Is4In6() {
 		x = netip.AddrFrom4(x.As4())
@@ -123,16 +122,12 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
-	var pktlen int
 	if c.IsAuthorized {
 		remoteAddr.Port = int(c.auth.keyExchangeNTS.Meta.Port)
 		remoteAddr.IP = net.ParseIP(c.auth.keyExchangeNTS.Meta.Server)
-		pktlen = ntp.NTSPacketLen
-	} else {
-		pktlen = ntp.PacketLen
 	}
 
-	buf := make([]byte, pktlen)
+	buf := make([]byte, ntp.PacketLen)
 
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
@@ -149,6 +144,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 	}
 
+	// add NTS extension fields to packet
 	if c.IsAuthorized {
 		var uqext ntp.UniqueIdentifier
 		uqext.Generate()
@@ -157,6 +153,14 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		var cookie ntp.Cookie
 		cookie.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[0]
 		ntpreq.AddExt(cookie)
+
+		// add cookie extension fields here until 8 cookies in total in keyexchange storage
+		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
+		for i := len(c.auth.keyExchangeNTS.Meta.Cookie); i < 8; i++ {
+			var cookiePlacholder ntp.CookiePlaceholder
+			cookiePlacholder.Cookie = cookiePlaceholderData
+			ntpreq.AddExt(cookiePlacholder)
+		}
 
 		var auth ntp.Authenticator
 		auth.Key = c.auth.keyExchangeNTS.Meta.C2sKey
@@ -235,6 +239,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			return offset, weight, err
 		}
 
+		// remove first cookie as it has now been used and add all new received cookies to queue
 		if c.IsAuthorized {
 			c.auth.keyExchangeNTS.Meta.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[1:]
 			for _, cookie := range cookies {
