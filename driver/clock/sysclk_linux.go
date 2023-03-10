@@ -5,8 +5,6 @@ package clock
 // Based on Ntimed by Poul-Henning Kamp, https://github.com/bsdphk/Ntimed
 
 import (
-	"unsafe"
-
 	"math"
 	"sync"
 	"time"
@@ -17,13 +15,6 @@ import (
 
 	"example.com/scion-time/base/timebase"
 	"example.com/scion-time/base/timemath"
-)
-
-const (
-	ADJ_FREQUENCY = 2
-
-	STA_PLL      = 1
-	STA_FREQHOLD = 128
 )
 
 type adjustment struct {
@@ -82,24 +73,39 @@ func sleep(log *zap.Logger, duration time.Duration) {
 	_ = unix.Close(fd)
 }
 
+func nsecToNsecTimeval(log *zap.Logger, nsec int64) unix.Timeval {
+	sec := nsec / 1e9
+	nsec = nsec % 1e9
+	// the kernel API requires that we pass a non-negative nsec
+	if nsec < 0 {
+		sec -= 1
+		nsec += 1e9
+	}
+	log.Debug("converting time", zap.Int64("sec", sec), zap.Int64("nsec", nsec))
+	return unix.Timeval{
+		Sec:  sec,
+		Usec: nsec,
+	}
+}
+
 func setTime(log *zap.Logger, offset time.Duration) {
 	log.Debug("setting time", zap.Duration("offset", offset))
-	ts, err := unix.TimeToTimespec(now(log).Add(offset))
-	if err != nil {
-		log.Fatal("unix.TimeToTimespec failed", zap.Error(err))
+	tx := unix.Timex{
+		Modes: unix.ADJ_SETOFFSET | unix.ADJ_NANO,
+		Time:  nsecToNsecTimeval(log, offset.Nanoseconds()),
 	}
-	_, _, errno := unix.Syscall(unix.SYS_CLOCK_SETTIME, uintptr(unix.CLOCK_REALTIME), uintptr(unsafe.Pointer(&ts)), 0)
-	if errno != 0 {
-		log.Fatal("unix.SYS_CLOCK_SETTIME failed", zap.Error(err))
+	_, err := unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+	if err != nil {
+		log.Fatal("unix.Adjtimex with ADJ_SETOFFSET failed", zap.Error(err))
 	}
 }
 
 func setFrequency(log *zap.Logger, frequency float64) {
 	log.Debug("setting frequency", zap.Float64("frequency", frequency))
 	tx := unix.Timex{
-		Modes:  ADJ_FREQUENCY,
+		Modes:  unix.ADJ_FREQUENCY,
 		Freq:   int64(math.Floor(frequency * 65536 * 1e6)),
-		Status: STA_PLL | STA_FREQHOLD,
+		Status: unix.STA_PLL,
 	}
 	_, err := unix.Adjtimex(&tx)
 	if err != nil {
