@@ -41,19 +41,6 @@ type ipClientMetrics struct {
 	respsAcceptedInterleaved prometheus.Counter
 }
 
-func tlsSetup(insecure bool) (*tls.Config, error) {
-	// Enable experimental TLS 1.3
-	//os.Setenv("GODEBUG", os.Getenv("GODEBUG")+",tls13=1")
-
-	c := &tls.Config{}
-
-	if insecure {
-		c.InsecureSkipVerify = true
-	}
-
-	return c, nil
-}
-
 func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*ntske.KeyExchange, error) {
 	ke, err := ntske.Connect(server, c, debug)
 	if err != nil {

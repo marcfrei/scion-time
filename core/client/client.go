@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"net"
@@ -63,12 +64,12 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		// - Must store port and server somewhere
 		//    - could use the ntske Data struct and store in IPNTSClient
 		if ntpc.auth.keyExchangeNTS == nil {
-			tlsconfig, err := tlsSetup(false)
-			if err != nil {
-				log.Fatal("Couldn't set up TLS: ", zap.Error(err))
-			}
+			tlsconfig := &tls.Config{}
 
-			server := "nts.netnod.se" //For TLS certificate we need the string IP address. Otherwise use remoteAddr.IP.String()
+			// For testing do not verify tls certificate
+			// CHANGE IN PRODUCTION VERSION
+			tlsconfig.InsecureSkipVerify = true
+			server := remoteAddr.IP.String() //For TLS certificate we need the string dns address. Otherwise use remoteAddr.IP.String()
 
 			ke, err := keyExchange(server, tlsconfig, true, log)
 			if err != nil {
@@ -78,7 +79,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			ntpc.auth.keyExchangeNTS = ke
 		}
 	}
-	
+
 	var err error
 	var off time.Duration
 	var nerr, n int
