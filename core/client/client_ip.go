@@ -141,7 +141,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		cookie.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[0]
 		ntpreq.AddExt(cookie)
 
-		// add cookie extension fields here until 8 cookies in total in keyexchange storage
+		// add cookie extension fields here s.t. 8 cookies are available after respondse
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
 		for i := len(c.auth.keyExchangeNTS.Meta.Cookie); i < 8; i++ {
 			var cookiePlacholder ntp.CookiePlaceholder
