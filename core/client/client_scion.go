@@ -363,7 +363,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 		}
 
 		var ntpresp ntp.Packet
-		err = ntp.DecodePacket(&ntpresp, udpLayer.Payload, nil, nil)
+		err = ntp.DecodePacket(&ntpresp, udpLayer.Payload, nil)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				log.Info("failed to decode packet payload", zap.Error(err))

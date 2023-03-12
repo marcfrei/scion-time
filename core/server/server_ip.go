@@ -79,7 +79,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		mtrcs.pktsReceived.Inc()
 
 		var ntpreq ntp.Packet
-		err = ntp.DecodePacket(&ntpreq, buf, nil, nil)
+		err = ntp.DecodePacket(&ntpreq, buf, nil)
 		if err != nil {
 			log.Info("failed to decode packet payload", zap.Error(err))
 			continue

@@ -69,6 +69,12 @@ type Packet struct {
 	Extension      []ExtensionField
 }
 
+type NTSRespondseFields struct {
+	UniqueId []byte
+	S2cKey   []byte
+	Cookies  [][]byte
+}
+
 var (
 	epoch = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
 
@@ -152,7 +158,7 @@ func EncodePacket(b *[]byte, pkt *Packet) {
 	copy((*b)[0:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
+func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSRespondseFields) error {
 	if len(b) < PacketLen {
 		return errUnexpectedPacketSize
 	}
@@ -191,6 +197,9 @@ func DecodePacket(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
 			if err != nil {
 				return fmt.Errorf("unpack UniqueIdentifier: %s", err)
 			}
+			if !bytes.Equal(u.ID, ntsrespfields.UniqueId) {
+				return fmt.Errorf("Unique identifiers do not match")
+			}
 
 			pkt.AddExt(u)
 
@@ -201,7 +210,7 @@ func DecodePacket(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
 				return fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
-			aessiv, err := siv.NewCMAC(keys2c)
+			aessiv, err := siv.NewCMAC(ntsrespfields.S2cKey)
 			if err != nil {
 				return err
 			}
@@ -221,7 +230,7 @@ func DecodePacket(pkt *Packet, b []byte, cookies *[][]byte, keys2c Key) error {
 				return fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
-			*cookies = append(*cookies, cookie.Cookie)
+			ntsrespfields.Cookies = append(ntsrespfields.Cookies, cookie.Cookie)
 
 		default:
 			// Unknown extension field. Skip it.
