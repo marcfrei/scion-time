@@ -84,6 +84,39 @@ func LogNTSKEMetadata(meta Data, log *zap.Logger) {
 		zap.Object("cookies", CookieArrayMarshaler{Cookies: meta.Cookie}))
 }
 
+func ExchangeKeys(c *tls.Config, debug bool, log *zap.Logger) (*KeyExchange, error) {
+	ke, err := Connect(c.ServerName, c, debug)
+	if err != nil {
+		log.Error("Connection failure", zap.String("Server", c.ServerName), zap.Error(err))
+		return nil, err
+	}
+
+	err = ke.Exchange()
+	if err != nil {
+		log.Error("NTS-KE exchange error", zap.Error(err))
+		return nil, err
+	}
+
+	if len(ke.Meta.Cookie) == 0 {
+		log.Error("Received no cookies")
+		return nil, errors.New("received no cookies")
+	}
+
+	if ke.Meta.Algo != AES_SIV_CMAC_256 {
+		log.Error("unknown algorithm in NTS-KE")
+		return nil, errors.New("unknown algorithm in NTS-KE")
+	}
+
+	err = ke.ExportKeys()
+	if err != nil {
+		log.Error("export key failure", zap.Error(err))
+		return nil, err
+	}
+	LogNTSKEMetadata(ke.Meta, log)
+
+	return ke, nil
+}
+
 // RecordHdr is the header on all records send in NTS-KE. The first
 // bit of the Type is the critical bit.
 type RecordHdr struct {

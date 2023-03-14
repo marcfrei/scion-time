@@ -14,6 +14,7 @@ import (
 
 	"example.com/scion-time/base/crypto"
 	"example.com/scion-time/base/timemath"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -53,7 +54,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			tlsconfig.InsecureSkipVerify = true
 			tlsconfig.ServerName = remoteAddr.IP.String() //For TLS certificate we need the string dns address. Otherwise use remoteAddr.IP.String()
 
-			ke, err := keyExchange(tlsconfig, true, log)
+			ke, err := ntske.ExchangeKeys(tlsconfig, true, log)
 			if err != nil {
 				log.Error("NTS-KE exchange error: ", zap.Error(err))
 			}
