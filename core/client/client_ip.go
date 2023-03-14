@@ -132,7 +132,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	}
 
 	// add NTS extension fields to packet
-	var ntsrespfields ntp.NTSRespondseFields
+	var ntsrespfields ntp.NTSResponseFields
 	if c.IsAuthorized {
 		var uqext ntp.UniqueIdentifier
 		uqext.Generate()

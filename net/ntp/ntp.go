@@ -69,7 +69,7 @@ type Packet struct {
 	Extension      []ExtensionField
 }
 
-type NTSRespondseFields struct {
+type NTSResponseFields struct {
 	UniqueId []byte
 	S2cKey   []byte
 	Cookies  [][]byte
@@ -158,7 +158,7 @@ func EncodePacket(b *[]byte, pkt *Packet) {
 	copy((*b)[0:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSRespondseFields) error {
+func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSResponseFields) error {
 	if len(b) < PacketLen {
 		return errUnexpectedPacketSize
 	}
