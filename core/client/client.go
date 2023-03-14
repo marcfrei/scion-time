@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"net"
 	"sync/atomic"
@@ -14,7 +13,6 @@ import (
 
 	"example.com/scion-time/base/crypto"
 	"example.com/scion-time/base/timemath"
-	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -39,29 +37,6 @@ var (
 func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpc *IPClient, localAddr, remoteAddr *net.UDPAddr) (
 	time.Duration, error) {
-
-	if ntpc.Auth.Enabled {
-		// First do key exchange and save Keys and cookies in ntpc struct
-		// - TCP TLS handshake
-		// - KE
-		// - Must store port and server somewhere
-		//    - could use the ntske Data struct and store in IPNTSClient
-		if ntpc.Auth.keyExchangeNTS == nil {
-			tlsconfig := &tls.Config{}
-
-			// For testing do not verify tls certificate
-			// CHANGE IN PRODUCTION VERSION
-			tlsconfig.InsecureSkipVerify = true
-			tlsconfig.ServerName = remoteAddr.IP.String() //For TLS certificate we need the string dns address. Otherwise use remoteAddr.IP.String()
-
-			ke, err := ntske.ExchangeKeys(tlsconfig, true, log)
-			if err != nil {
-				log.Error("NTS-KE exchange error: ", zap.Error(err))
-			}
-			ntpc.Auth.keyExchangeNTS = ke
-		}
-	}
-
 	var err error
 	var off time.Duration
 	var nerr, n int

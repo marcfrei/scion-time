@@ -20,7 +20,7 @@ import (
 type IPClient struct {
 	InterleavedMode bool
 	Auth            struct {
-		keyExchangeNTS *ntske.KeyExchange
+		KeyExchangeNTS *ntske.KeyExchange
 		Enabled        bool
 	}
 	prev struct {
@@ -56,7 +56,6 @@ func (c *IPClient) ResetInterleavedMode() {
 func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	localAddr, remoteAddr *net.UDPAddr) (
 	offset time.Duration, weight float64, err error) {
-
 	// set up connection
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localAddr.IP})
 	if err != nil {
@@ -76,8 +75,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	}
 
 	if c.Auth.Enabled {
-		remoteAddr.Port = int(c.Auth.keyExchangeNTS.Meta.Port)
-		remoteAddr.IP = net.ParseIP(c.Auth.keyExchangeNTS.Meta.Server)
+		remoteAddr.Port = int(c.Auth.KeyExchangeNTS.Meta.Port)
+		remoteAddr.IP = net.ParseIP(c.Auth.KeyExchangeNTS.Meta.Server)
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -105,22 +104,22 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		ntpreq.AddExt(uqext)
 
 		var cookie ntp.Cookie
-		cookie.Cookie = c.Auth.keyExchangeNTS.Meta.Cookie[0]
+		cookie.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[0]
 		ntpreq.AddExt(cookie)
 
 		// add cookie extension fields here s.t. 8 cookies are available after respondse
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := len(c.Auth.keyExchangeNTS.Meta.Cookie); i < 8; i++ {
+		for i := len(c.Auth.KeyExchangeNTS.Meta.Cookie); i < 8; i++ {
 			var cookiePlacholder ntp.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntpreq.AddExt(cookiePlacholder)
 		}
 
 		var auth ntp.Authenticator
-		auth.Key = c.Auth.keyExchangeNTS.Meta.C2sKey
+		auth.Key = c.Auth.KeyExchangeNTS.Meta.C2sKey
 		ntpreq.AddExt(auth)
 
-		ntsrespfields.S2cKey = c.Auth.keyExchangeNTS.Meta.S2cKey
+		ntsrespfields.S2cKey = c.Auth.KeyExchangeNTS.Meta.S2cKey
 		ntsrespfields.UniqueId = uqext.ID
 	}
 
@@ -193,9 +192,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 
 		// remove first cookie as it has now been used and add all new received cookies to queue
 		if c.Auth.Enabled {
-			c.Auth.keyExchangeNTS.Meta.Cookie = c.Auth.keyExchangeNTS.Meta.Cookie[1:]
+			c.Auth.KeyExchangeNTS.Meta.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[1:]
 			for _, cookie := range ntsrespfields.Cookies {
-				c.Auth.keyExchangeNTS.Meta.Cookie = append(c.Auth.keyExchangeNTS.Meta.Cookie, cookie)
+				c.Auth.KeyExchangeNTS.Meta.Cookie = append(c.Auth.KeyExchangeNTS.Meta.Cookie, cookie)
 			}
 
 		}
