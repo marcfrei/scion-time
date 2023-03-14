@@ -41,6 +41,7 @@ import (
 const (
 	dispatcherModeExternal = "external"
 	dispatcherModeInternal = "internal"
+	authModeNTS            = "nts"
 
 	scionRefClockNumClient = 5
 )
@@ -311,7 +312,7 @@ func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	runMonitor(log)
 }
 
-func runIPTool(localAddr, remoteAddr *snet.UDPAddr, nts bool) {
+func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string) {
 	var err error
 	ctx := context.Background()
 
@@ -323,7 +324,11 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, nts bool) {
 	c := &client.IPClient{
 		InterleavedMode: true,
 	}
-	c.Auth.Enabled = nts
+	if authMode == authModeNTS {
+		c.Auth.Enabled = true
+	} else {
+		c.Auth.Enabled = false
+	}
 
 	_, err = client.MeasureClockOffsetIP(ctx, log, c, laddr, raddr)
 	if err != nil {
@@ -448,7 +453,7 @@ func main() {
 		drkeyMode       string
 		drkeyServerAddr snet.UDPAddr
 		drkeyClientAddr snet.UDPAddr
-		nts             bool
+		authMode        string
 	)
 
 	serverFlags := flag.NewFlagSet("server", flag.ExitOnError)
@@ -478,7 +483,7 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.Var(&remoteAddr, "remote", "Remote address")
-	toolFlags.BoolVar(&nts, "nts", false, "Use nts (default is ntp)")
+	toolFlags.StringVar(&authMode, "auth", "", "Authentication mode")
 
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	benchmarkFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
@@ -539,7 +544,7 @@ func main() {
 				exitWithUsage()
 			}
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, nts)
+			runIPTool(&localAddr, &remoteAddr, authMode)
 
 		}
 	case benchmarkFlags.Name():
