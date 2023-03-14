@@ -13,6 +13,7 @@ import (
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/net/nts"
 	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/udp"
 )
@@ -96,34 +97,37 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 	}
 
-	// add NTS extension fields to packet
-	var ntsrespfields ntp.NTSResponseFields
-	if c.Auth.Enabled {
-		var uqext ntp.UniqueIdentifier
-		uqext.Generate()
-		ntpreq.AddExt(uqext)
+	ntp.EncodePacket(&buf, &ntpreq)
 
-		var cookie ntp.Cookie
+	// add NTS extension fields to packet
+	var ntsrespfields nts.NTSResponseFields
+	ntsreq := nts.NTSPacket{}
+
+	if c.Auth.Enabled {
+		ntsreq.NTPHeader = buf
+		var uqext nts.UniqueIdentifier
+		uqext.Generate()
+		ntsreq.AddExt(uqext)
+
+		var cookie nts.Cookie
 		cookie.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[0]
-		ntpreq.AddExt(cookie)
+		ntsreq.AddExt(cookie)
 
 		// add cookie extension fields here s.t. 8 cookies are available after respondse
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
 		for i := len(c.Auth.KeyExchangeNTS.Meta.Cookie); i < 8; i++ {
-			var cookiePlacholder ntp.CookiePlaceholder
+			var cookiePlacholder nts.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
-			ntpreq.AddExt(cookiePlacholder)
+			ntsreq.AddExt(cookiePlacholder)
 		}
 
-		var auth ntp.Authenticator
+		var auth nts.Authenticator
 		auth.Key = c.Auth.KeyExchangeNTS.Meta.C2sKey
-		ntpreq.AddExt(auth)
+		ntsreq.AddExt(auth)
 
 		ntsrespfields.S2cKey = c.Auth.KeyExchangeNTS.Meta.S2cKey
 		ntsrespfields.UniqueId = uqext.ID
 	}
-
-	ntp.EncodePacket(&buf, &ntpreq)
 
 	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
 	if err != nil {
@@ -180,7 +184,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		}
 
 		var ntpresp ntp.Packet
-		err = ntp.DecodePacket(&ntpresp, buf, &ntsrespfields)
+		err = ntp.DecodePacket(&ntpresp, buf)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				log.Info("failed to decode packet payload", zap.Error(err))
@@ -191,7 +195,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		}
 
 		// remove first cookie as it has now been used and add all new received cookies to queue
+		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
+			ntsresp.NTPHeader = buf
+			nts.DecodePacket(&ntsresp, buf, &ntsrespfields)
 			c.Auth.KeyExchangeNTS.Meta.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[1:]
 			for _, cookie := range ntsrespfields.Cookies {
 				c.Auth.KeyExchangeNTS.Meta.Cookie = append(c.Auth.KeyExchangeNTS.Meta.Cookie, cookie)

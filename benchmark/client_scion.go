@@ -154,7 +154,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr) {
 				}
 
 				var ntpresp ntp.Packet
-				err = ntp.DecodePacket(&ntpresp, udppkt.Payload, nil)
+				err = ntp.DecodePacket(&ntpresp, udppkt.Payload)
 				if err != nil {
 					log.Printf("Failed to decode packet payload: %v", err)
 					return
