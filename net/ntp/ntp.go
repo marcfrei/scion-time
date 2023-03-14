@@ -38,10 +38,10 @@ const (
 )
 
 const (
-	ExtUniqueIdentifier  uint16 = 0x104
-	ExtCookie            uint16 = 0x204
-	ExtCookiePlaceholder uint16 = 0x304
-	ExtAuthenticator     uint16 = 0x404
+	extUniqueIdentifier  uint16 = 0x104
+	extCookie            uint16 = 0x204
+	extCookiePlaceholder uint16 = 0x304
+	extAuthenticator     uint16 = 0x404
 )
 
 type Time32 struct {
@@ -191,7 +191,7 @@ func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSResponseFields) error
 		}
 
 		switch eh.Type {
-		case ExtUniqueIdentifier:
+		case extUniqueIdentifier:
 			u := UniqueIdentifier{ExtHdr: eh}
 			err = u.unpack(msgbuf)
 			if err != nil {
@@ -203,7 +203,7 @@ func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSResponseFields) error
 
 			pkt.AddExt(u)
 
-		case ExtAuthenticator:
+		case extAuthenticator:
 			a := Authenticator{ExtHdr: eh}
 			err = a.unpack(msgbuf)
 			if err != nil {
@@ -223,7 +223,7 @@ func DecodePacket(pkt *Packet, b []byte, ntsrespfields *NTSResponseFields) error
 			b = append(b, decrytedBuf...)
 			msgbuf = bytes.NewReader(b[(pos + int(eh.Length)):])
 
-		case ExtCookie:
+		case extCookie:
 			cookie := Cookie{ExtHdr: eh}
 			err = cookie.unpack(msgbuf)
 			if err != nil {
@@ -334,7 +334,7 @@ func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
 	newlen := (value.Len() + 3) & ^3
 	padding := make([]byte, newlen-value.Len())
 
-	u.ExtHdr.Type = ExtUniqueIdentifier
+	u.ExtHdr.Type = extUniqueIdentifier
 	u.ExtHdr.Length = 4 + uint16(newlen)
 	err = u.ExtHdr.pack(buf)
 	if err != nil {
@@ -355,7 +355,7 @@ func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
 }
 
 func (u *UniqueIdentifier) unpack(buf *bytes.Reader) error {
-	if u.ExtHdr.Type != ExtUniqueIdentifier {
+	if u.ExtHdr.Type != extUniqueIdentifier {
 		return fmt.Errorf("expected unpacked EF header")
 	}
 	valueLen := u.ExtHdr.Length - uint16(binary.Size(u.ExtHdr))
@@ -401,7 +401,7 @@ func (c Cookie) pack(buf *bytes.Buffer) error {
 	newlen := (origlen + 3) & ^3
 	padding := make([]byte, newlen-origlen)
 
-	c.ExtHdr.Type = ExtCookie
+	c.ExtHdr.Type = extCookie
 	c.ExtHdr.Length = 4 + uint16(newlen)
 	err = c.ExtHdr.pack(buf)
 	if err != nil {
@@ -421,7 +421,7 @@ func (c Cookie) pack(buf *bytes.Buffer) error {
 }
 
 func (c *Cookie) unpack(buf *bytes.Reader) error {
-	if c.ExtHdr.Type != ExtCookie {
+	if c.ExtHdr.Type != extCookie {
 		return fmt.Errorf("expected unpacked EF header")
 	}
 	valueLen := c.ExtHdr.Length - uint16(binary.Size(c.ExtHdr))
@@ -453,7 +453,7 @@ func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
 	newlen := (origlen + 3) & ^3
 	padding := make([]byte, newlen-origlen)
 
-	c.ExtHdr.Type = ExtCookiePlaceholder
+	c.ExtHdr.Type = extCookiePlaceholder
 	c.ExtHdr.Length = 4 + uint16(newlen)
 	err = c.ExtHdr.pack(buf)
 	if err != nil {
@@ -563,7 +563,7 @@ func (a Authenticator) pack(buf *bytes.Buffer) error {
 	}
 	// FIXME Add additionalpadding as described in section 5.6 of nts draft?
 
-	a.ExtHdr.Type = ExtAuthenticator
+	a.ExtHdr.Type = extAuthenticator
 	a.ExtHdr.Length = 4 + uint16(extbuf.Len())
 	err = a.ExtHdr.pack(buf)
 	if err != nil {
@@ -584,7 +584,7 @@ func (a Authenticator) pack(buf *bytes.Buffer) error {
 }
 
 func (a *Authenticator) unpack(buf *bytes.Reader) error {
-	if a.ExtHdr.Type != ExtAuthenticator {
+	if a.ExtHdr.Type != extAuthenticator {
 		return fmt.Errorf("expected unpacked EF header")
 	}
 
