@@ -322,8 +322,9 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, nts bool) {
 	raddr := remoteAddr.Host
 	c := &client.IPClient{
 		InterleavedMode: true,
-		IsAuthorized: nts,
 	}
+	c.Auth.Enabled = nts
+
 	_, err = client.MeasureClockOffsetIP(ctx, log, c, laddr, raddr)
 	if err != nil {
 		log.Fatal("failed to measure clock offset", zap.Stringer("to", raddr), zap.Error(err))
@@ -539,7 +540,7 @@ func main() {
 			}
 			initLogger(verbose)
 			runIPTool(&localAddr, &remoteAddr, nts)
-			
+
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])

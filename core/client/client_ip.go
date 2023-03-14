@@ -21,9 +21,9 @@ import (
 
 type IPClient struct {
 	InterleavedMode bool
-	IsAuthorized    bool
-	auth            struct {
+	Auth            struct {
 		keyExchangeNTS *ntske.KeyExchange
+		Enabled        bool
 	}
 	prev struct {
 		reference string
@@ -70,7 +70,7 @@ func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*nt
 		return nil, err
 	}
 	ntske.LogNTSKEMetadata(ke.Meta, log)
-	
+
 	return ke, nil
 }
 
@@ -110,9 +110,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
-	if c.IsAuthorized {
-		remoteAddr.Port = int(c.auth.keyExchangeNTS.Meta.Port)
-		remoteAddr.IP = net.ParseIP(c.auth.keyExchangeNTS.Meta.Server)
+	if c.Auth.Enabled {
+		remoteAddr.Port = int(c.Auth.keyExchangeNTS.Meta.Port)
+		remoteAddr.IP = net.ParseIP(c.Auth.keyExchangeNTS.Meta.Server)
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -134,28 +134,28 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 
 	// add NTS extension fields to packet
 	var ntsrespfields ntp.NTSResponseFields
-	if c.IsAuthorized {
+	if c.Auth.Enabled {
 		var uqext ntp.UniqueIdentifier
 		uqext.Generate()
 		ntpreq.AddExt(uqext)
 
 		var cookie ntp.Cookie
-		cookie.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[0]
+		cookie.Cookie = c.Auth.keyExchangeNTS.Meta.Cookie[0]
 		ntpreq.AddExt(cookie)
 
 		// add cookie extension fields here s.t. 8 cookies are available after respondse
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := len(c.auth.keyExchangeNTS.Meta.Cookie); i < 8; i++ {
+		for i := len(c.Auth.keyExchangeNTS.Meta.Cookie); i < 8; i++ {
 			var cookiePlacholder ntp.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntpreq.AddExt(cookiePlacholder)
 		}
 
 		var auth ntp.Authenticator
-		auth.Key = c.auth.keyExchangeNTS.Meta.C2sKey
+		auth.Key = c.Auth.keyExchangeNTS.Meta.C2sKey
 		ntpreq.AddExt(auth)
 
-		ntsrespfields.S2cKey = c.auth.keyExchangeNTS.Meta.S2cKey
+		ntsrespfields.S2cKey = c.Auth.keyExchangeNTS.Meta.S2cKey
 		ntsrespfields.UniqueId = uqext.ID
 	}
 
@@ -227,10 +227,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		}
 
 		// remove first cookie as it has now been used and add all new received cookies to queue
-		if c.IsAuthorized {
-			c.auth.keyExchangeNTS.Meta.Cookie = c.auth.keyExchangeNTS.Meta.Cookie[1:]
+		if c.Auth.Enabled {
+			c.Auth.keyExchangeNTS.Meta.Cookie = c.Auth.keyExchangeNTS.Meta.Cookie[1:]
 			for _, cookie := range ntsrespfields.Cookies {
-				c.auth.keyExchangeNTS.Meta.Cookie = append(c.auth.keyExchangeNTS.Meta.Cookie, cookie)
+				c.Auth.keyExchangeNTS.Meta.Cookie = append(c.Auth.keyExchangeNTS.Meta.Cookie, cookie)
 			}
 
 		}

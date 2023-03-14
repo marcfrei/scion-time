@@ -39,13 +39,13 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpc *IPClient, localAddr, remoteAddr *net.UDPAddr) (
 	time.Duration, error) {
 
-	if ntpc.IsAuthorized {
+	if ntpc.Auth.Enabled {
 		// First do key exchange and save Keys and cookies in ntpc struct
 		// - TCP TLS handshake
 		// - KE
 		// - Must store port and server somewhere
 		//    - could use the ntske Data struct and store in IPNTSClient
-		if ntpc.auth.keyExchangeNTS == nil {
+		if ntpc.Auth.keyExchangeNTS == nil {
 			tlsconfig := &tls.Config{}
 
 			// For testing do not verify tls certificate
@@ -57,7 +57,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			if err != nil {
 				log.Error("NTS-KE exchange error: ", zap.Error(err))
 			}
-			ntpc.auth.keyExchangeNTS = ke
+			ntpc.Auth.keyExchangeNTS = ke
 		}
 	}
 
