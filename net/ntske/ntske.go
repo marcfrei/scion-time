@@ -24,12 +24,15 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // KeyExchange is Network Time Security Key Exchange connection
@@ -70,6 +73,21 @@ const (
 )
 
 const alpn = "ntske/1"
+
+func LogNTSKEMetadata(meta Data, log *zap.Logger) {
+	log.Debug("NTSKE Metadata",
+		zap.String("c2s", hex.EncodeToString(meta.C2sKey)),
+		zap.String("s2c", hex.EncodeToString(meta.S2cKey)),
+		zap.String("server", meta.Server),
+		zap.Uint16("port", meta.Port),
+		zap.Uint16("algo", meta.Algo))
+
+	log.Debug("Cookies: ", zap.Int("number of ", len(meta.Cookie)))
+
+	for i, cookie := range meta.Cookie {
+		log.Debug(strconv.Itoa(i), zap.String(".", hex.EncodeToString(cookie)))
+	}
+}
 
 // RecordHdr is the header on all records send in NTS-KE. The first
 // bit of the Type is the critical bit.

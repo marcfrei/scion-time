@@ -3,10 +3,8 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"net"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 
 	"example.com/scion-time/base/crypto"
 	"example.com/scion-time/base/timemath"
-	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -37,21 +34,6 @@ type ReferenceClockClient struct {
 var (
 	errNoPaths = errors.New("failed to measure clock offset: no paths")
 )
-
-func printmeta(meta ntske.Data, log *zap.Logger) {
-	log.Debug("NTSKE exchange yielded:",
-		zap.String("c2s", hex.EncodeToString(meta.C2sKey)),
-		zap.String("s2c", hex.EncodeToString(meta.S2cKey)),
-		zap.String("server", meta.Server),
-		zap.Uint16("port", meta.Port),
-		zap.Uint16("algo", meta.Algo))
-
-	log.Debug("Cookies: ", zap.Int("number of ", len(meta.Cookie)))
-
-	for i, cookie := range meta.Cookie {
-		log.Debug(strconv.Itoa(i), zap.String(".", hex.EncodeToString(cookie)))
-	}
-}
 
 func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpc *IPClient, localAddr, remoteAddr *net.UDPAddr) (
@@ -75,7 +57,6 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			if err != nil {
 				log.Error("NTS-KE exchange error: ", zap.Error(err))
 			}
-			printmeta(ke.Meta, log)
 			ntpc.auth.keyExchangeNTS = ke
 		}
 	}

@@ -69,7 +69,8 @@ func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*nt
 		log.Error("export key failure", zap.Error(err))
 		return nil, err
 	}
-
+	ntske.LogNTSKEMetadata(ke.Meta, log)
+	
 	return ke, nil
 }
 
