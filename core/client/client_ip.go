@@ -41,10 +41,10 @@ type ipClientMetrics struct {
 	respsAcceptedInterleaved prometheus.Counter
 }
 
-func keyExchange(server string, c *tls.Config, debug bool, log *zap.Logger) (*ntske.KeyExchange, error) {
-	ke, err := ntske.Connect(server, c, debug)
+func keyExchange(c *tls.Config, debug bool, log *zap.Logger) (*ntske.KeyExchange, error) {
+	ke, err := ntske.Connect(c.ServerName, c, debug)
 	if err != nil {
-		log.Error("Connection failure", zap.String("Server", server), zap.Error(err))
+		log.Error("Connection failure", zap.String("Server", c.ServerName), zap.Error(err))
 		return nil, err
 	}
 

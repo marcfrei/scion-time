@@ -51,9 +51,9 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			// For testing do not verify tls certificate
 			// CHANGE IN PRODUCTION VERSION
 			tlsconfig.InsecureSkipVerify = true
-			server := remoteAddr.IP.String() //For TLS certificate we need the string dns address. Otherwise use remoteAddr.IP.String()
+			tlsconfig.ServerName = remoteAddr.IP.String() //For TLS certificate we need the string dns address. Otherwise use remoteAddr.IP.String()
 
-			ke, err := keyExchange(server, tlsconfig, true, log)
+			ke, err := keyExchange(tlsconfig, true, log)
 			if err != nil {
 				log.Error("NTS-KE exchange error: ", zap.Error(err))
 			}
