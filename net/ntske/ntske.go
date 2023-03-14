@@ -80,13 +80,8 @@ func LogNTSKEMetadata(meta Data, log *zap.Logger) {
 		zap.String("s2c", hex.EncodeToString(meta.S2cKey)),
 		zap.String("server", meta.Server),
 		zap.Uint16("port", meta.Port),
-		zap.Uint16("algo", meta.Algo))
-
-	log.Debug("Cookies: ", zap.Int("number of ", len(meta.Cookie)))
-
-	for i, cookie := range meta.Cookie {
-		log.Debug(strconv.Itoa(i), zap.String(".", hex.EncodeToString(cookie)))
-	}
+		zap.Uint16("algo", meta.Algo),
+		zap.Object("cookies", CookieArrayMarshaler{Cookies: meta.Cookie}))
 }
 
 // RecordHdr is the header on all records send in NTS-KE. The first
