@@ -237,42 +237,41 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 						uint32(authOptData[0])<<24
 					algo := uint8(authOptData[4])
 					if spi == scion.PacketAuthSPIClient && algo == scion.PacketAuthAlgorithm {
-						sv, err := f.FetchSecretValue(ctx, drkey.SecretValueMeta{
-							Validity: rxt,
+						hostASKey, err := f.FetchHostASKey(ctx, drkey.HostASMeta{
 							ProtoId:  scion.DRKeyProtoIdTS,
+							Validity: rxt,
+							SrcIA:    scionLayer.DstIA,
+							DstIA:    scionLayer.SrcIA,
+							SrcHost:  dstAddr.String(),
 						})
-						if err == nil {
-							key, err := scion.DeriveHostHostKey(sv, drkey.HostHostMeta{
-								ProtoId:  scion.DRKeyProtoIdTS,
-								Validity: rxt,
-								SrcIA:    scionLayer.DstIA,
-								DstIA:    scionLayer.SrcIA,
-								SrcHost:  dstAddr.String(),
-								DstHost:  srcAddr.String(),
-							})
-							if err == nil {
-								authKey = key.Key[:]
-								_, err = spao.ComputeAuthCMAC(
-									spao.MACInput{
-										Key:        authKey,
-										Header:     slayers.PacketAuthOption{EndToEndOption: authOpt},
-										ScionLayer: &scionLayer,
-										PldType:    slayers.L4UDP,
-										Pld:        buf[len(buf)-int(udpLayer.Length):],
-									},
-									authBuf,
-									authMAC,
-								)
-								if err != nil {
-									panic(err)
-								}
-								authenticated = subtle.ConstantTimeCompare(authOptData[scion.PacketAuthMetadataLen:], authMAC) != 0
-								if !authenticated {
-									log.Info("failed to authenticate packet")
-									continue
-								}
-								mtrcs.pktsAuthenticated.Inc()
+						if err != nil {
+							log.Error("failed to fetch DRKey level 2: host-AS", zap.Error(err))
+						} else {
+							hostHostKey, err := scion.DeriveHostHostKey(hostASKey, srcAddr.String())
+							if err != nil {
+								panic(err)
 							}
+							authKey = hostHostKey.Key[:]
+							_, err = spao.ComputeAuthCMAC(
+								spao.MACInput{
+									Key:        authKey,
+									Header:     slayers.PacketAuthOption{EndToEndOption: authOpt},
+									ScionLayer: &scionLayer,
+									PldType:    slayers.L4UDP,
+									Pld:        buf[len(buf)-int(udpLayer.Length):],
+								},
+								authBuf,
+								authMAC,
+							)
+							if err != nil {
+								panic(err)
+							}
+							authenticated = subtle.ConstantTimeCompare(authOptData[scion.PacketAuthMetadataLen:], authMAC) != 0
+							if !authenticated {
+								log.Info("failed to authenticate packet")
+								continue
+							}
+							mtrcs.pktsAuthenticated.Inc()
 						}
 					}
 				}

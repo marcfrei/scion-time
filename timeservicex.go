@@ -3,23 +3,18 @@
 package main
 
 import (
-	"context"
 	"time"
 
-	"example.com/scion-time/core/timebase"
+	"go.uber.org/zap"
+
 	"example.com/scion-time/driver/clock"
-	"example.com/scion-time/driver/mbg"
 )
 
 func runX() {
 	initLogger(true /* verbose */)
-	ctx := context.Background()
 
-	lclk := &clock.SystemClock{Log: log}
-	timebase.RegisterClock(lclk)
-
-	for {
-		_, _ = mbg.MeasureClockOffset(ctx, log, "/dev/mbgclock0")
-		lclk.Sleep(1 * time.Second)
-	}
+	clk := &clock.SystemClock{Log: log}
+	log.Debug("local clock", zap.Stringer("now", clk.Now()))
+	clk.Step(-1 * time.Second)
+	log.Debug("local clock", zap.Stringer("now", clk.Now()))
 }

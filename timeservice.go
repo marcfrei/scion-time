@@ -403,46 +403,46 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 	ctx := context.Background()
 	dc := newDaemonConnector(ctx, log, daemonAddr)
 
-	meta := drkey.HostHostMeta{
-		ProtoId:  scion.DRKeyProtoIdTS,
-		Validity: time.Now(),
-		SrcIA:    serverAddr.IA,
-		DstIA:    clientAddr.IA,
-		SrcHost:  serverAddr.Host.IP.String(),
-		DstHost:  clientAddr.Host.IP.String(),
-	}
-
 	if serverMode {
-		sv, err := scion.FetchSecretValue(ctx, dc, drkey.SecretValueMeta{
-			Validity: meta.Validity,
-			ProtoId:  meta.ProtoId,
-		})
+		hostASMeta := drkey.HostASMeta{
+			ProtoId:  123,
+			Validity: time.Now(),
+			SrcIA:    serverAddr.IA,
+			DstIA:    clientAddr.IA,
+			SrcHost:  serverAddr.Host.IP.String(),
+		}
+		hostASKey, err := scion.FetchHostASKey(ctx, dc, hostASMeta)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error fetching secret value:", err)
+			fmt.Fprintln(os.Stderr, "Error fetching host-AS key:", err)
 			return
 		}
 		t0 := time.Now()
-		serverKey, err := scion.DeriveHostHostKey(sv, meta)
+		serverKey, err := scion.DeriveHostHostKey(hostASKey, clientAddr.Host.IP.String())
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error deriving key:", err)
-			return
+			fmt.Fprintln(os.Stderr, "Error deriving host-host key:", err)
 		}
 		durationServer := time.Since(t0)
-
 		fmt.Printf(
-			"Server,\thost key = %s\tduration = %s\n",
+			"Server\thost key = %s\tduration = %s\n",
 			hex.EncodeToString(serverKey.Key[:]),
 			durationServer,
 		)
 	} else {
+		hostHostMeta := drkey.HostHostMeta{
+			ProtoId:  123,
+			Validity: time.Now(),
+			SrcIA:    serverAddr.IA,
+			DstIA:    clientAddr.IA,
+			SrcHost:  serverAddr.Host.IP.String(),
+			DstHost:  clientAddr.Host.IP.String(),
+		}
 		t0 := time.Now()
-		clientKey, err := scion.FetchHostHostKey(ctx, dc, meta)
+		clientKey, err := scion.FetchHostHostKey(ctx, dc, hostHostMeta)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error fetching key:", err)
+			fmt.Fprintln(os.Stderr, "Error fetching host-host key:", err)
 			return
 		}
 		durationClient := time.Since(t0)
-
 		fmt.Printf(
 			"Client,\thost key = %s\tduration = %s\n",
 			hex.EncodeToString(clientKey.Key[:]),

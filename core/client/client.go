@@ -32,11 +32,21 @@ type ReferenceClockClient struct {
 
 var (
 	errNoPaths = errors.New("failed to measure clock offset: no paths")
+
+	ipMetrics    atomic.Pointer[ipClientMetrics]
+	scionMetrics atomic.Pointer[scionClientMetrics]
 )
+
+func init() {
+	ipMetrics.Store(newIPClientMetrics())
+	scionMetrics.Store(newSCIONClientMetrics())
+}
 
 func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 	ntpc *IPClient, localAddr, remoteAddr *net.UDPAddr) (
 	time.Duration, error) {
+	mtrcs := ipMetrics.Load()
+
 	var err error
 	var off time.Duration
 	var nerr, n int
@@ -46,7 +56,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		n = 1
 	}
 	for i := 0; i != n; i++ {
-		o, _, e := ntpc.measureClockOffsetIP(ctx, log, localAddr, remoteAddr)
+		o, _, e := ntpc.measureClockOffsetIP(ctx, log, mtrcs, localAddr, remoteAddr)
 		if e == nil {
 			off, err = o, e
 		} else {
@@ -92,6 +102,8 @@ loop:
 func MeasureClockOffsetSCION(ctx context.Context, log *zap.Logger,
 	ntpcs []*SCIONClient, localAddr, remoteAddr udp.UDPAddr, ps []snet.Path) (
 	time.Duration, error) {
+	mtrcs := scionMetrics.Load()
+
 	sps := make([]snet.Path, len(ntpcs))
 	n, err := crypto.Sample(ctx, len(sps), len(ps), func(dst, src int) {
 		sps[dst] = ps[src]
@@ -107,8 +119,8 @@ func MeasureClockOffsetSCION(ctx context.Context, log *zap.Logger,
 	off := make([]time.Duration, len(sps))
 	ms := make(chan measurement)
 	for i := 0; i != len(sps); i++ {
-		go func(ctx context.Context, ntpc *SCIONClient,
-			localAddr, remoteAddr udp.UDPAddr, p snet.Path) {
+		go func(ctx context.Context, log *zap.Logger, mtrcs *scionClientMetrics,
+			ntpc *SCIONClient, localAddr, remoteAddr udp.UDPAddr, p snet.Path) {
 			var err error
 			var off time.Duration
 			var nerr, n int
@@ -123,7 +135,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *zap.Logger,
 				n = 1
 			}
 			for j := 0; j != n; j++ {
-				o, _, e := ntpc.measureClockOffsetSCION(ctx, log, localAddr, remoteAddr, p)
+				o, _, e := ntpc.measureClockOffsetSCION(ctx, log, mtrcs, localAddr, remoteAddr, p)
 				if e == nil {
 					off, err = o, e
 				} else {
@@ -139,7 +151,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *zap.Logger,
 				}
 			}
 			ms <- measurement{off, err}
-		}(ctx, ntpcs[i], localAddr, remoteAddr, sps[i])
+		}(ctx, log, mtrcs, ntpcs[i], localAddr, remoteAddr, sps[i])
 	}
 	collectMeasurements(ctx, off, ms)
 	return timemath.Median(off), nil

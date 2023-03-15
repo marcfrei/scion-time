@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"go.uber.org/zap"
+
+	"example.com/scion-time/base/metrics"
 
 	"example.com/scion-time/core/timebase"
 
@@ -40,6 +43,31 @@ type ipClientMetrics struct {
 	respsAcceptedInterleaved prometheus.Counter
 }
 
+func newIPClientMetrics() *ipClientMetrics {
+	return &ipClientMetrics{
+		reqsSent: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientReqsSentN,
+			Help: metrics.IPClientReqsSentH,
+		}),
+		reqsSentInterleaved: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientReqsSentInterleavedN,
+			Help: metrics.IPClientReqsSentInterleavedH,
+		}),
+		pktsReceived: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientPktsReceivedN,
+			Help: metrics.IPClientPktsReceivedH,
+		}),
+		respsAccepted: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientRespsAcceptedN,
+			Help: metrics.IPClientRespsAcceptedH,
+		}),
+		respsAcceptedInterleaved: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientRespsAcceptedInterleavedN,
+			Help: metrics.IPClientRespsAcceptedInterleavedH,
+		}),
+	}
+}
+
 func compareAddrs(x, y netip.Addr) int {
 	if x.Is4In6() {
 		x = netip.AddrFrom4(x.As4())
@@ -54,7 +82,7 @@ func (c *IPClient) ResetInterleavedMode() {
 	c.prev.reference = ""
 }
 
-func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
+func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mtrcs *ipClientMetrics,
 	localAddr, remoteAddr *net.UDPAddr) (
 	offset time.Duration, weight float64, err error) {
 	// set up connection
@@ -84,12 +112,14 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
+	interleaved := false
 
 	ntpreq := ntp.Packet{}
 	ntpreq.SetVersion(ntp.VersionMax)
 	ntpreq.SetMode(ntp.ModeClient)
 	if c.InterleavedMode && reference == c.prev.reference &&
 		cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime)) <= time.Second {
+		interleaved = true
 		ntpreq.OriginTime = c.prev.sRxTime
 		ntpreq.ReceiveTime = c.prev.cRxTime
 		ntpreq.TransmitTime = c.prev.cTxTime
@@ -141,6 +171,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		cTxTime1 = timebase.Now()
 		log.Error("failed to read packet tx timestamp", zap.Error(err))
 	}
+	mtrcs.reqsSent.Inc()
+	if interleaved {
+		mtrcs.reqsSentInterleaved.Inc()
+	}
 
 	numRetries := 0
 	oob := make([]byte, udp.TimestampLen())
@@ -172,6 +206,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 			log.Error("failed to read packet rx timestamp", zap.Error(err))
 		}
 		buf = buf[:n]
+		mtrcs.pktsReceived.Inc()
 
 		if compareAddrs(srcAddr.Addr(), remoteAddr.AddrPort().Addr()) != 0 {
 			err = errUnexpectedPacketSource
@@ -206,7 +241,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 
 		}
 
-		interleaved := false
+		interleaved = false
 		if c.InterleavedMode && ntpresp.OriginTime == c.prev.cRxTime {
 			interleaved = true
 		} else if ntpresp.OriginTime != ntpreq.TransmitTime {
@@ -254,6 +289,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger,
 		off := ntp.ClockOffset(t0, t1, t2, t3)
 		rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
 
+		mtrcs.respsAccepted.Inc()
+		if interleaved {
+			mtrcs.respsAcceptedInterleaved.Inc()
+		}
 		log.Debug("evaluated response",
 			zap.String("from", reference),
 			zap.Bool("interleaved", interleaved),
