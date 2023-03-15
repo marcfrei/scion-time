@@ -8,7 +8,7 @@ const (
 	DRKeyTypeHostHost          = 1
 	DRKeyDirectionSenderSide   = 0
 	DRKeyDirectionReceiverSide = 1
-	DRKeyProtoIdTS             = 1 // experimental
+	DRKeyProtoIdTS             = 123
 
 	PacketAuthMetadataLen = 12
 	PacketAuthMACLen      = 16

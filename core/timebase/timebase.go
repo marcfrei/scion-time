@@ -8,21 +8,21 @@ import (
 )
 
 var (
-	lclk atomic.Pointer[timebase.LocalClock]
+	lclk atomic.Value
 )
 
 func RegisterClock(c timebase.LocalClock) {
 	if c == nil {
 		panic("local clock must not be nil")
 	}
-	swapped := lclk.CompareAndSwap(nil, &c)
+	swapped := lclk.CompareAndSwap(nil, c)
 	if !swapped {
 		panic("local clock already registered")
 	}
 }
 
 func Now() time.Time {
-	c := *lclk.Load()
+	c := lclk.Load().(timebase.LocalClock)
 	if c == nil {
 		panic("no local clock registered")
 	}
@@ -30,7 +30,7 @@ func Now() time.Time {
 }
 
 func Epoch() uint64 {
-	c := *lclk.Load()
+	c := lclk.Load().(timebase.LocalClock)
 	if c == nil {
 		panic("no local clock registered")
 	}

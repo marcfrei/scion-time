@@ -45,8 +45,19 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 				nsec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(24)]))
 				sec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(32)]))
 				nsec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(40)]))
-				_, _, _, _ = sec1, nsec1, sec2, nsec2
-				return time.Unix(sec0, nsec0), nil
+				var ts time.Time
+				if sec2 != 0 || nsec2 != 0 {
+					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
+						panic("unexpected timestamping behavior")
+					} 
+					ts = time.Unix(sec2, nsec2)
+				} else {
+					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
+						panic("unexpected timestamping behavior")
+					} 
+					ts = time.Unix(sec0, nsec0)
+				}
+				return ts, nil
 			} else if h.Type == unix.SCM_TIMESTAMPNS {
 				if h.Len != uint64(unix.CmsgSpace(int(unsafe.Sizeof(unix.Timespec{})))) {
 					return time.Time{}, errUnexpectedData
@@ -65,8 +76,8 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 // - https://github.com/torvalds/linux/blob/master/include/uapi/linux/net_tstamp.h
 
 const (
-	unixHWTSTAMP_TX_ON = 1
-	unixHWTSTAMP_FILTER_ALL = 1
+	unixHWTSTAMP_TX_ON               = 1
+	unixHWTSTAMP_FILTER_ALL          = 1
 	unixHWTSTAMP_FILTER_PTP_V2_EVENT = 12
 )
 
@@ -120,32 +131,38 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 		err error
 	}
 
-	err = sconn.Control(func(fd uintptr) {
-		err := initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_ALL)
-		if err != nil {
-			if errors.Is(err, syscall.EPERM) {
-				return
-			}
-			err = initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_PTP_V2_EVENT)
+	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
+		unix.SOF_TIMESTAMPING_OPT_TSONLY
+
+	if iface != "" {
+		sockopts |= unix.SOF_TIMESTAMPING_RAW_HARDWARE |
+			unix.SOF_TIMESTAMPING_RX_HARDWARE |
+			unix.SOF_TIMESTAMPING_TX_HARDWARE
+
+		err = sconn.Control(func(fd uintptr) {
+			err := initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_ALL)
 			if err != nil {
-				return
+				if errors.Is(err, syscall.EPERM) {
+					return
+				}
+				err = initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_PTP_V2_EVENT)
+				if err != nil {
+					return
+				}
 			}
+		})
+		if err != nil {
+			return err
 		}
-	})
-	if err != nil {
-		return err
+	} else {
+		sockopts |= unix.SOF_TIMESTAMPING_SOFTWARE |
+			unix.SOF_TIMESTAMPING_RX_SOFTWARE |
+			unix.SOF_TIMESTAMPING_TX_SOFTWARE
 	}
 
 	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TIMESTAMPING_NEW,
-			unix.SOF_TIMESTAMPING_SOFTWARE|
-			unix.SOF_TIMESTAMPING_RAW_HARDWARE|
-			unix.SOF_TIMESTAMPING_RX_SOFTWARE|
-			unix.SOF_TIMESTAMPING_RX_HARDWARE|
-			unix.SOF_TIMESTAMPING_TX_SOFTWARE|
-			unix.SOF_TIMESTAMPING_TX_HARDWARE|
-			unix.SOF_TIMESTAMPING_OPT_TSONLY|
-			unix.SOF_TIMESTAMPING_OPT_ID)
+		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET,
+			unix.SO_TIMESTAMPING_NEW, sockopts)
 	})
 	if err != nil {
 		return err
@@ -173,8 +190,17 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 				nsec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(24)]))
 				sec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(32)]))
 				nsec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(40)]))
-				_, _, _, _ = sec1, nsec1, sec2, nsec2
-				ts = time.Unix(sec0, nsec0)
+				if sec2 != 0 || nsec2 != 0 {
+					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
+						panic("unexpected timestamping behavior")
+					} 
+					ts = time.Unix(sec2, nsec2)
+				} else {
+					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
+						panic("unexpected timestamping behavior")
+					} 
+					ts = time.Unix(sec0, nsec0)
+				}
 				tsSet = true
 			}
 		} else if h.Level == unix.SOL_IP && h.Type == unix.IP_RECVERR ||
