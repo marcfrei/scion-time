@@ -157,6 +157,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		ntsrespfields.S2cKey = c.Auth.KeyExchangeNTS.Meta.S2cKey
 		ntsrespfields.UniqueId = uqext.ID
+		nts.EncodePacket(&buf, &ntsreq)
 	}
 
 	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
