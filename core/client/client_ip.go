@@ -144,7 +144,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		cookie.Cookie, c2skey = c.NTSKEFetcher.GetCookieC2sKey()
 		ntsreq.AddExt(cookie)
 
-		// add cookie extension fields here s.t. 8 cookies are available after respondse
+		// add cookie extension fields here s.t. 8 cookies are available after response
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
 		for i := c.NTSKEFetcher.GetNumberOfCookies(); i < 7; i++ {
 			var cookiePlacholder nts.CookiePlaceholder
@@ -230,7 +230,6 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 			return offset, weight, err
 		}
 
-		// remove first cookie as it has now been used and add all new received cookies to queue
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
 			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
