@@ -233,7 +233,11 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		// remove first cookie as it has now been used and add all new received cookies to queue
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
+			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
+			if err != nil {
+				log.Error("NTS decode packet", zap.Error(err))
+				return offset, weight, err
+			}
 		}
 
 		interleaved = false

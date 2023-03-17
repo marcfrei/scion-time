@@ -49,6 +49,9 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) error {
 	var pos int = 48 // Keep track of where in the original buf we are
 	msgbuf := bytes.NewReader(b[48:])
+	var authenticated bool = false
+	var unique bool = false
+	var cookies [][]byte
 	for msgbuf.Len() >= 28 {
 		var eh ExtHdr
 		err := eh.unpack(msgbuf)
@@ -66,8 +69,8 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 			if !bytes.Equal(u.ID, uniqueID) {
 				return fmt.Errorf("Unique identifiers do not match")
 			}
-
 			pkt.AddExt(u)
+			unique = true
 
 		case extAuthenticator:
 			a := Authenticator{ExtHdr: eh}
@@ -86,9 +89,10 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 				return err
 			}
 			pkt.AddExt(a)
-			b = append(b, decrytedBuf...)
-			msgbuf = bytes.NewReader(b[(pos + int(eh.Length)):])
-			// TODO ignore all extension fields that are not authenticated
+
+			//ignore unauthenticated fields and only continue with decrypted
+			msgbuf = bytes.NewReader(decrytedBuf)
+			authenticated = true
 
 		case extCookie:
 			cookie := Cookie{ExtHdr: eh}
@@ -97,9 +101,6 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 				return fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
-
-			// TODO only store new cookies if they are indeed authenticated
-			f.StoreCookie(cookie.Cookie)
 
 		default:
 			// Unknown extension field. Skip it.
@@ -110,6 +111,17 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 		}
 
 		pos += int(eh.Length)
+	}
+
+	if !(authenticated) {
+		return fmt.Errorf("Packet not authenticated")
+	}
+	if !(unique) {
+		return fmt.Errorf("Packet not does not contain a unique identifier")
+	}
+
+	for _, cookie := range cookies {
+		f.StoreCookie(cookie)
 	}
 
 	return nil
