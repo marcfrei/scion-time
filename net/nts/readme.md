@@ -1,4 +1,4 @@
-The nts package was taken and modefied from 
+The nts package was taken and modified from 
 
 https://gitlab.com/hacklunch/ntp
 

@@ -1,4 +1,4 @@
-The ntske package was taken and modefied from 
+The ntske package was taken and modified from 
 
 https://gitlab.com/hacklunch/ntske
 
