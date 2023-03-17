@@ -13,7 +13,7 @@ type Fetcher struct {
 }
 
 func (f *Fetcher) exchangeKeys() {
-	ke, err := ExchangeKeys(&f.TLSConfig, true, f.Log)
+	ke, err := ExchangeKeys(&f.TLSConfig, false, f.Log)
 	if err != nil {
 		f.Log.Error("NTS-KE exchange error: ", zap.Error(err))
 	}
