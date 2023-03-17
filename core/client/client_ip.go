@@ -23,9 +23,9 @@ import (
 
 type IPClient struct {
 	InterleavedMode bool
+	NTSKEFetcher    ntske.Fetcher
 	Auth            struct {
-		KeyExchangeNTS *ntske.KeyExchange
-		Enabled        bool
+		Enabled bool
 	}
 	prev struct {
 		reference string
@@ -104,8 +104,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	}
 
 	if c.Auth.Enabled {
-		remoteAddr.Port = int(c.Auth.KeyExchangeNTS.Meta.Port)
-		remoteAddr.IP = net.ParseIP(c.Auth.KeyExchangeNTS.Meta.Server)
+		remoteAddr.Port = c.NTSKEFetcher.GetServerPort()
+		remoteAddr.IP = net.ParseIP(c.NTSKEFetcher.GetServerIP())
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -130,7 +130,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	ntp.EncodePacket(&buf, &ntpreq)
 
 	// add NTS extension fields to packet
-	var ntsrespfields nts.NTSResponseFields
+	var uniqueID []byte
 	ntsreq := nts.NTSPacket{}
 
 	if c.Auth.Enabled {
@@ -139,24 +139,24 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		uqext.Generate()
 		ntsreq.AddExt(uqext)
 
+		var c2skey []byte
 		var cookie nts.Cookie
-		cookie.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[0]
+		cookie.Cookie, c2skey = c.NTSKEFetcher.GetCookieC2sKey()
 		ntsreq.AddExt(cookie)
 
 		// add cookie extension fields here s.t. 8 cookies are available after respondse
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := len(c.Auth.KeyExchangeNTS.Meta.Cookie); i < 8; i++ {
+		for i := c.NTSKEFetcher.GetNumberOfCookies(); i < 7; i++ {
 			var cookiePlacholder nts.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntsreq.AddExt(cookiePlacholder)
 		}
 
 		var auth nts.Authenticator
-		auth.Key = c.Auth.KeyExchangeNTS.Meta.C2sKey
+		auth.Key = c2skey
 		ntsreq.AddExt(auth)
 
-		ntsrespfields.S2cKey = c.Auth.KeyExchangeNTS.Meta.S2cKey
-		ntsrespfields.UniqueId = uqext.ID
+		uniqueID = uqext.ID
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 
@@ -233,13 +233,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		// remove first cookie as it has now been used and add all new received cookies to queue
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			ntsresp.NTPHeader = buf
-			nts.DecodePacket(&ntsresp, buf, &ntsrespfields)
-			c.Auth.KeyExchangeNTS.Meta.Cookie = c.Auth.KeyExchangeNTS.Meta.Cookie[1:]
-			for _, cookie := range ntsrespfields.Cookies {
-				c.Auth.KeyExchangeNTS.Meta.Cookie = append(c.Auth.KeyExchangeNTS.Meta.Cookie, cookie)
-			}
-
+			nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
 		}
 
 		interleaved = false

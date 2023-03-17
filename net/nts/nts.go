@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"example.com/scion-time/net/ntske"
 	"github.com/secure-io/siv-go"
 )
 
@@ -45,7 +46,7 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	copy((*b)[0:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte, ntsrespfields *NTSResponseFields) error {
+func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) error {
 	var pos int = 48 // Keep track of where in the original buf we are
 	msgbuf := bytes.NewReader(b[48:])
 	for msgbuf.Len() >= 28 {
@@ -62,7 +63,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, ntsrespfields *NTSResponseFields) er
 			if err != nil {
 				return fmt.Errorf("unpack UniqueIdentifier: %s", err)
 			}
-			if !bytes.Equal(u.ID, ntsrespfields.UniqueId) {
+			if !bytes.Equal(u.ID, uniqueID) {
 				return fmt.Errorf("Unique identifiers do not match")
 			}
 
@@ -75,7 +76,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, ntsrespfields *NTSResponseFields) er
 				return fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
-			aessiv, err := siv.NewCMAC(ntsrespfields.S2cKey)
+			aessiv, err := siv.NewCMAC(f.GetS2cKey())
 			if err != nil {
 				return err
 			}
@@ -87,6 +88,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, ntsrespfields *NTSResponseFields) er
 			pkt.AddExt(a)
 			b = append(b, decrytedBuf...)
 			msgbuf = bytes.NewReader(b[(pos + int(eh.Length)):])
+			// TODO ignore all extension fields that are not authenticated
 
 		case extCookie:
 			cookie := Cookie{ExtHdr: eh}
@@ -95,7 +97,9 @@ func DecodePacket(pkt *NTSPacket, b []byte, ntsrespfields *NTSResponseFields) er
 				return fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
-			ntsrespfields.Cookies = append(ntsrespfields.Cookies, cookie.Cookie)
+
+			// TODO only store new cookies if they are indeed authenticated
+			f.StoreCookie(cookie.Cookie)
 
 		default:
 			// Unknown extension field. Skip it.

@@ -35,7 +35,6 @@ import (
 	"example.com/scion-time/driver/clock"
 	"example.com/scion-time/driver/mbg"
 
-	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -329,17 +328,10 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, NTSKEServer
 	if authMode == authModeNTS {
 		c.Auth.Enabled = true
 		tlsconfig := &tls.Config{}
-		// For testing do not verify tls certificate
-		// CHANGE IN PRODUCTION VERSION
 		tlsconfig.InsecureSkipVerify = skipTLSValidation
 		tlsconfig.ServerName = NTSKEServerAddr
-
-		ke, err := ntske.ExchangeKeys(tlsconfig, true, log)
-		if err != nil {
-			log.Error("NTS-KE exchange error: ", zap.Error(err))
-		}
-		c.Auth.KeyExchangeNTS = ke
-
+		c.NTSKEFetcher.TLSConfig = *tlsconfig
+		c.NTSKEFetcher.Log = log
 	} else {
 		c.Auth.Enabled = false
 	}
