@@ -128,6 +128,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 				return fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
+			cookies = append(cookies, cookie.Cookie)
 
 		default:
 			// Unknown extension field. Skip it.
