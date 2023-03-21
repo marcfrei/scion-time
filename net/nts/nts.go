@@ -66,7 +66,6 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	for _, e := range pkt.Extensions {
 		err := e.pack(buf)
 		if err != nil {
-			// TODO better error handling
 			panic(err)
 		}
 	}
