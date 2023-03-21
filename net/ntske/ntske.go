@@ -81,7 +81,7 @@ func LogNTSKEMetadata(meta Data, log *zap.Logger) {
 		zap.String("server", meta.Server),
 		zap.Uint16("port", meta.Port),
 		zap.Uint16("algo", meta.Algo),
-		zap.Object("cookies", CookieArrayMarshaler{Cookies: meta.Cookie}))
+		zap.Array("cookies", CookieArrayMarshaler{Cookies: meta.Cookie}))
 }
 
 func ExchangeKeys(c *tls.Config, debug bool, log *zap.Logger) (*KeyExchange, error) {
