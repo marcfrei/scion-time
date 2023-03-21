@@ -8,27 +8,27 @@ import (
 
 type Fetcher struct {
 	TLSConfig tls.Config
-	data      Data
 	Log       *zap.Logger
+	data      Data
 }
 
 func (f *Fetcher) exchangeKeys() {
 	ke, err := ExchangeKeys(&f.TLSConfig, false, f.Log)
 	if err != nil {
-		f.Log.Error("NTS-KE exchange error: ", zap.Error(err))
+		f.Log.Error("failed to exchange NTS keys", zap.Error(err))
 	}
 	f.data = ke.Meta
 }
 
-func (f *Fetcher) GetCookieC2sKey() ([]byte, []byte) {
-	if f.GetNumberOfCookies() < 1 || f.data.C2sKey == nil {
+func (f *Fetcher) FetchC2sKey() (key, cookie []byte) {
+	if f.NumCookies() < 1 || f.data.C2sKey == nil {
 		f.exchangeKeys()
 	}
 
-	cookie := f.data.Cookie[0]
+	cookie = f.data.Cookie[0]
 	f.data.Cookie = f.data.Cookie[1:]
 
-	return cookie, f.data.C2sKey
+	return f.data.C2sKey, cookie
 }
 
 func (f *Fetcher) GetS2cKey() []byte {
@@ -43,7 +43,7 @@ func (f *Fetcher) StoreCookie(cookie []byte) {
 	f.data.Cookie = append(f.data.Cookie, cookie)
 }
 
-func (f *Fetcher) GetServerIP() string {
+func (f *Fetcher) FetchServer() string {
 	if f.data.Server == "" {
 		f.exchangeKeys()
 	}
@@ -51,7 +51,7 @@ func (f *Fetcher) GetServerIP() string {
 	return f.data.Server
 }
 
-func (f *Fetcher) GetServerPort() int {
+func (f *Fetcher) FetchPort() int {
 	if f.data.Port == 0 {
 		f.exchangeKeys()
 	}
@@ -59,6 +59,6 @@ func (f *Fetcher) GetServerPort() int {
 	return int(f.data.Port)
 }
 
-func (f *Fetcher) GetNumberOfCookies() int {
+func (f *Fetcher) NumCookies() int {
 	return len(f.data.Cookie)
 }

@@ -104,8 +104,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	}
 
 	if c.Auth.Enabled {
-		remoteAddr.Port = c.Auth.NTSKEFetcher.GetServerPort()
-		remoteAddr.IP = net.ParseIP(c.Auth.NTSKEFetcher.GetServerIP())
+		remoteAddr.Port = c.Auth.NTSKEFetcher.FetchPort()
+		remoteAddr.IP = net.ParseIP(c.Auth.NTSKEFetcher.FetchServer())
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -140,12 +140,12 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		var c2skey []byte
 		var cookie nts.Cookie
-		cookie.Cookie, c2skey = c.Auth.NTSKEFetcher.GetCookieC2sKey()
+		c2skey, cookie.Cookie = c.Auth.NTSKEFetcher.FetchC2sKey()
 		ntsreq.AddExt(cookie)
 
 		// Add cookie extension fields here s.t. 8 cookies are available after response.
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := c.Auth.NTSKEFetcher.GetNumberOfCookies(); i < nts.NumStoredCookies-1; i++ {
+		for i := c.Auth.NTSKEFetcher.NumCookies(); i < nts.NumStoredCookies-1; i++ {
 			var cookiePlacholder nts.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntsreq.AddExt(cookiePlacholder)
