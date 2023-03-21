@@ -233,7 +233,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		if c.Auth.Enabled {
 			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
 			if err != nil {
-				log.Error("NTS decode packet", zap.Error(err))
+				log.Error("failed to authenticate packet", zap.Error(err))
 				return offset, weight, err
 			}
 		}
