@@ -31,11 +31,17 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	"example.com/scion-time/net/ntske"
 	"github.com/secure-io/siv-go"
+)
+
+const (
+	NumStoredCookies int = 8
+	ntpHeaderLen int = 48
 )
 
 const (
@@ -46,21 +52,23 @@ const (
 )
 
 type NTSPacket struct {
-	NTPHeader []byte
-	Extension []ExtensionField
-}
-
-type NTSResponseFields struct {
-	UniqueId []byte
-	S2cKey   []byte
-	Cookies  [][]byte
+	NTPHeader  []byte
+	Extensions []ExtensionField
 }
 
 func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	var buf *bytes.Buffer = new(bytes.Buffer)
-	buf.Write((pkt.NTPHeader)[0:48])
-	for _, ef := range pkt.Extension {
-		_ = ef.pack(buf)
+	if len(pkt.NTPHeader) != ntpHeaderLen {
+		panic("unexpected NTP header")
+	}
+	_, _ = buf.Write((pkt.NTPHeader))
+
+	for _, e := range pkt.Extensions {
+		err := e.pack(buf)
+		if err != nil {
+			// TODO better error handling
+			panic(err)
+		}
 	}
 
 	var pktlen int = buf.Len()
@@ -70,11 +78,11 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 		*b = (*b)[:pktlen]
 	}
 
-	copy((*b)[0:pktlen], buf.Bytes())
+	copy((*b)[:pktlen], buf.Bytes())
 }
 
 func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) error {
-	var pos int = 48 // Keep track of where in the original buf we are
+	var pos int = ntpHeaderLen // Keep track of where in the original buf we are
 	msgbuf := bytes.NewReader(b[48:])
 	var authenticated bool = false
 	var unique bool = false
@@ -141,11 +149,11 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 		pos += int(eh.Length)
 	}
 
-	if !(authenticated) {
-		return fmt.Errorf("Packet not authenticated")
+	if !authenticated {
+		return errors.New("packet does not contain a valid authenticator")
 	}
-	if !(unique) {
-		return fmt.Errorf("Packet not does not contain a unique identifier")
+	if !unique {
+		return errors.New("packet not does not contain a unique identifier")
 	}
 
 	for _, cookie := range cookies {
@@ -177,7 +185,7 @@ func (h ExtHdr) string() string {
 }
 
 func (packet *NTSPacket) AddExt(ext ExtensionField) {
-	packet.Extension = append(packet.Extension, ext)
+	packet.Extensions = append(packet.Extensions, ext)
 }
 
 type ExtensionField interface {
