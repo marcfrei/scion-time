@@ -313,7 +313,7 @@ func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	runMonitor(log)
 }
 
-func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, NTSKEServerAddr string, skipTLSValidation bool) {
+func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServerName string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
 
@@ -327,9 +327,11 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, NTSKEServer
 	}
 	if authMode == authModeNTS {
 		c.Auth.Enabled = true
-		tlsconfig := &tls.Config{}
-		tlsconfig.InsecureSkipVerify = skipTLSValidation
-		tlsconfig.ServerName = NTSKEServerAddr
+		tlsconfig := &tls.Config{
+			InsecureSkipVerify: ntskeInsecureSkipVerify,
+			ServerName:         ntskeServerName,
+			MinVersion:         tls.VersionTLS13,
+		}
 		c.NTSKEFetcher.TLSConfig = *tlsconfig
 		c.NTSKEFetcher.Log = log
 	} else {
@@ -450,18 +452,18 @@ func exitWithUsage() {
 
 func main() {
 	var (
-		verbose           bool
-		configFile        string
-		daemonAddr        string
-		localAddr         snet.UDPAddr
-		remoteAddr        snet.UDPAddr
-		dispatcherMode    string
-		drkeyMode         string
-		drkeyServerAddr   snet.UDPAddr
-		drkeyClientAddr   snet.UDPAddr
-		authMode          string
-		ntskeServerAddr   string
-		skipTLSValidation bool
+		verbose                 bool
+		configFile              string
+		daemonAddr              string
+		localAddr               snet.UDPAddr
+		remoteAddr              snet.UDPAddr
+		dispatcherMode          string
+		drkeyMode               string
+		drkeyServerAddr         snet.UDPAddr
+		drkeyClientAddr         snet.UDPAddr
+		authMode                string
+		ntskeServerName         string
+		ntskeInsecureSkipVerify bool
 	)
 
 	serverFlags := flag.NewFlagSet("server", flag.ExitOnError)
@@ -492,8 +494,8 @@ func main() {
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.Var(&remoteAddr, "remote", "Remote address")
 	toolFlags.StringVar(&authMode, "auth", "", "Authentication mode")
-	toolFlags.StringVar(&ntskeServerAddr, "ntskeServer", "", "NTSKE server address")
-	toolFlags.BoolVar(&skipTLSValidation, "skipTLSValidation", false, "Skip TLS certificate validation")
+	toolFlags.StringVar(&ntskeServerName, "ntske-server", "", "NTSKE server name")
+	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	benchmarkFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
@@ -553,9 +555,11 @@ func main() {
 			if dispatcherMode != "" {
 				exitWithUsage()
 			}
+			if authMode == "nts" && ntskeServerName == "" {
+				exitWithUsage()
+			}
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServerAddr, skipTLSValidation)
-
+			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServerName, ntskeInsecureSkipVerify)
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
