@@ -14,10 +14,11 @@ type Fetcher struct {
 }
 
 func (f *Fetcher) exchangeKeys() {
-	ke, err := exchangeKeys(&f.TLSConfig, false, f.Log)
+	ke, err := exchangeKeys(&f.TLSConfig, false)
 	if err != nil {
 		f.Log.Error("failed to exchange NTS keys", zap.Error(err))
 	}
+	logNTSKEMetadata(f.Log, ke.Meta)
 	f.data = ke.Meta
 }
 
@@ -64,7 +65,7 @@ func (f *Fetcher) NumCookies() int {
 	return len(f.data.Cookie)
 }
 
-func exchangeKeys(c *tls.Config, debug bool, log *zap.Logger) (*KeyExchange, error) {
+func exchangeKeys(c *tls.Config, debug bool) (*KeyExchange, error) {
 	ke, err := Connect(c.ServerName, c, debug)
 	if err != nil {
 		return nil, err
@@ -87,7 +88,6 @@ func exchangeKeys(c *tls.Config, debug bool, log *zap.Logger) (*KeyExchange, err
 	if err != nil {
 		return nil, err
 	}
-	logNTSKEMetadata(log, ke.Meta)
 
 	return ke, nil
 }
