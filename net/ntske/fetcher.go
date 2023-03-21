@@ -2,6 +2,7 @@ package ntske
 
 import (
 	"crypto/tls"
+	"errors"
 
 	"go.uber.org/zap"
 )
@@ -13,7 +14,7 @@ type Fetcher struct {
 }
 
 func (f *Fetcher) exchangeKeys() {
-	ke, err := ExchangeKeys(&f.TLSConfig, false, f.Log)
+	ke, err := exchangeKeys(&f.TLSConfig, false, f.Log)
 	if err != nil {
 		f.Log.Error("failed to exchange NTS keys", zap.Error(err))
 	}
@@ -61,4 +62,32 @@ func (f *Fetcher) FetchPort() int {
 
 func (f *Fetcher) NumCookies() int {
 	return len(f.data.Cookie)
+}
+
+func exchangeKeys(c *tls.Config, debug bool, log *zap.Logger) (*KeyExchange, error) {
+	ke, err := Connect(c.ServerName, c, debug)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ke.Exchange()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ke.Meta.Cookie) == 0 {
+		return nil, errors.New("unexpected NTS-KE meta data: no cookies")
+	}
+
+	if ke.Meta.Algo != AES_SIV_CMAC_256 {
+		return nil, errors.New("unexpected NTS-KE meta data: unknown algorithm")
+	}
+
+	err = ke.ExportKeys()
+	if err != nil {
+		return nil, err
+	}
+	logNTSKEMetadata(log, ke.Meta)
+
+	return ke, nil
 }
