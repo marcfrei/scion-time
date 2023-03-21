@@ -23,9 +23,9 @@ import (
 
 type IPClient struct {
 	InterleavedMode bool
-	NTSKEFetcher    ntske.Fetcher
 	Auth            struct {
-		Enabled bool
+		Enabled      bool
+		NTSKEFetcher ntske.Fetcher
 	}
 	prev struct {
 		reference string
@@ -104,8 +104,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	}
 
 	if c.Auth.Enabled {
-		remoteAddr.Port = c.NTSKEFetcher.GetServerPort()
-		remoteAddr.IP = net.ParseIP(c.NTSKEFetcher.GetServerIP())
+		remoteAddr.Port = c.Auth.NTSKEFetcher.GetServerPort()
+		remoteAddr.IP = net.ParseIP(c.Auth.NTSKEFetcher.GetServerIP())
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -140,12 +140,12 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		var c2skey []byte
 		var cookie nts.Cookie
-		cookie.Cookie, c2skey = c.NTSKEFetcher.GetCookieC2sKey()
+		cookie.Cookie, c2skey = c.Auth.NTSKEFetcher.GetCookieC2sKey()
 		ntsreq.AddExt(cookie)
 
 		// Add cookie extension fields here s.t. 8 cookies are available after response.
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := c.NTSKEFetcher.GetNumberOfCookies(); i < 7; i++ {
+		for i := c.Auth.NTSKEFetcher.GetNumberOfCookies(); i < nts.NumStoredCookies-1; i++ {
 			var cookiePlacholder nts.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntsreq.AddExt(cookiePlacholder)
@@ -231,7 +231,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.NTSKEFetcher)
+			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.Auth.NTSKEFetcher)
 			if err != nil {
 				log.Error("failed to authenticate packet", zap.Error(err))
 				return offset, weight, err

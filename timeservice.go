@@ -332,8 +332,8 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 			ServerName:         ntskeServerName,
 			MinVersion:         tls.VersionTLS13,
 		}
-		c.NTSKEFetcher.TLSConfig = *tlsconfig
-		c.NTSKEFetcher.Log = log
+		c.Auth.NTSKEFetcher.TLSConfig = *tlsconfig
+		c.Auth.NTSKEFetcher.Log = log
 	} else {
 		c.Auth.Enabled = false
 	}
