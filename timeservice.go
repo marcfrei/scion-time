@@ -554,7 +554,10 @@ func main() {
 			if dispatcherMode != "" {
 				exitWithUsage()
 			}
-			if authMode == "nts" && ntskeServerName == "" {
+			if authMode != "" && authMode != authModeNTS {
+				exitWithUsage()
+			}
+			if authMode == authModeNTS && ntskeServerName == "" {
 				exitWithUsage()
 			}
 			initLogger(verbose)
