@@ -33,7 +33,7 @@ func (f *Fetcher) FetchC2sKey() (key, cookie []byte) {
 	return f.data.C2sKey, cookie
 }
 
-func (f *Fetcher) GetS2cKey() []byte {
+func (f *Fetcher) FetchS2cKey() []byte {
 	if f.data.S2cKey == nil {
 		f.exchangeKeys()
 	}

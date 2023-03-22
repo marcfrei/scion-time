@@ -113,7 +113,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 				return fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
-			aessiv, err := siv.NewCMAC(f.GetS2cKey())
+			aessiv, err := siv.NewCMAC(f.FetchS2cKey())
 			if err != nil {
 				return err
 			}
