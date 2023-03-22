@@ -214,7 +214,8 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 				if ok {
 					scionclk.pather = pather
 					for i := 0; i != len(scionclk.ntpcs); i++ {
-						scionclk.ntpcs[i].DRKeyFetcher = drkeyFetcher
+						scionclk.ntpcs[i].Auth.Enabled = true
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
 					}
 				}
 			}
@@ -223,7 +224,8 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 				if ok {
 					scionclk.pather = pather
 					for i := 0; i != len(scionclk.ntpcs); i++ {
-						scionclk.ntpcs[i].DRKeyFetcher = drkeyFetcher
+						scionclk.ntpcs[i].Auth.Enabled = true
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
 					}
 				}
 			}
@@ -366,11 +368,12 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 
 	laddr := udp.UDPAddrFromSnet(localAddr)
 	raddr := udp.UDPAddrFromSnet(remoteAddr)
-	cs := []*client.SCIONClient{{
+	c := &client.SCIONClient{
 		InterleavedMode: true,
-		DRKeyFetcher:    scion.NewFetcher(dc),
-	}}
-	_, err = client.MeasureClockOffsetSCION(ctx, log, cs, laddr, raddr, ps)
+	}
+	c.Auth.Enabled = true
+	c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
+	_, err = client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)
 	if err != nil {
 		log.Fatal("failed to measure clock offset",
 			zap.Stringer("remoteIA", raddr.IA),

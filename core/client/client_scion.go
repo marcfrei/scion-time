@@ -29,11 +29,12 @@ import (
 
 type SCIONClient struct {
 	InterleavedMode bool
-	DRKeyFetcher    *scion.Fetcher
-	auth            struct {
-		opt *slayers.EndToEndOption
-		buf []byte
-		mac []byte
+	Auth            struct {
+		Enabled      bool
+		DRKeyFetcher *scion.Fetcher
+		opt          *slayers.EndToEndOption
+		buf          []byte
+		mac          []byte
 	}
 	prev struct {
 		reference string
@@ -103,11 +104,11 @@ func (c *SCIONClient) ResetInterleavedMode() {
 func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logger, mtrcs *scionClientMetrics,
 	localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
 	offset time.Duration, weight float64, err error) {
-	if c.DRKeyFetcher != nil && c.auth.opt == nil {
-		c.auth.opt = &slayers.EndToEndOption{}
-		c.auth.opt.OptData = make([]byte, scion.PacketAuthOptDataLen)
-		c.auth.buf = make([]byte, spao.MACBufferSize)
-		c.auth.mac = make([]byte, scion.PacketAuthMACLen)
+	if c.Auth.Enabled && c.Auth.opt == nil {
+		c.Auth.opt = &slayers.EndToEndOption{}
+		c.Auth.opt.OptData = make([]byte, scion.PacketAuthOptDataLen)
+		c.Auth.buf = make([]byte, spao.MACBufferSize)
+		c.Auth.mac = make([]byte, scion.PacketAuthMACLen)
 	}
 	var authKey []byte
 
@@ -208,8 +209,8 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	}
 	buffer.PushLayer(udpLayer.LayerType())
 
-	if c.DRKeyFetcher != nil {
-		hostHostKey, err := c.DRKeyFetcher.FetchHostHostKey(ctx, drkey.HostHostMeta{
+	if c.Auth.Enabled {
+		hostHostKey, err := c.Auth.DRKeyFetcher.FetchHostHostKey(ctx, drkey.HostHostMeta{
 			ProtoId:  scion.DRKeyProtoIdTS,
 			Validity: cTxTime0,
 			SrcIA:    remoteAddr.IA,
@@ -222,17 +223,17 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 		} else {
 			authKey = hostHostKey.Key[:]
 
-			scion.PreparePacketAuthOpt(c.auth.opt, scion.PacketAuthSPIClient, scion.PacketAuthAlgorithm)
+			scion.PreparePacketAuthOpt(c.Auth.opt, scion.PacketAuthSPIClient, scion.PacketAuthAlgorithm)
 			_, err = spao.ComputeAuthCMAC(
 				spao.MACInput{
 					Key:        authKey,
-					Header:     slayers.PacketAuthOption{EndToEndOption: c.auth.opt},
+					Header:     slayers.PacketAuthOption{EndToEndOption: c.Auth.opt},
 					ScionLayer: &scionLayer,
 					PldType:    scionLayer.NextHdr,
 					Pld:        buffer.Bytes(),
 				},
-				c.auth.buf,
-				c.auth.opt.OptData[scion.PacketAuthMetadataLen:],
+				c.Auth.buf,
+				c.Auth.opt.OptData[scion.PacketAuthMetadataLen:],
 			)
 			if err != nil {
 				panic(err)
@@ -240,7 +241,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 
 			e2eExtn := slayers.EndToEndExtn{}
 			e2eExtn.NextHdr = scionLayer.NextHdr
-			e2eExtn.Options = []*slayers.EndToEndOption{c.auth.opt}
+			e2eExtn.Options = []*slayers.EndToEndOption{c.Auth.opt}
 
 			err = e2eExtn.SerializeTo(buffer, options)
 			if err != nil {
@@ -387,13 +388,13 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 								PldType:    slayers.L4UDP,
 								Pld:        buf[len(buf)-int(udpLayer.Length):],
 							},
-							c.auth.buf,
-							c.auth.mac,
+							c.Auth.buf,
+							c.Auth.mac,
 						)
 						if err != nil {
 							panic(err)
 						}
-						authenticated = subtle.ConstantTimeCompare(authOptData[scion.PacketAuthMetadataLen:], c.auth.mac) != 0
+						authenticated = subtle.ConstantTimeCompare(authOptData[scion.PacketAuthMetadataLen:], c.Auth.mac) != 0
 						if !authenticated {
 							log.Info("failed to authenticate packet")
 							continue
