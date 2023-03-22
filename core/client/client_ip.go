@@ -103,9 +103,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
+	var KEData ntske.Data
 	if c.Auth.Enabled {
-		remoteAddr.Port = c.Auth.NTSKEFetcher.FetchPort()
-		remoteAddr.IP = net.ParseIP(c.Auth.NTSKEFetcher.FetchServer())
+		KEData, err = c.Auth.NTSKEFetcher.FetchData()
+		if err != nil {
+			log.Error("key exchange failed", zap.Error(err))
+			return offset, weight, err
+		}
+		remoteAddr.Port = int(KEData.Port)
+		remoteAddr.IP = net.ParseIP(KEData.Server)
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -138,21 +144,20 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		uid.Generate()
 		ntsreq.AddExt(uid)
 
-		var c2skey []byte
 		var cookie nts.Cookie
-		c2skey, cookie.Cookie = c.Auth.NTSKEFetcher.FetchC2sKey()
+		cookie.Cookie = KEData.Cookie[0]
 		ntsreq.AddExt(cookie)
 
 		// Add cookie extension fields here s.t. 8 cookies are available after response.
 		var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-		for i := c.Auth.NTSKEFetcher.NumCookies(); i < nts.NumStoredCookies-1; i++ {
+		for i := len(KEData.Cookie); i < nts.NumStoredCookies; i++ {
 			var cookiePlacholder nts.CookiePlaceholder
 			cookiePlacholder.Cookie = cookiePlaceholderData
 			ntsreq.AddExt(cookiePlacholder)
 		}
 
 		var auth nts.Authenticator
-		auth.Key = c2skey
+		auth.Key = KEData.C2sKey
 		ntsreq.AddExt(auth)
 
 		uniqueID = uid.ID
@@ -231,10 +236,13 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf, uniqueID, &c.Auth.NTSKEFetcher)
+			cookies, err := nts.DecodePacket(&ntsresp, buf, uniqueID, KEData.S2cKey)
 			if err != nil {
 				log.Error("failed to authenticate packet", zap.Error(err))
 				return offset, weight, err
+			}
+			for _, cookie := range cookies {
+				c.Auth.NTSKEFetcher.StoreCookie(cookie)
 			}
 		}
 

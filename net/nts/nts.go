@@ -35,13 +35,12 @@ import (
 	"fmt"
 	"io"
 
-	"example.com/scion-time/net/ntske"
 	"github.com/secure-io/siv-go"
 )
 
 const (
 	NumStoredCookies int = 8
-	ntpHeaderLen int = 48
+	ntpHeaderLen     int = 48
 )
 
 const (
@@ -80,17 +79,16 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	copy((*b)[:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) error {
+func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookies [][]byte, err error) {
 	var pos int = ntpHeaderLen // Keep track of where in the original buf we are
 	msgbuf := bytes.NewReader(b[48:])
 	var authenticated bool = false
 	var unique bool = false
-	var cookies [][]byte
 	for msgbuf.Len() >= 28 {
 		var eh ExtHdr
 		err := eh.unpack(msgbuf)
 		if err != nil {
-			return fmt.Errorf("unpack extension field: %s", err)
+			return cookies, fmt.Errorf("unpack extension field: %s", err)
 		}
 
 		switch eh.Type {
@@ -98,10 +96,10 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 			u := UniqueIdentifier{ExtHdr: eh}
 			err = u.unpack(msgbuf)
 			if err != nil {
-				return fmt.Errorf("unpack UniqueIdentifier: %s", err)
+				return cookies, fmt.Errorf("unpack UniqueIdentifier: %s", err)
 			}
 			if !bytes.Equal(u.ID, uniqueID) {
-				return fmt.Errorf("Unique identifiers do not match")
+				return cookies, fmt.Errorf("Unique identifiers do not match")
 			}
 			pkt.AddExt(u)
 			unique = true
@@ -110,17 +108,17 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 			a := Authenticator{ExtHdr: eh}
 			err = a.unpack(msgbuf)
 			if err != nil {
-				return fmt.Errorf("unpack Authenticator: %s", err)
+				return cookies, fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
-			aessiv, err := siv.NewCMAC(f.FetchS2cKey())
+			aessiv, err := siv.NewCMAC(key)
 			if err != nil {
-				return err
+				return cookies, err
 			}
 
 			decrytedBuf, err := aessiv.Open(nil, a.Nonce, a.CipherText, b[:pos])
 			if err != nil {
-				return err
+				return cookies, err
 			}
 			pkt.AddExt(a)
 
@@ -132,7 +130,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 			cookie := Cookie{ExtHdr: eh}
 			err = cookie.unpack(msgbuf)
 			if err != nil {
-				return fmt.Errorf("unpack Cookie: %s", err)
+				return cookies, fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
 			cookies = append(cookies, cookie.Cookie)
@@ -141,25 +139,20 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, f *ntske.Fetcher) e
 			// Unknown extension field. Skip it.
 			_, err := msgbuf.Seek(int64(eh.Length), io.SeekCurrent)
 			if err != nil {
-				return err
+				return cookies, err
 			}
 		}
-
 		pos += int(eh.Length)
 	}
 
 	if !authenticated {
-		return errors.New("packet does not contain a valid authenticator")
+		return cookies, errors.New("packet does not contain a valid authenticator")
 	}
 	if !unique {
-		return errors.New("packet not does not contain a unique identifier")
+		return cookies, errors.New("packet not does not contain a unique identifier")
 	}
 
-	for _, cookie := range cookies {
-		f.StoreCookie(cookie)
-	}
-
-	return nil
+	return cookies, nil
 }
 
 type ExtHdr struct {

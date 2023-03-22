@@ -13,56 +13,37 @@ type Fetcher struct {
 	data      Data
 }
 
-func (f *Fetcher) exchangeKeys() {
+func (f *Fetcher) exchangeKeys() error {
 	ke, err := exchangeKeys(&f.TLSConfig, false)
 	if err != nil {
-		f.Log.Error("failed to exchange NTS keys", zap.Error(err))
+		return err
 	}
 	logNTSKEMetadata(f.Log, ke.Meta)
 	f.data = ke.Meta
+	return nil
 }
 
-func (f *Fetcher) FetchC2sKey() (key, cookie []byte) {
-	if f.NumCookies() < 1 || f.data.C2sKey == nil {
-		f.exchangeKeys()
+func (f *Fetcher) FetchData() (data Data, err error) {
+	if !isValid(f.data) {
+		err = f.exchangeKeys()
+		if err != nil {
+			return data, err
+		}
 	}
-
-	cookie = f.data.Cookie[0]
+	data = f.data
 	f.data.Cookie = f.data.Cookie[1:]
-
-	return f.data.C2sKey, cookie
+	return data, nil
 }
 
-func (f *Fetcher) FetchS2cKey() []byte {
-	if f.data.S2cKey == nil {
-		f.exchangeKeys()
+func isValid(data Data) bool {
+	if len(data.Cookie) == 0 {
+		return false
 	}
-
-	return f.data.S2cKey
+	return true
 }
 
 func (f *Fetcher) StoreCookie(cookie []byte) {
 	f.data.Cookie = append(f.data.Cookie, cookie)
-}
-
-func (f *Fetcher) FetchServer() string {
-	if f.data.Server == "" {
-		f.exchangeKeys()
-	}
-
-	return f.data.Server
-}
-
-func (f *Fetcher) FetchPort() int {
-	if f.data.Port == 0 {
-		f.exchangeKeys()
-	}
-
-	return int(f.data.Port)
-}
-
-func (f *Fetcher) NumCookies() int {
-	return len(f.data.Cookie)
 }
 
 func exchangeKeys(c *tls.Config, debug bool) (*KeyExchange, error) {
