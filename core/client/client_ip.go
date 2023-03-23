@@ -107,7 +107,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	if c.Auth.Enabled {
 		KEData, err = c.Auth.NTSKEFetcher.FetchData()
 		if err != nil {
-			log.Error("key exchange failed", zap.Error(err))
+			log.Error("failed to fetch key exchange data", zap.Error(err))
 			return offset, weight, err
 		}
 		remoteAddr.Port = int(KEData.Port)

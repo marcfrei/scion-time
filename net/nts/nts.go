@@ -184,7 +184,7 @@ func ProcessResponse(NTSKEFetcher ntske.Fetcher, cookies [][]byte, reqID []byte,
 		NTSKEFetcher.StoreCookie(cookie)
 	}
 	if !bytes.Equal(reqID, respID) {
-		return errors.New("ID of respnse does not equal unique ID of request")
+		return errors.New("ID of response does not equal unique ID of request")
 	}
 	return nil
 }
