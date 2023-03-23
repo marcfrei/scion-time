@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"io"
 
+	"example.com/scion-time/net/ntske"
 	"github.com/secure-io/siv-go"
 )
 
@@ -79,7 +80,7 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	copy((*b)[:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookies [][]byte, err error) {
+func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (cookies [][]byte, uniqueID []byte, err error) {
 	var pos int = ntpHeaderLen // Keep track of where in the original buf we are
 	msgbuf := bytes.NewReader(b[48:])
 	var authenticated bool = false
@@ -88,7 +89,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookie
 		var eh ExtHdr
 		err := eh.unpack(msgbuf)
 		if err != nil {
-			return cookies, fmt.Errorf("unpack extension field: %s", err)
+			return cookies, uniqueID, fmt.Errorf("unpack extension field: %s", err)
 		}
 
 		switch eh.Type {
@@ -96,11 +97,9 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookie
 			u := UniqueIdentifier{ExtHdr: eh}
 			err = u.unpack(msgbuf)
 			if err != nil {
-				return cookies, fmt.Errorf("unpack UniqueIdentifier: %s", err)
+				return cookies, uniqueID, fmt.Errorf("unpack UniqueIdentifier: %s", err)
 			}
-			if !bytes.Equal(u.ID, uniqueID) {
-				return cookies, fmt.Errorf("Unique identifiers do not match")
-			}
+			uniqueID = u.ID
 			pkt.AddExt(u)
 			unique = true
 
@@ -108,17 +107,17 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookie
 			a := Authenticator{ExtHdr: eh}
 			err = a.unpack(msgbuf)
 			if err != nil {
-				return cookies, fmt.Errorf("unpack Authenticator: %s", err)
+				return cookies, uniqueID, fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
 			aessiv, err := siv.NewCMAC(key)
 			if err != nil {
-				return cookies, err
+				return cookies, uniqueID, err
 			}
 
 			decrytedBuf, err := aessiv.Open(nil, a.Nonce, a.CipherText, b[:pos])
 			if err != nil {
-				return cookies, err
+				return cookies, uniqueID, err
 			}
 			pkt.AddExt(a)
 
@@ -130,7 +129,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookie
 			cookie := Cookie{ExtHdr: eh}
 			err = cookie.unpack(msgbuf)
 			if err != nil {
-				return cookies, fmt.Errorf("unpack Cookie: %s", err)
+				return cookies, uniqueID, fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.AddExt(cookie)
 			cookies = append(cookies, cookie.Cookie)
@@ -139,20 +138,55 @@ func DecodePacket(pkt *NTSPacket, b []byte, uniqueID []byte, key []byte) (cookie
 			// Unknown extension field. Skip it.
 			_, err := msgbuf.Seek(int64(eh.Length), io.SeekCurrent)
 			if err != nil {
-				return cookies, err
+				return cookies, uniqueID, err
 			}
 		}
 		pos += int(eh.Length)
 	}
 
 	if !authenticated {
-		return cookies, errors.New("packet does not contain a valid authenticator")
+		return cookies, uniqueID, errors.New("packet does not contain a valid authenticator")
 	}
 	if !unique {
-		return cookies, errors.New("packet not does not contain a unique identifier")
+		return cookies, uniqueID, errors.New("packet not does not contain a unique identifier")
 	}
 
-	return cookies, nil
+	return cookies, uniqueID, nil
+}
+
+func PrepareNewPacket(ntpheader []byte, KEData ntske.Data) (pkt NTSPacket, uniqueid []byte) {
+	pkt.NTPHeader = ntpheader
+	var uid UniqueIdentifier
+	uid.Generate()
+	pkt.AddExt(uid)
+
+	var cookie Cookie
+	cookie.Cookie = KEData.Cookie[0]
+	pkt.AddExt(cookie)
+
+	// Add cookie extension fields here s.t. 8 cookies are available after response.
+	var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
+	for i := len(KEData.Cookie); i < NumStoredCookies; i++ {
+		var cookiePlacholder CookiePlaceholder
+		cookiePlacholder.Cookie = cookiePlaceholderData
+		pkt.AddExt(cookiePlacholder)
+	}
+
+	var auth Authenticator
+	auth.Key = KEData.C2sKey
+	pkt.AddExt(auth)
+
+	return pkt, uid.ID
+}
+
+func ProcessResponse(NTSKEFetcher ntske.Fetcher, cookies [][]byte, reqID []byte, respID []byte) error {
+	for _, cookie := range cookies {
+		NTSKEFetcher.StoreCookie(cookie)
+	}
+	if !bytes.Equal(reqID, respID) {
+		return errors.New("ID of respnse does not equal unique ID of request")
+	}
+	return nil
 }
 
 type ExtHdr struct {
