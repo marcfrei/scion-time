@@ -179,9 +179,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (cookies [][]byte, uniqu
 	return cookies, uniqueID, nil
 }
 
-
-
-func ProcessResponse(ntskeFetcher ntske.Fetcher, cookies [][]byte, reqID []byte, respID []byte) error {
+func ProcessResponse(ntskeFetcher *ntske.Fetcher, cookies [][]byte, reqID []byte, respID []byte) error {
 	for _, cookie := range cookies {
 		ntskeFetcher.StoreCookie(cookie)
 	}

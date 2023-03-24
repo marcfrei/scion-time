@@ -220,7 +220,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 				return offset, weight, err
 			}
 
-			err = nts.ProcessResponse(c.Auth.NTSKEFetcher, cookies, requestID, responseID)
+			err = nts.ProcessResponse(&c.Auth.NTSKEFetcher, cookies, requestID, responseID)
 			if err != nil {
 				log.Error("failed to process response packet", zap.Error(err))
 				return offset, weight, err
