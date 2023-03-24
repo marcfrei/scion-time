@@ -49,12 +49,12 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 				if sec2 != 0 || nsec2 != 0 {
 					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
 						panic("unexpected timestamping behavior")
-					} 
+					}
 					ts = time.Unix(sec2, nsec2)
 				} else {
 					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
 						panic("unexpected timestamping behavior")
-					} 
+					}
 					ts = time.Unix(sec0, nsec0)
 				}
 				return ts, nil
@@ -76,9 +76,12 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 // - https://github.com/torvalds/linux/blob/master/include/uapi/linux/net_tstamp.h
 
 const (
-	unixHWTSTAMP_TX_ON               = 1
-	unixHWTSTAMP_FILTER_ALL          = 1
-	unixHWTSTAMP_FILTER_PTP_V2_EVENT = 12
+	//lint:ignore ST1003 maintain consistency with package 'unix'
+	HWTSTAMP_TX_ON = 1
+	//lint:ignore ST1003 maintain consistency with package 'unix'
+	HWTSTAMP_FILTER_ALL = 1
+	//lint:ignore ST1003 maintain consistency with package 'unix'
+	HWTSTAMP_FILTER_PTP_V2_EVENT = 12
 )
 
 type hwtstampConfig struct {
@@ -107,11 +110,11 @@ func initNetworkInterface(fd int, ifname string, filter int32) error {
 		return errno
 	}
 
-	if cfg.txType == unixHWTSTAMP_TX_ON && cfg.rxFilter == filter {
+	if cfg.txType == HWTSTAMP_TX_ON && cfg.rxFilter == filter {
 		return nil
 	}
 
-	cfg.txType = unixHWTSTAMP_TX_ON
+	cfg.txType = HWTSTAMP_TX_ON
 	cfg.rxFilter = filter
 	_, _, errno = unix.Syscall(unix.SYS_IOCTL, uintptr(fd),
 		unix.SIOCSHWTSTAMP, uintptr(unsafe.Pointer(&req)))
@@ -140,12 +143,12 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 			unix.SOF_TIMESTAMPING_TX_HARDWARE
 
 		err = sconn.Control(func(fd uintptr) {
-			err := initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_ALL)
+			err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
 			if err != nil {
 				if errors.Is(err, syscall.EPERM) {
 					return
 				}
-				err = initNetworkInterface(int(fd), iface, unixHWTSTAMP_FILTER_PTP_V2_EVENT)
+				err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_PTP_V2_EVENT)
 				if err != nil {
 					return
 				}
@@ -193,12 +196,12 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 				if sec2 != 0 || nsec2 != 0 {
 					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
 						panic("unexpected timestamping behavior")
-					} 
+					}
 					ts = time.Unix(sec2, nsec2)
 				} else {
 					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
 						panic("unexpected timestamping behavior")
-					} 
+					}
 					ts = time.Unix(sec0, nsec0)
 				}
 				tsSet = true

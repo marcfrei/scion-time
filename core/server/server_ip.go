@@ -53,7 +53,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
-	var txId uint32
+	var txID uint32
 	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -115,12 +115,12 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		if err != nil {
 			txt1 = txt0
 			log.Error("failed to read packet tx timestamp", zap.Error(err))
-		} else if id != txId {
+		} else if id != txID {
 			txt1 = txt0
-			log.Error("failed to read packet tx timestamp", zap.Uint32("id", id), zap.Uint32("expected", txId))
-			txId = id + 1
+			log.Error("failed to read packet tx timestamp", zap.Uint32("id", id), zap.Uint32("expected", txID))
+			txID = id + 1
 		} else {
-			txId++
+			txID++
 		}
 		updateTXTimestamp(clientID, rxt, &txt1)
 

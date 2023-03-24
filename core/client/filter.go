@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"math"
 	"sync"
 	"time"
@@ -24,11 +23,6 @@ type filterContext struct {
 }
 
 var (
-	errWrite                  = errors.New("failed to write packet")
-	errUnexpectedPacketFlags  = errors.New("failed to read packet: unexpected flags")
-	errUnexpectedPacketSource = errors.New("failed to read packet: unexpected source")
-	errUnexpectedPacket       = errors.New("failed to read packet: unexpected type or structure")
-
 	filters   = make(map[string]filterContext)
 	filtersMu = sync.Mutex{}
 )

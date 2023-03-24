@@ -211,7 +211,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 
 	if c.Auth.Enabled {
 		hostHostKey, err := c.Auth.DRKeyFetcher.FetchHostHostKey(ctx, drkey.HostHostMeta{
-			ProtoId:  scion.DRKeyProtoIdTS,
+			ProtoId:  scion.DRKeyProtocolTS,
 			Validity: cTxTime0,
 			SrcIA:    remoteAddr.IA,
 			DstIA:    localAddr.IA,
@@ -233,7 +233,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 					Pld:        buffer.Bytes(),
 				},
 				c.Auth.buf,
-				c.Auth.opt.OptData[scion.PacketAuthMetadataLen:],
+				scion.PacketAuthOptMAC(c.Auth.opt),
 			)
 			if err != nil {
 				panic(err)
@@ -370,15 +370,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 			if authKey != nil {
 				authOpt, err := e2eLayer.FindOption(slayers.OptTypeAuthenticator)
 				if err == nil {
-					if len(authOpt.OptData) != scion.PacketAuthOptDataLen {
-						panic("unexpected authenticator option data")
-					}
-					authOptData := authOpt.OptData
-					spi := uint32(authOptData[3]) |
-						uint32(authOptData[2])<<8 |
-						uint32(authOptData[1])<<16 |
-						uint32(authOptData[0])<<24
-					algo := uint8(authOptData[4])
+					spi, algo := scion.PacketAuthOptMetadata(authOpt)
 					if spi == scion.PacketAuthSPIServer && algo == scion.PacketAuthAlgorithm {
 						_, err = spao.ComputeAuthCMAC(
 							spao.MACInput{
@@ -394,10 +386,15 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 						if err != nil {
 							panic(err)
 						}
-						authenticated = subtle.ConstantTimeCompare(authOptData[scion.PacketAuthMetadataLen:], c.Auth.mac) != 0
+						authenticated = subtle.ConstantTimeCompare(scion.PacketAuthOptMAC(authOpt), c.Auth.mac) != 0
 						if !authenticated {
-							log.Info("failed to authenticate packet")
-							continue
+							err = errInvalidPacketAuthenticator
+							if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+								log.Info("failed to authenticate packet", zap.Error(err))
+								numRetries++
+								continue
+							}
+							return offset, weight, err
 						}
 						mtrcs.pktsAuthenticated.Inc()
 					}

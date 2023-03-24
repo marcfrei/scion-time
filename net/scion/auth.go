@@ -5,23 +5,44 @@ import (
 )
 
 const (
-	DRKeyTypeHostHost          = 1
-	DRKeyDirectionSenderSide   = 0
-	DRKeyDirectionReceiverSide = 1
-	DRKeyProtoIdTS             = 123
+	drkeyTypeHostHost          = 1
+	drkeyDirectionSenderSide   = 0
+	drkeyDirectionReceiverSide = 1
+	DRKeyProtocolTS            = 123
 
 	PacketAuthMetadataLen = 12
 	PacketAuthMACLen      = 16
 	PacketAuthOptDataLen  = PacketAuthMetadataLen + PacketAuthMACLen
 
-	PacketAuthSPIClient = uint32(DRKeyTypeHostHost)<<17 |
-		uint32(DRKeyDirectionReceiverSide)<<16 |
-		uint32(DRKeyProtoIdTS)
-	PacketAuthSPIServer = uint32(DRKeyTypeHostHost)<<17 |
-		uint32(DRKeyDirectionSenderSide)<<16 |
-		uint32(DRKeyProtoIdTS)
+	PacketAuthSPIClient = uint32(drkeyTypeHostHost)<<17 |
+		uint32(drkeyDirectionReceiverSide)<<16 |
+		uint32(DRKeyProtocolTS)
+	PacketAuthSPIServer = uint32(drkeyTypeHostHost)<<17 |
+		uint32(drkeyDirectionSenderSide)<<16 |
+		uint32(DRKeyProtocolTS)
 	PacketAuthAlgorithm = uint8(0) // AES-CMAC
 )
+
+func PacketAuthOptMetadata(authOpt *slayers.EndToEndOption) (spi uint32, algo uint8) {
+	authOptData := authOpt.OptData
+	if len(authOptData) != PacketAuthOptDataLen {
+		panic("unexpected authenticator option data")
+	}
+	spi = uint32(authOptData[3]) |
+		uint32(authOptData[2])<<8 |
+		uint32(authOptData[1])<<16 |
+		uint32(authOptData[0])<<24
+	algo = uint8(authOptData[4])
+	return spi, algo
+}
+
+func PacketAuthOptMAC(authOpt *slayers.EndToEndOption) []byte {
+	authOptData := authOpt.OptData
+	if len(authOptData) != PacketAuthOptDataLen {
+		panic("unexpected authenticator option data")
+	}
+	return authOptData[PacketAuthMetadataLen:]
+}
 
 func PreparePacketAuthOpt(authOpt *slayers.EndToEndOption, spi uint32, algo uint8) {
 	authOptData := authOpt.OptData
