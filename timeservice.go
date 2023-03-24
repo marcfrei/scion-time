@@ -252,6 +252,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 

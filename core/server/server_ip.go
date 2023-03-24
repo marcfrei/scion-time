@@ -16,6 +16,7 @@ import (
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/net/nts"
 	"example.com/scion-time/net/udp"
 )
 
@@ -54,7 +55,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 	}
 
 	var txID uint32
-	buf := make([]byte, ntp.PacketLen)
+	buf := make([]byte, 2048)
 	oob := make([]byte, udp.TimestampLen())
 	for {
 		buf = buf[:cap(buf)]
@@ -85,6 +86,35 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 			continue
 		}
 
+		var authenticated bool = false
+		var ntsreq nts.NTSPacket
+		var cookies [][]byte
+		var uniqueID []byte
+		var plaintextCookie nts.PlainCookie
+		if len(buf) > 48 {
+			authenticated = true
+
+			cookie, err := nts.ExtractCookie(buf)
+			if err != nil {
+				log.Info("failed to extract cookie", zap.Error(err))
+				continue
+			}
+
+			encryptedCookie := nts.EncryptedCookie{}
+			encryptedCookie.Decode(cookie)
+			plaintextCookie, err = encryptedCookie.Decrypt([]byte(cookiesecret), cookiekeyid)
+			if err != nil {
+				log.Info("failed to decrypt cookie", zap.Error(err))
+				continue
+			}
+
+			cookies, uniqueID, err = nts.DecodePacket(&ntsreq, buf, plaintextCookie.C2S)
+			if err != nil {
+				log.Info("failed to decode packet", zap.Error(err))
+				continue
+			}
+		}
+
 		err = ntp.ValidateRequest(&ntpreq, srcAddr.Port())
 		if err != nil {
 			log.Info("failed to validate packet payload", zap.Error(err))
@@ -105,6 +135,26 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		handleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 
 		ntp.EncodePacket(&buf, &ntpresp)
+
+		var ntsresp nts.NTSPacket
+		if authenticated {
+			var cookiesResp [][]byte
+			for i := 0; i < len(cookies); i++ {
+				encrypted, err := plaintextCookie.Encrypt([]byte(cookiesecret), cookiekeyid)
+				if err != nil {
+					log.Info("failed to encrypt cookie", zap.Error(err))
+					continue
+				}
+				newCookie, err := encrypted.Encode()
+				if err != nil {
+					log.Info("failed to encode cookie", zap.Error(err))
+					continue
+				}
+				cookiesResp = append(cookiesResp, newCookie)
+			}
+			ntsresp = nts.PrepareNewResponsePacket(buf, cookiesResp, plaintextCookie.S2C, uniqueID)
+			nts.EncodePacket(&buf, &ntsresp)
+		}
 
 		n, err = conn.WriteToUDPAddrPort(buf, srcAddr)
 		if err != nil || n != len(buf) {
