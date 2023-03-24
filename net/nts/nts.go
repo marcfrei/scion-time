@@ -56,6 +56,31 @@ type NTSPacket struct {
 	Extensions []ExtensionField
 }
 
+func NewPacket(ntpHeader []byte, ntskeData ntske.Data) (pkt NTSPacket, uniqueid []byte) {
+	pkt.NTPHeader = ntpHeader
+	var uid UniqueIdentifier
+	uid.Generate()
+	pkt.AddExt(uid)
+
+	var cookie Cookie
+	cookie.Cookie = ntskeData.Cookie[0]
+	pkt.AddExt(cookie)
+
+	// Add cookie extension fields here s.t. 8 cookies are available after response.
+	var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
+	for i := len(ntskeData.Cookie); i < NumStoredCookies; i++ {
+		var cookiePlacholder CookiePlaceholder
+		cookiePlacholder.Cookie = cookiePlaceholderData
+		pkt.AddExt(cookiePlacholder)
+	}
+
+	var auth Authenticator
+	auth.Key = ntskeData.C2sKey
+	pkt.AddExt(auth)
+
+	return pkt, uid.ID
+}
+
 func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	var buf *bytes.Buffer = new(bytes.Buffer)
 	if len(pkt.NTPHeader) != ntpHeaderLen {
@@ -154,34 +179,11 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (cookies [][]byte, uniqu
 	return cookies, uniqueID, nil
 }
 
-func PrepareNewPacket(ntpheader []byte, KEData ntske.Data) (pkt NTSPacket, uniqueid []byte) {
-	pkt.NTPHeader = ntpheader
-	var uid UniqueIdentifier
-	uid.Generate()
-	pkt.AddExt(uid)
 
-	var cookie Cookie
-	cookie.Cookie = KEData.Cookie[0]
-	pkt.AddExt(cookie)
 
-	// Add cookie extension fields here s.t. 8 cookies are available after response.
-	var cookiePlaceholderData []byte = make([]byte, len(cookie.Cookie))
-	for i := len(KEData.Cookie); i < NumStoredCookies; i++ {
-		var cookiePlacholder CookiePlaceholder
-		cookiePlacholder.Cookie = cookiePlaceholderData
-		pkt.AddExt(cookiePlacholder)
-	}
-
-	var auth Authenticator
-	auth.Key = KEData.C2sKey
-	pkt.AddExt(auth)
-
-	return pkt, uid.ID
-}
-
-func ProcessResponse(NTSKEFetcher ntske.Fetcher, cookies [][]byte, reqID []byte, respID []byte) error {
+func ProcessResponse(ntskeFetcher ntske.Fetcher, cookies [][]byte, reqID []byte, respID []byte) error {
 	for _, cookie := range cookies {
-		NTSKEFetcher.StoreCookie(cookie)
+		ntskeFetcher.StoreCookie(cookie)
 	}
 	if !bytes.Equal(reqID, respID) {
 		return errors.New("ID of response does not equal unique ID of request")

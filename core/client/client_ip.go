@@ -103,15 +103,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
 
-	var KEData ntske.Data
+	var ntskeData ntske.Data
 	if c.Auth.Enabled {
-		KEData, err = c.Auth.NTSKEFetcher.FetchData()
+		ntskeData, err = c.Auth.NTSKEFetcher.FetchData()
 		if err != nil {
 			log.Error("failed to fetch key exchange data", zap.Error(err))
 			return offset, weight, err
 		}
-		remoteAddr.Port = int(KEData.Port)
-		remoteAddr.IP = net.ParseIP(KEData.Server)
+		remoteAddr.Port = int(ntskeData.Port)
+		remoteAddr.IP = net.ParseIP(ntskeData.Server)
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -138,7 +138,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	var requestID []byte
 	var ntsreq nts.NTSPacket
 	if c.Auth.Enabled {
-		ntsreq, requestID = nts.PrepareNewPacket(buf, KEData)
+		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 
@@ -214,7 +214,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			cookies, responseID, err := nts.DecodePacket(&ntsresp, buf, KEData.S2cKey)
+			cookies, responseID, err := nts.DecodePacket(&ntsresp, buf, ntskeData.S2cKey)
 			if err != nil {
 				log.Error("failed to authenticate packet", zap.Error(err))
 				return offset, weight, err
