@@ -97,7 +97,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener) {
 
 func StartNTSKEServer(ctx context.Context, log *zap.Logger,
 	localHost *net.UDPAddr) {
-	certs, err := tls.LoadX509KeyPair("./core/server/tls.crt", "./core/server/tls.key")
+	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
 	if err != nil {
 		log.Error("TLS Key load", zap.Error(err))
 		return
