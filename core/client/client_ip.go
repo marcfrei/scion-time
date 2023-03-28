@@ -39,6 +39,7 @@ type ipClientMetrics struct {
 	reqsSent                 prometheus.Counter
 	reqsSentInterleaved      prometheus.Counter
 	pktsReceived             prometheus.Counter
+	pktsAuthenticated        prometheus.Counter
 	respsAccepted            prometheus.Counter
 	respsAcceptedInterleaved prometheus.Counter
 }
@@ -56,6 +57,10 @@ func newIPClientMetrics() *ipClientMetrics {
 		pktsReceived: promauto.NewCounter(prometheus.CounterOpts{
 			Name: metrics.IPClientPktsReceivedN,
 			Help: metrics.IPClientPktsReceivedH,
+		}),
+		pktsAuthenticated: promauto.NewCounter(prometheus.CounterOpts{
+			Name: metrics.IPClientPktsAuthenticatedN,
+			Help: metrics.IPClientPktsAuthenticatedH,
 		}),
 		respsAccepted: promauto.NewCounter(prometheus.CounterOpts{
 			Name: metrics.IPClientRespsAcceptedN,
@@ -107,6 +112,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		ntskeData, err = c.Auth.NTSKEFetcher.FetchData()
 		if err != nil {
 			log.Info("failed to fetch key exchange data", zap.Error(err))
+			return offset, weight, err
 		} else {
 			remoteAddr.Port = int(ntskeData.Port)
 			remoteAddr.IP = net.ParseIP(ntskeData.Server)
@@ -211,6 +217,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 			return offset, weight, err
 		}
 
+		authenticated := false
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled && ntskeData.Cookie != nil {
 			cookies, responseID, err := nts.DecodePacket(&ntsresp, buf, ntskeData.S2cKey)
@@ -232,6 +239,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 				}
 				return offset, weight, err
 			}
+
+			authenticated = true
+			mtrcs.pktsAuthenticated.Inc()
 		}
 
 		interleaved = false
@@ -255,6 +265,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		log.Debug("received response",
 			zap.Time("at", cRxTime),
 			zap.String("from", reference),
+			zap.Bool("auth", authenticated),
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpresp}),
 		)
 

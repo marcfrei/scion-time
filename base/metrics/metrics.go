@@ -8,6 +8,8 @@ const (
 	DRKeyCacheKeysReplacedH = "The total number of DRKeys replaced in the cache"
 	DRKeyCacheKeysReplacedN = "timeservice_drkey_cache_keys_replaced"
 
+	IPClientPktsAuthenticatedH        = "The total number of packets authenticated via IP"
+	IPClientPktsAuthenticatedN        = "timeservice_ip_client_pkts_authenticated"
 	IPClientPktsReceivedH             = "The total number of packets received via IP"
 	IPClientPktsReceivedN             = "timeservice_ip_client_pkts_received"
 	IPClientReqsSentH                 = "The total number of requests sent via IP"
