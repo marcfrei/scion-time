@@ -22,19 +22,19 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 	for {
 		ke, err := ntske.NewListener(listener)
 		if err != nil {
-			log.Error("server: accept", zap.Error(err))
+			log.Info("failed to connect to client", zap.Error(err))
 			break
 		}
 
 		err = ke.Read()
 		if err != nil {
-			log.Error("Read Key Exchange", zap.Error(err))
+			log.Info("failed to read key exchange", zap.Error(err))
 			return
 		}
 
 		err = ke.ExportKeys()
 		if err != nil {
-			log.Error("Key Exchange export", zap.Error(err))
+			log.Info("failed to export keys", zap.Error(err))
 			return
 		}
 
@@ -63,13 +63,13 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 			plaincookie.S2C = ke.Meta.S2cKey
 			ecookie, err := plaincookie.Encrypt([]byte(cookiesecret), cookiekeyid)
 			if err != nil {
-				log.Error("Couldn't encrypt cookie", zap.Error(err))
+				log.Info("failed to encrypt cookie", zap.Error(err))
 				continue
 			}
 
 			b, err := ecookie.Encode()
 			if err != nil {
-				log.Error("Couldn't encode cookie", zap.Error(err))
+				log.Info("failed to encode cookie", zap.Error(err))
 				continue
 			}
 
