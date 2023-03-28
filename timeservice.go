@@ -234,7 +234,7 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 	return
 }
 
-func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
+func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr string) {
 	ctx := context.Background()
 
 	refClocks, netClocks := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
@@ -252,7 +252,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -480,6 +480,7 @@ func main() {
 	serverFlags.StringVar(&configFile, "config", "", "Config file")
 	serverFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	serverFlags.Var(&localAddr, "local", "Local address")
+	serverFlags.StringVar(&ntskeServerName, "ntske-server", "", "NTSKE server name")
 
 	relayFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	relayFlags.StringVar(&configFile, "config", "", "Config file")
@@ -522,7 +523,7 @@ func main() {
 			exitWithUsage()
 		}
 		initLogger(verbose)
-		runServer(configFile, daemonAddr, &localAddr)
+		runServer(configFile, daemonAddr, &localAddr, ntskeServerName)
 	case relayFlags.Name():
 		err := relayFlags.Parse(os.Args[2:])
 		if err != nil || relayFlags.NArg() != 0 {

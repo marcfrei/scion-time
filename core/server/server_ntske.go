@@ -16,7 +16,7 @@ const (
 	cookiekeyid  int    = 17
 )
 
-func runNTSKEServer(log *zap.Logger, listener net.Listener) {
+func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string, timeServerPort int) {
 	log.Info("server NTSKE listening via IP")
 
 	for {
@@ -49,11 +49,11 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener) {
 		msg.AddRecord(algo)
 
 		var server ntske.Server
-		server.Addr = []byte("127.0.0.1")
+		server.Addr = []byte(timeServerIP)
 		msg.AddRecord(server)
 
 		var port ntske.Port
-		port.Port = 1234
+		port.Port = uint16(timeServerPort)
 		msg.AddRecord(port)
 
 		for i := 0; i < 8; i++ {
@@ -95,8 +95,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener) {
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger,
-	localHost *net.UDPAddr) {
+func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, ntskeAddr string) {
 	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
 	if err != nil {
 		log.Error("TLS Key load", zap.Error(err))
@@ -110,6 +109,6 @@ func StartNTSKEServer(ctx context.Context, log *zap.Logger,
 		MinVersion:   tls.VersionTLS13,
 	}
 
-	listener, err := tls.Listen("tcp", "127.0.0.1:4600", config)
-	go runNTSKEServer(log, listener)
+	listener, err := tls.Listen("tcp", ntskeAddr, config)
+	go runNTSKEServer(log, listener, localHost.IP.String(), localHost.Port)
 }
