@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml"
@@ -316,7 +317,7 @@ func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	runMonitor(log)
 }
 
-func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServerName string, ntskeInsecureSkipVerify bool) {
+func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
 
@@ -328,6 +329,8 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 	c := &client.IPClient{
 		InterleavedMode: true,
 	}
+
+	ntskeServerName := strings.Split(ntskeServer, ":")[0]
 	if authMode == authModeNTS {
 		c.Auth.Enabled = true
 		c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
@@ -335,6 +338,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 			ServerName:         ntskeServerName,
 			MinVersion:         tls.VersionTLS13,
 		}
+		c.Auth.NTSKEFetcher.Port = strings.Split(ntskeServer, ":")[1]
 		c.Auth.NTSKEFetcher.Log = log
 	} else {
 		c.Auth.Enabled = false
@@ -459,7 +463,7 @@ func main() {
 		configFile              string
 		daemonAddr              string
 		localAddr               snet.UDPAddr
-		remoteAddr              snet.UDPAddr
+		remoteAddr              string
 		dispatcherMode          string
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
@@ -496,15 +500,14 @@ func main() {
 	toolFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
-	toolFlags.Var(&remoteAddr, "remote", "Remote address")
+	toolFlags.StringVar(&remoteAddr, "remote", "", "Remote address")
 	toolFlags.StringVar(&authMode, "auth", "", "Authentication mode")
-	toolFlags.StringVar(&ntskeServerName, "ntske-server", "", "NTSKE server name")
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	benchmarkFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	benchmarkFlags.Var(&localAddr, "local", "Local address")
-	benchmarkFlags.Var(&remoteAddr, "remote", "Remote address")
+	benchmarkFlags.StringVar(&remoteAddr, "remote", "", "Remote address")
 
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	drkeyFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
@@ -543,7 +546,12 @@ func main() {
 		if err != nil || toolFlags.NArg() != 0 {
 			exitWithUsage()
 		}
-		if !remoteAddr.IA.IsZero() {
+		remoteAddrSnet := snet.UDPAddr{}
+		err = remoteAddrSnet.Set(remoteAddr)
+		if err != nil {
+			exitWithUsage()
+		}
+		if !remoteAddrSnet.IA.IsZero() {
 			if dispatcherMode == "" {
 				dispatcherMode = dispatcherModeExternal
 			} else if dispatcherMode != dispatcherModeExternal &&
@@ -551,7 +559,7 @@ func main() {
 				exitWithUsage()
 			}
 			initLogger(verbose)
-			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr)
+			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddrSnet)
 		} else {
 			if daemonAddr != "" {
 				exitWithUsage()
@@ -562,26 +570,29 @@ func main() {
 			if authMode != "" && authMode != authModeNTS {
 				exitWithUsage()
 			}
-			if authMode == authModeNTS && ntskeServerName == "" {
-				exitWithUsage()
-			}
+			ntskeServerName = strings.Split(remoteAddr, ",")[1]
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServerName, ntskeInsecureSkipVerify)
+			runIPTool(&localAddr, &remoteAddrSnet, authMode, ntskeServerName, ntskeInsecureSkipVerify)
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
 		if err != nil || benchmarkFlags.NArg() != 0 {
 			exitWithUsage()
 		}
-		if !remoteAddr.IA.IsZero() {
+		remoteAddrSnet := snet.UDPAddr{}
+		err = remoteAddrSnet.Set(remoteAddr)
+		if err != nil {
+			exitWithUsage()
+		}
+		if !remoteAddrSnet.IA.IsZero() {
 			initLogger(verbose)
-			runSCIONBenchmark(daemonAddr, &localAddr, &remoteAddr)
+			runSCIONBenchmark(daemonAddr, &localAddr, &remoteAddrSnet)
 		} else {
 			if daemonAddr != "" {
 				exitWithUsage()
 			}
 			initLogger(verbose)
-			runIPBenchmark(&localAddr, &remoteAddr)
+			runIPBenchmark(&localAddr, &remoteAddrSnet)
 		}
 	case drkeyFlags.Name():
 		err := drkeyFlags.Parse(os.Args[2:])

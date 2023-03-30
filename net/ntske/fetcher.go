@@ -10,11 +10,13 @@ import (
 type Fetcher struct {
 	TLSConfig tls.Config
 	Log       *zap.Logger
+	Port      string
 	data      Data
 }
 
 func (f *Fetcher) exchangeKeys() error {
-	ke, err := Connect(f.TLSConfig.ServerName, &f.TLSConfig, false)
+	serverAddr := f.TLSConfig.ServerName + ":" + f.Port
+	ke, err := Connect(serverAddr, &f.TLSConfig, true)
 	if err != nil {
 		return err
 	}
