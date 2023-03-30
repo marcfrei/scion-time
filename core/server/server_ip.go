@@ -17,6 +17,7 @@ import (
 
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/udp"
 )
 
@@ -90,7 +91,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsreq nts.NTSPacket
 		var cookies [][]byte
 		var uniqueID []byte
-		var plaintextCookie nts.PlainCookie
+		var plaintextCookie ntske.PlainCookie
 		if len(buf) > 48 {
 			authenticated = true
 
@@ -100,7 +101,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			encryptedCookie := nts.EncryptedCookie{}
+			encryptedCookie := ntske.EncryptedCookie{}
 			encryptedCookie.Decode(cookie)
 			plaintextCookie, err = encryptedCookie.Decrypt([]byte(cookiesecret), cookiekeyid)
 			if err != nil {

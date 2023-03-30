@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"example.com/scion-time/net/nts"
 	"example.com/scion-time/net/ntske"
 )
 
@@ -57,7 +56,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 		msg.AddRecord(port)
 
 		for i := 0; i < 8; i++ {
-			var plaincookie nts.PlainCookie
+			var plaincookie ntske.PlainCookie
 			plaincookie.Algo = ntske.AES_SIV_CMAC_256
 			plaincookie.C2S = ke.Meta.C2sKey
 			plaincookie.S2C = ke.Meta.S2cKey
