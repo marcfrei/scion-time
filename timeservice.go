@@ -253,8 +253,11 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr)
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+	provider := &server.Provider{}
+	provider.Init(1)
+
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr, provider)
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
 	runMonitor(log)
@@ -278,7 +281,10 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		log.Fatal("unexpected configuration", zap.Int("number of peers", len(netClocks)))
 	}
 
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+	provider := &server.Provider{}
+	provider.Init(1)
+
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
 	runMonitor(log)

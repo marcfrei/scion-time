@@ -48,7 +48,7 @@ func newIPServerMetrics() *ipServerMetrics {
 	}
 }
 
-func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, iface string) {
+func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, iface string, provider *Provider) {
 	defer conn.Close()
 	err := udp.EnableTimestamping(conn, iface)
 	if err != nil {
@@ -103,7 +103,13 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 
 			encryptedCookie := ntske.EncryptedCookie{}
 			encryptedCookie.Decode(cookie)
-			plaintextCookie, err = encryptedCookie.Decrypt([]byte(cookiesecret), cookiekeyid)
+			key, err := provider.Get(int(encryptedCookie.ID))
+			if err != nil {
+				log.Info("failed to get key", zap.Error(err))
+				continue
+			}
+
+			plaintextCookie, err = encryptedCookie.Decrypt(key.Value, key.Id)
 			if err != nil {
 				log.Info("failed to decrypt cookie", zap.Error(err))
 				continue
@@ -140,8 +146,14 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsresp nts.NTSPacket
 		if authenticated {
 			var cookiesResp [][]byte
+			key, err := provider.GetNewest()
+			if err != nil {
+				log.Info("failed to get key", zap.Error(err))
+				continue
+			}
+
 			for i := 0; i < len(cookies); i++ {
-				encrypted, err := plaintextCookie.Encrypt([]byte(cookiesecret), cookiekeyid)
+				encrypted, err := plaintextCookie.Encrypt(key.Value, key.Id)
 				if err != nil {
 					log.Info("failed to encrypt cookie", zap.Error(err))
 					continue
@@ -180,7 +192,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 }
 
 func StartIPServer(ctx context.Context, log *zap.Logger,
-	localHost *net.UDPAddr) {
+	localHost *net.UDPAddr, provider *Provider) {
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localHost.IP),
 		zap.Int("port", localHost.Port),
@@ -193,14 +205,14 @@ func StartIPServer(ctx context.Context, log *zap.Logger,
 		if err != nil {
 			log.Fatal("failed to listen for packets", zap.Error(err))
 		}
-		go runIPServer(log, mtrcs, conn, localHost.Zone)
+		go runIPServer(log, mtrcs, conn, localHost.Zone, provider)
 	} else {
 		for i := ipServerNumGoroutine; i > 0; i-- {
 			conn, err := reuseport.ListenPacket("udp", localHost.String())
 			if err != nil {
 				log.Fatal("failed to listen for packets", zap.Error(err))
 			}
-			go runIPServer(log, mtrcs, conn.(*net.UDPConn), localHost.Zone)
+			go runIPServer(log, mtrcs, conn.(*net.UDPConn), localHost.Zone, provider)
 		}
 	}
 }

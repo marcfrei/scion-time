@@ -10,12 +10,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-const (
-	cookiesecret string = "12345678901234567890123456789012"
-	cookiekeyid  int    = 17
-)
-
-func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string, timeServerPort int) {
+func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string, timeServerPort int, provider *Provider) {
 	log.Info("server NTSKE listening via IP")
 
 	for {
@@ -60,7 +55,12 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 			plaincookie.Algo = ntske.AES_SIV_CMAC_256
 			plaincookie.C2S = ke.Meta.C2sKey
 			plaincookie.S2C = ke.Meta.S2cKey
-			ecookie, err := plaincookie.Encrypt([]byte(cookiesecret), cookiekeyid)
+			key, err := provider.GetNewest()
+			if err != nil {
+				log.Info("failed to get key", zap.Error(err))
+				continue
+			}
+			ecookie, err := plaincookie.Encrypt(key.Value, key.Id)
 			if err != nil {
 				log.Info("failed to encrypt cookie", zap.Error(err))
 				continue
@@ -94,7 +94,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, ntskeAddr string) {
+func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, ntskeAddr string, provider *Provider) {
 	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
 	if err != nil {
 		log.Error("TLS Key load", zap.Error(err))
@@ -109,5 +109,5 @@ func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAd
 	}
 
 	listener, err := tls.Listen("tcp", ntskeAddr, config)
-	go runNTSKEServer(log, listener, localHost.IP.String(), localHost.Port)
+	go runNTSKEServer(log, listener, localHost.IP.String(), localHost.Port, provider)
 }
