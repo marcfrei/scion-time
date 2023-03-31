@@ -113,10 +113,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		if err != nil {
 			log.Info("failed to fetch key exchange data", zap.Error(err))
 			return offset, weight, err
-		} else {
-			remoteAddr.Port = int(ntskeData.Port)
-			remoteAddr.IP = net.ParseIP(ntskeData.Server)
 		}
+		remoteAddr.Port = int(ntskeData.Port)
+		remoteAddr.IP = net.ParseIP(ntskeData.Server)
 	}
 
 	buf := make([]byte, ntp.PacketLen)
@@ -142,7 +141,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 	var requestID []byte
 	var ntsreq nts.NTSPacket
-	if c.Auth.Enabled && ntskeData.Cookie != nil {
+	if c.Auth.Enabled {
 		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
@@ -219,7 +218,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 
 		authenticated := false
 		var ntsresp nts.NTSPacket
-		if c.Auth.Enabled && ntskeData.Cookie != nil {
+		if c.Auth.Enabled {
 			err = nts.DecodePacket(&ntsresp, buf, ntskeData.S2cKey)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {

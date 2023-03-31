@@ -1,0 +1,13 @@
+[dispatcher]
+id = "dispatcher"
+
+[metrics]
+prometheus = "127.0.0.1:30441"
+
+[features]
+
+[api]
+addr = "127.0.0.1:31141"
+
+[log.console]
+level = "info"

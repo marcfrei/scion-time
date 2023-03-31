@@ -1,0 +1,14 @@
+[Unit]
+Description=SCION Border Router
+After=network-online.target scion-dispatcher.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/scion-time/testnet/duo
+ExecStart=/home/ubuntu/scion/bin/router --config gen/%i/br1.toml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

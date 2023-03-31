@@ -1,0 +1,29 @@
+[general]
+id = "sd1-ff00_0_110"
+config_dir = "gen/ASff00_0_110"
+reconnect_to_dispatcher = true
+
+[trust_db]
+connection = "gen-cache/sd1-ff00_0_110.trust.db"
+
+[path_db]
+connection = "gen-cache/sd1-ff00_0_110.path.db"
+
+[sd]
+address = "127.0.0.1:30255"
+
+[tracing]
+
+[metrics]
+prometheus = "127.0.0.1:30455"
+
+[features]
+
+[api]
+addr = "127.0.0.1:30955"
+
+[drkey_level2_db]
+connection = "gen-cache/sd1-ff00_0_110.drkey_level2.db"
+
+[log.console]
+level = "info"

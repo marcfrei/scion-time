@@ -1,0 +1,16 @@
+[Unit]
+Description=SCION Dispatcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+ExecStartPre=rm -rf /run/shm/dispatcher
+WorkingDirectory=/home/ubuntu/scion-time/testnet/duo
+ExecStart=/home/ubuntu/scion/bin/dispatcher --config gen/%i/dispatcher.toml
+LimitNOFILE=4096
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -19,8 +19,8 @@ import (
 const (
 	refClkImpact   = 1.25
 	refClkCutoff   = 0
-	refClkTimeout  = 5 * time.Second
-	refClkInterval = 10 * time.Second
+	refClkTimeout  = 1 * time.Second
+	refClkInterval = 2 * time.Second
 	netClkImpact   = 2.5
 	netClkCutoff   = time.Microsecond
 	netClkTimeout  = 5 * time.Second

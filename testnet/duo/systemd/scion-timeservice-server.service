@@ -1,0 +1,13 @@
+[Unit]
+Description=SCION Timeservice Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/scion-time/testnet/duo
+ExecStartPre=timedatectl set-ntp false
+ExecStart=/home/ubuntu/scion-time/timeservice server -verbose -config server.toml -daemon 127.0.0.1:30255 -local 1-ff00:0:110,192.168.1.34:10123
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

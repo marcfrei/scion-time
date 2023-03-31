@@ -20,7 +20,7 @@ We are currently building out the first end-to-end implementation of G-SINC whic
 G-SINC: Global Synchronization Infrastructure for Network Clocks.  
 Marc Frei, Jonghoon Kwon, Seyedali Tabaeiaghdaei, Marc Wyss, Christoph Lenzen, and Adrian Perrig.  
 In Proceedings of the Symposium on Reliable Distributed Systems (SRDS) 2022.  
-\[[doi](https://doi.org/10.1109/SRDS55811.2022.00021)\], \[[arXiv](https://arxiv.org/abs/2207.06116)\]
+\[[pdf](https://netsec.ethz.ch/publications/papers/G-SINC.pdf)\], \[[doi](https://doi.org/10.1109/SRDS55811.2022.00021)\], \[[arXiv](https://arxiv.org/abs/2207.06116)\]
 
 
 ## Running a simple IP-based server
