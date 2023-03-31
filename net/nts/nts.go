@@ -212,20 +212,6 @@ func ExtractCookie(b []byte) (cookie []byte, err error) {
 		}
 
 		switch eh.Type {
-		case extUniqueIdentifier:
-			u := UniqueIdentifier{ExtHdr: eh}
-			err = u.unpack(msgbuf)
-			if err != nil {
-				return cookie, fmt.Errorf("unpack UniqueIdentifier: %s", err)
-			}
-
-		case extAuthenticator:
-			a := Authenticator{ExtHdr: eh}
-			err = a.unpack(msgbuf)
-			if err != nil {
-				return cookie, fmt.Errorf("unpack Authenticator: %s", err)
-			}
-
 		case extCookie:
 			cookieExt := Cookie{ExtHdr: eh}
 			err = cookieExt.unpack(msgbuf)
@@ -235,8 +221,7 @@ func ExtractCookie(b []byte) (cookie []byte, err error) {
 			return cookieExt.Cookie, nil
 
 		default:
-			// Unknown extension field. Skip it.
-			_, err := msgbuf.Seek(int64(eh.Length), io.SeekCurrent)
+			_, err := msgbuf.Seek(int64(eh.Length - uint16(binary.Size(eh))), io.SeekCurrent)
 			if err != nil {
 				return cookie, err
 			}
