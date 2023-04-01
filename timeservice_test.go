@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"strings"
+	"net"
 	"testing"
 
 	"example.com/scion-time/core/client"
@@ -13,7 +13,7 @@ import (
 )
 
 func TestTimeserviceNTSChrony(t *testing.T) {
-	initLogger(true)
+	initLogger(true /* verbose */)
 	remoteAddr := "0-0,127.0.0.1:4460"
 	localAddr := "0-0,0.0.0.0:0"
 	ntskeServer := "127.0.0.1:4460"
@@ -21,13 +21,13 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 	remoteAddrSnet := snet.UDPAddr{}
 	err := remoteAddrSnet.Set(remoteAddr)
 	if err != nil {
-		t.Fatalf("address parsing failed %v", err)
+		t.Fatalf("failed to parse address %v", err)
 	}
 
 	localAddrSnet := snet.UDPAddr{}
 	err = localAddrSnet.Set(localAddr)
 	if err != nil {
-		t.Fatalf("address parsing failed %v", err)
+		t.Fatalf("failed to parse address %v", err)
 	}
 	ctx := context.Background()
 
@@ -40,18 +40,22 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 		InterleavedMode: true,
 	}
 
-	ntskeServerName := strings.Split(ntskeServer, ":")[0]
+	ntskeServerName, port, err := net.SplitHostPort(ntskeServer)
+	if err != nil {
+		t.Fatalf("failed to split host and port %v", err)
+	}
+
 	c.Auth.Enabled = true
 	c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
 		InsecureSkipVerify: true,
 		ServerName:         ntskeServerName,
 		MinVersion:         tls.VersionTLS13,
 	}
-	c.Auth.NTSKEFetcher.Port = strings.Split(ntskeServer, ":")[1]
+	c.Auth.NTSKEFetcher.Port = port
 	c.Auth.NTSKEFetcher.Log = log
 
 	_, err = client.MeasureClockOffsetIP(ctx, log, c, laddr, raddr)
 	if err != nil {
-		t.Fatalf("request to chrony failed %v", err)
+		t.Fatalf("failed to measure clock offset %v", err)
 	}
 }
