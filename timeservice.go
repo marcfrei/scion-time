@@ -336,7 +336,11 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 		InterleavedMode: true,
 	}
 
-	ntskeServerName := strings.Split(ntskeServer, ":")[0]
+	ntskeServerName, port, err := net.SplitHostPort(ntskeServer)
+	if err != nil {
+		log.Info("failed to split host and port", zap.Error(err))
+	}
+
 	if authMode == authModeNTS {
 		c.Auth.Enabled = true
 		c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
@@ -344,7 +348,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 			ServerName:         ntskeServerName,
 			MinVersion:         tls.VersionTLS13,
 		}
-		c.Auth.NTSKEFetcher.Port = strings.Split(ntskeServer, ":")[1]
+		c.Auth.NTSKEFetcher.Port = port
 		c.Auth.NTSKEFetcher.Log = log
 	} else {
 		c.Auth.Enabled = false
@@ -552,7 +556,7 @@ func main() {
 		if err != nil || toolFlags.NArg() != 0 {
 			exitWithUsage()
 		}
-		remoteAddrSnet := snet.UDPAddr{}
+		var remoteAddrSnet snet.UDPAddr
 		err = remoteAddrSnet.Set(remoteAddr)
 		if err != nil {
 			exitWithUsage()
@@ -585,7 +589,7 @@ func main() {
 		if err != nil || benchmarkFlags.NArg() != 0 {
 			exitWithUsage()
 		}
-		remoteAddrSnet := snet.UDPAddr{}
+		var remoteAddrSnet snet.UDPAddr
 		err = remoteAddrSnet.Set(remoteAddr)
 		if err != nil {
 			exitWithUsage()
