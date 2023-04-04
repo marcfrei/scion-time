@@ -72,7 +72,7 @@ func SyncToRefClocks(log *zap.Logger, lclk timebase.LocalClock) {
 	}
 }
 
-func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
+func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen bool) {
 	if refClkImpact <= 1.0 {
 		panic("invalid reference clock impact factor")
 	}
@@ -90,6 +90,7 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
 		Name: metrics.SyncLocalCorrN,
 		Help: metrics.SyncLocalCorrH,
 	})
+	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
 	for {
 		corrGauge.Set(0)
@@ -99,7 +100,11 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
 				corr = time.Duration(float64(timemath.Sign(corr)) * maxCorr)
 			}
 			// lclk.Adjust(corr, refClkInterval, 0)
-			pll.Do(corr, 1000.0 /* weight */)
+			if useTheilSen {
+				theilSen.Do(corr)
+			} else {
+				pll.Do(corr, 1000.0 /* weight */)
+			}
 			corrGauge.Set(float64(corr))
 		}
 		lclk.Sleep(refClkInterval)
@@ -113,7 +118,7 @@ func measureOffsetToNetClocks(log *zap.Logger, timeout time.Duration) time.Durat
 	return timemath.FaultTolerantMidpoint(netClkOffsets)
 }
 
-func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
+func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen bool) {
 	if netClkImpact <= 1.0 {
 		panic("invalid network clock impact factor")
 	}
@@ -134,6 +139,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
 		Name: metrics.SyncGlobalCorrN,
 		Help: metrics.SyncGlobalCorrH,
 	})
+	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
 	for {
 		corrGauge.Set(0)
@@ -143,7 +149,11 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock) {
 				corr = time.Duration(float64(timemath.Sign(corr)) * maxCorr)
 			}
 			// lclk.Adjust(corr, netClkInterval, 0)
-			pll.Do(corr, 1000.0 /* weight */)
+			if useTheilSen {
+				theilSen.Do(corr)
+			} else {
+				pll.Do(corr, 1000.0 /* weight */)
+			}
 			corrGauge.Set(float64(corr))
 		}
 		lclk.Sleep(netClkInterval)
