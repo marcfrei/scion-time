@@ -253,10 +253,23 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
+	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
+	if err != nil {
+		log.Error("failed to load TLS key", zap.Error(err))
+		return
+	}
+
+	config := &tls.Config{
+		ServerName:   "localhost",
+		NextProtos:   []string{"ntske/1"},
+		Certificates: []tls.Certificate{certs},
+		MinVersion:   tls.VersionTLS13,
+	}
+
 	provider := &server.Provider{}
 	provider.Init(1)
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr, provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr, config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
