@@ -66,12 +66,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, timeServerIP string,
 				continue
 			}
 
-			b, err := ecookie.Encode()
-			if err != nil {
-				log.Info("failed to encode cookie", zap.Error(err))
-				continue
-			}
-
+			b := ecookie.Encode()
 			var cookie ntske.Cookie
 			cookie.Cookie = b
 

@@ -100,7 +100,12 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 			}
 
 			encryptedCookie := ntske.EncryptedCookie{}
-			encryptedCookie.Decode(cookie)
+			err = encryptedCookie.Decode(cookie)
+			if err != nil {
+				log.Info("failed to decode cookie", zap.Error(err))
+				continue
+			}
+			
 			key, err := provider.Get(int(encryptedCookie.ID))
 			if err != nil {
 				log.Info("failed to get key", zap.Error(err))
@@ -156,11 +161,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 					log.Info("failed to encrypt cookie", zap.Error(err))
 					continue
 				}
-				newCookie, err := encrypted.Encode()
-				if err != nil {
-					log.Info("failed to encode cookie", zap.Error(err))
-					continue
-				}
+				newCookie := encrypted.Encode()
 				cookiesResp = append(cookiesResp, newCookie)
 			}
 			ntsresp = nts.NewResponsePacket(buf, cookiesResp, plaintextCookie.S2C, ntsreq.UniqueID.ID)
