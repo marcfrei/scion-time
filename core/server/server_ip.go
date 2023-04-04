@@ -163,7 +163,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				}
 				cookiesResp = append(cookiesResp, newCookie)
 			}
-			ntsresp = nts.PrepareNewResponsePacket(buf, cookiesResp, plaintextCookie.S2C, ntsreq.UniqueID.ID)
+			ntsresp = nts.NewResponsePacket(buf, cookiesResp, plaintextCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
 

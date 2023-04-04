@@ -202,33 +202,33 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 	return nil
 }
 
-func ExtractCookie(b []byte) (cookie []byte, err error) {
+func ExtractCookie(b []byte) ([]byte, error) {
 	msgbuf := bytes.NewReader(b[48:])
 	for msgbuf.Len() >= 28 {
 		var eh ExtHdr
 		err := eh.unpack(msgbuf)
 		if err != nil {
-			return cookie, fmt.Errorf("unpack extension field: %s", err)
+			return nil, fmt.Errorf("unpack extension field: %s", err)
 		}
 
 		switch eh.Type {
 		case extCookie:
-			cookieExt := Cookie{ExtHdr: eh}
-			err = cookieExt.unpack(msgbuf)
+			cookie := Cookie{ExtHdr: eh}
+			err = cookie.unpack(msgbuf)
 			if err != nil {
-				return cookie, fmt.Errorf("unpack Cookie: %s", err)
+				return nil, fmt.Errorf("unpack Cookie: %s", err)
 			}
-			return cookieExt.Cookie, nil
+			return cookie.Cookie, nil
 
 		default:
 			_, err := msgbuf.Seek(int64(eh.Length - uint16(binary.Size(eh))), io.SeekCurrent)
 			if err != nil {
-				return cookie, err
+				return nil, err
 			}
 		}
 	}
 
-	return cookie, errors.New("packet not does not contain a cookie")
+	return nil, errors.New("packet not does not contain a cookie")
 }
 
 func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) error {
@@ -241,13 +241,13 @@ func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) 
 	return nil
 }
 
-func PrepareNewResponsePacket(ntpheader []byte, cookies [][]byte, key []byte, uniqueid []byte) (pkt NTSPacket) {
+func NewResponsePacket(ntpheader []byte, cookies [][]byte, key []byte, uniqueid []byte) (pkt NTSPacket) {
 	pkt.NTPHeader = ntpheader
 	var uid UniqueIdentifier
 	uid.ID = uniqueid
 	pkt.UniqueID = uid
 
-	var buf *bytes.Buffer = new(bytes.Buffer)
+	buf := new(bytes.Buffer)
 	for _, c := range cookies {
 		var cookie Cookie
 		cookie.Cookie = c
