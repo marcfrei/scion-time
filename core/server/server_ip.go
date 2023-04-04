@@ -90,22 +90,20 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var authenticated bool = false
 		var ntsreq nts.NTSPacket
 		var plaintextCookie ntske.PlainCookie
-		if len(buf) > 48 {
-			authenticated = true
-
+		if len(buf) > ntp.PacketLen {
 			cookie, err := nts.ExtractCookie(buf)
 			if err != nil {
 				log.Info("failed to extract cookie", zap.Error(err))
 				continue
 			}
 
-			encryptedCookie := ntske.EncryptedCookie{}
+			var encryptedCookie ntske.EncryptedCookie
 			err = encryptedCookie.Decode(cookie)
 			if err != nil {
 				log.Info("failed to decode cookie", zap.Error(err))
 				continue
 			}
-			
+
 			key, err := provider.Get(int(encryptedCookie.ID))
 			if err != nil {
 				log.Info("failed to get key", zap.Error(err))
@@ -123,6 +121,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				log.Info("failed to decode packet", zap.Error(err))
 				continue
 			}
+			authenticated = true
 		}
 
 		err = ntp.ValidateRequest(&ntpreq, srcAddr.Port())
@@ -148,7 +147,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 
 		var ntsresp nts.NTSPacket
 		if authenticated {
-			var cookiesResp [][]byte
+			var cookies [][]byte
 			key, err := provider.GetNewest()
 			if err != nil {
 				log.Info("failed to get key", zap.Error(err))
@@ -156,15 +155,15 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 			}
 
 			for i := 0; i < len(ntsreq.Cookies) + len(ntsreq.CookiePlaceholders); i++ {
-				encrypted, err := plaintextCookie.Encrypt(key.Value, key.Id)
+				encryptedCookie, err := plaintextCookie.Encrypt(key.Value, key.Id)
 				if err != nil {
 					log.Info("failed to encrypt cookie", zap.Error(err))
 					continue
 				}
-				newCookie := encrypted.Encode()
-				cookiesResp = append(cookiesResp, newCookie)
+				cookie := encryptedCookie.Encode()
+				cookies = append(cookies, cookie)
 			}
-			ntsresp = nts.NewResponsePacket(buf, cookiesResp, plaintextCookie.S2C, ntsreq.UniqueID.ID)
+			ntsresp = nts.NewResponsePacket(buf, cookies, plaintextCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
 
