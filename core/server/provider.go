@@ -5,14 +5,16 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"math"
 	"time"
 
+	"example.com/scion-time/core/timebase"
 	"golang.org/x/crypto/hkdf"
 )
 
 const (
-	keyValidDuration time.Duration = time.Hour * 24 * 3
-	keyRenewInterval time.Duration = time.Hour * 24
+	keyValidity        time.Duration = time.Hour * 24 * 3
+	keyRenewalInterval time.Duration = time.Hour * 24
 )
 
 type Key struct {
@@ -29,8 +31,8 @@ type Provider struct {
 	lastCreated time.Time
 }
 
-func (k *Key) isValid() bool {
-	now := time.Now()
+func (k *Key) IsValid() bool {
+	now := timebase.Now()
 	if !k.Start.Before(now) || !k.End.After(now) {
 		return false
 	}
@@ -38,70 +40,76 @@ func (k *Key) isValid() bool {
 }
 
 func (p *Provider) generateNext() (Key, error) {
+	if p.currentID == math.MaxInt {
+		panic("ID overflow")
+	}
 	p.currentID = p.currentID + 1
-	p.lastCreated = p.lastCreated.Add(keyRenewInterval)
+	p.lastCreated = p.lastCreated.Add(keyRenewalInterval)
 
-	key := Key{}
 	value := make([]byte, 32)
 	_, err := io.ReadFull(p.hkdf, value)
 	if err != nil {
-		return key, err
+		return Key{}, err
 	}
 
-	key.Value = value
-	key.Id = p.currentID
-	key.Start = p.lastCreated
-	key.End = key.Start.Add(keyValidDuration)
-
+	key := Key{
+		Value: value,
+		Id:    p.currentID,
+		Start: p.lastCreated,
+		End:   p.lastCreated.Add(keyValidity),
+	}
 	p.keys[p.currentID] = key
 
 	return key, nil
 }
 
-func (p *Provider) Init(id int) error {
+func NewProvider(id int) Provider {
+	p := Provider{}
 	p.currentID = id
 
 	key := Key{}
 	value := make([]byte, 32)
 	_, err := rand.Read(value)
 	if err != nil {
-		return err
+		panic("failed to read from rand")
 	}
 
 	p.hkdf = hkdf.New(sha256.New, value, nil, nil)
 
-	now := time.Now()
+	now := timebase.Now()
 	year, month, day := now.Date()
 
 	key.Value = value
 	key.Id = p.currentID
 	key.Start = time.Date(year, month, day, 0, 0, 0, 0, now.Location())
-	key.End = key.Start.Add(keyValidDuration)
+	key.End = key.Start.Add(keyValidity)
 
 	p.keys = make(map[int]Key)
 	p.keys[id] = key
 	p.lastCreated = key.Start
 
-	return nil
+	return p
 }
 
-func (p *Provider) Get(id int) (key Key, err error) {
-	for p.lastCreated.Add(keyRenewInterval).Before(time.Now()) {
-		p.generateNext()
+func (p *Provider) Get(id int) (Key, error) {
+	for p.lastCreated.Add(keyRenewalInterval).Before(timebase.Now()) {
+		_, err := p.generateNext()
+		return Key{}, err
 	}
 	key, ok := p.keys[id]
 	if !ok {
-		return key, errors.New("key does not exist for given id")
+		return Key{}, errors.New("key does not exist for given id")
 	}
-	if !key.isValid() {
+	if !key.IsValid() {
 		return key, errors.New("key is no longer valid")
 	}
 	return key, nil
 }
 
-func (p *Provider) GetNewest() (key Key, err error) {
-	for p.lastCreated.Add(keyRenewInterval).Before(time.Now()) {
-		p.generateNext()
+func (p *Provider) Current() (Key, error) {
+	for p.lastCreated.Add(keyRenewalInterval).Before(timebase.Now()) {
+		_, err := p.generateNext()
+		return Key{}, err
 	}
 	return p.Get(p.currentID)
 }

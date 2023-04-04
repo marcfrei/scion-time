@@ -49,7 +49,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 			plaintextCookie.Algo = ntske.AES_SIV_CMAC_256
 			plaintextCookie.C2S = ke.Meta.C2sKey
 			plaintextCookie.S2C = ke.Meta.S2cKey
-			key, err := provider.GetNewest()
+			key, err := provider.Current()
 			if err != nil {
 				log.Info("failed to get key", zap.Error(err))
 				continue

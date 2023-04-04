@@ -148,7 +148,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsresp nts.NTSPacket
 		if authenticated {
 			var cookies [][]byte
-			key, err := provider.GetNewest()
+			key, err := provider.Current()
 			if err != nil {
 				log.Info("failed to get key", zap.Error(err))
 				continue
