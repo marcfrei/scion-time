@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"strconv"
 
 	"go.uber.org/zap"
 
 	"example.com/scion-time/net/ntske"
 )
+
+const defaultNtskePort int = 4460
 
 func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *Provider) {
 	for {
@@ -84,8 +87,12 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, ntskeAddr string, config *tls.Config, provider *Provider) {
-	log.Info("NTSKE server listening via IP", zap.String("ip", ntskeAddr))
+func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, config *tls.Config, provider *Provider) {
+	ntskeAddr := net.JoinHostPort(localHost.IP.String(), strconv.Itoa(defaultNtskePort))
+	log.Info("server listening via IP",
+		zap.Stringer("ip", localHost.IP),
+		zap.Int("port", defaultNtskePort),
+	)
 
 	listener, err := tls.Listen("tcp", ntskeAddr, config)
 	if err != nil {

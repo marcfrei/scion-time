@@ -235,7 +235,7 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 	return
 }
 
-func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr string) {
+func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
 	refClocks, netClocks := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
@@ -255,7 +255,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr
 
 	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
 	if err != nil {
-		log.Error("failed to load TLS key", zap.Error(err))
+		log.Error("failed to load TLS cert", zap.Error(err))
 		return
 	}
 
@@ -268,7 +268,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, ntskeAddr
 
 	provider := server.NewProvider(1)
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), ntskeAddr, config, &provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -293,8 +293,20 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		log.Fatal("unexpected configuration", zap.Int("number of peers", len(netClocks)))
 	}
 
-	provider := server.NewProvider(1)
+	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
+	if err != nil {
+		log.Error("failed to load TLS cert", zap.Error(err))
+		return
+	}
 
+	config := &tls.Config{
+		ServerName:   "localhost",
+		NextProtos:   []string{"ntske/1"},
+		Certificates: []tls.Certificate{certs},
+		MinVersion:   tls.VersionTLS13,
+	}
+	provider := server.NewProvider(1)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -490,7 +502,6 @@ func main() {
 		drkeyServerAddr         snet.UDPAddr
 		drkeyClientAddr         snet.UDPAddr
 		authMode                string
-		ntskeServerName         string
 		ntskeInsecureSkipVerify bool
 	)
 
@@ -505,7 +516,6 @@ func main() {
 	serverFlags.StringVar(&configFile, "config", "", "Config file")
 	serverFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	serverFlags.Var(&localAddr, "local", "Local address")
-	serverFlags.StringVar(&ntskeServerName, "ntske-server", "", "NTSKE server name")
 
 	relayFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	relayFlags.StringVar(&configFile, "config", "", "Config file")
@@ -547,7 +557,7 @@ func main() {
 			exitWithUsage()
 		}
 		initLogger(verbose)
-		runServer(configFile, daemonAddr, &localAddr, ntskeServerName)
+		runServer(configFile, daemonAddr, &localAddr)
 	case relayFlags.Name():
 		err := relayFlags.Parse(os.Args[2:])
 		if err != nil || relayFlags.NArg() != 0 {
@@ -591,7 +601,7 @@ func main() {
 			if authMode != "" && authMode != authModeNTS {
 				exitWithUsage()
 			}
-			ntskeServerName = strings.Split(remoteAddr, ",")[1]
+			ntskeServerName := strings.Split(remoteAddr, ",")[1]
 			initLogger(verbose)
 			runIPTool(&localAddr, &remoteAddrSnet, authMode, ntskeServerName, ntskeInsecureSkipVerify)
 		}
