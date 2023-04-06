@@ -9,6 +9,13 @@ import (
 	"example.com/scion-time/core/timebase"
 )
 
+/*
+This provider is set up to be used concurrently by the NTSKE and time servers.
+In case they should not run on the same machine one option would be to synchronize
+an initial key once at startup of the servers and then each of them will separately
+create the next key each day using some key derivation function like hkdf.
+*/
+
 const (
 	keyValidity        time.Duration = time.Hour * 24 * 3
 	keyRenewalInterval time.Duration = time.Hour * 24
