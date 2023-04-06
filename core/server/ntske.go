@@ -11,7 +11,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-const defaultNtskePort int = 4460
+const defaultNtskePort int = 4600
 
 func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *ntske.Provider) {
 	for {
@@ -47,12 +47,12 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 			Port: uint16(localHost.Port),
 		})
 
+		var plaintextCookie ntske.PlainCookie
+		plaintextCookie.Algo = ntske.AES_SIV_CMAC_256
+		plaintextCookie.C2S = ke.Meta.C2sKey
+		plaintextCookie.S2C = ke.Meta.S2cKey
+		key := provider.Current()
 		for i := 0; i < 8; i++ {
-			var plaintextCookie ntske.PlainCookie
-			plaintextCookie.Algo = ntske.AES_SIV_CMAC_256
-			plaintextCookie.C2S = ke.Meta.C2sKey
-			plaintextCookie.S2C = ke.Meta.S2cKey
-			key := provider.Current()
 			encryptedCookie, err := plaintextCookie.Encrypt(key.Value, key.Id)
 			if err != nil {
 				log.Info("failed to encrypt cookie", zap.Error(err))
@@ -60,14 +60,12 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 			}
 
 			b := encryptedCookie.Encode()
-			var cookie ntske.Cookie
-			cookie.Cookie = b
-
-			msg.AddRecord(cookie)
+			msg.AddRecord(ntske.Cookie{
+				Cookie: b,
+			})
 		}
 
-		var end ntske.End
-		msg.AddRecord(end)
+		msg.AddRecord(ntske.End{})
 
 		buf, err := msg.Pack()
 		if err != nil {
