@@ -1,4 +1,4 @@
-package server
+package ntske
 
 import (
 	"crypto/rand"
@@ -63,9 +63,9 @@ func (p *Provider) generateNext() (Key, error) {
 	return key, nil
 }
 
-func NewProvider(id int) Provider {
+func NewProvider() Provider {
 	p := Provider{}
-	p.currentID = id
+	p.currentID = 1
 
 	key := Key{}
 	value := make([]byte, 32)
@@ -85,7 +85,7 @@ func NewProvider(id int) Provider {
 	key.End = key.Start.Add(keyValidity)
 
 	p.keys = make(map[int]Key)
-	p.keys[id] = key
+	p.keys[p.currentID] = key
 	p.lastCreated = key.Start
 
 	return p

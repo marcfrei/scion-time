@@ -36,6 +36,7 @@ import (
 	"example.com/scion-time/driver/clock"
 	"example.com/scion-time/driver/mbg"
 
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -266,7 +267,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		MinVersion:   tls.VersionTLS13,
 	}
 
-	provider := server.NewProvider(1)
+	provider := ntske.NewProvider()
 
 	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
@@ -305,7 +306,7 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		Certificates: []tls.Certificate{certs},
 		MinVersion:   tls.VersionTLS13,
 	}
-	provider := server.NewProvider(1)
+	provider := ntske.NewProvider()
 	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))

@@ -13,7 +13,7 @@ import (
 
 const defaultNtskePort int = 4460
 
-func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *Provider) {
+func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *ntske.Provider) {
 	for {
 		ke, err := ntske.NewListener(listener)
 		if err != nil {
@@ -87,7 +87,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, config *tls.Config, provider *Provider) {
+func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, config *tls.Config, provider *ntske.Provider) {
 	ntskeAddr := net.JoinHostPort(localHost.IP.String(), strconv.Itoa(defaultNtskePort))
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localHost.IP),

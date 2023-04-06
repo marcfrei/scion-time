@@ -48,7 +48,7 @@ func newIPServerMetrics() *ipServerMetrics {
 	}
 }
 
-func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, iface string, provider *Provider) {
+func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, iface string, provider *ntske.Provider) {
 	defer conn.Close()
 	err := udp.EnableTimestamping(conn, iface)
 	if err != nil {
@@ -190,7 +190,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 }
 
 func StartIPServer(ctx context.Context, log *zap.Logger,
-	localHost *net.UDPAddr, provider *Provider) {
+	localHost *net.UDPAddr, provider *ntske.Provider) {
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localHost.IP),
 		zap.Int("port", localHost.Port),
