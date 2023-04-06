@@ -269,8 +269,8 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 
 	provider := ntske.NewProvider()
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
 	runMonitor(log)
@@ -307,8 +307,8 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		MinVersion:   tls.VersionTLS13,
 	}
 	provider := ntske.NewProvider()
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, &provider)
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
 	runMonitor(log)

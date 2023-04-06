@@ -2,14 +2,12 @@ package ntske
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"errors"
-	"io"
 	"math"
+	"sync"
 	"time"
 
 	"example.com/scion-time/core/timebase"
-	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -27,8 +25,8 @@ type Key struct {
 type Provider struct {
 	keys        map[int]Key
 	currentID   int
-	hkdf        io.Reader
-	lastCreated time.Time
+	generatedAt time.Time
+	lock        sync.Mutex
 }
 
 func (k *Key) IsValid() bool {
@@ -39,62 +37,48 @@ func (k *Key) IsValid() bool {
 	return true
 }
 
-func (p *Provider) generateNext() (Key, error) {
+func (p *Provider) generateNext() {
+	for id, key := range p.keys {
+		if !key.IsValid() {
+			delete(p.keys, id)
+		}
+	}
+	
 	if p.currentID == math.MaxInt {
 		panic("ID overflow")
 	}
 	p.currentID = p.currentID + 1
-	p.lastCreated = p.lastCreated.Add(keyRenewalInterval)
+	p.generatedAt = timebase.Now()
 
-	value := make([]byte, 32)
-	_, err := io.ReadFull(p.hkdf, value)
-	if err != nil {
-		return Key{}, err
-	}
-
-	key := Key{
-		Value: value,
-		Id:    p.currentID,
-		Start: p.lastCreated,
-		End:   p.lastCreated.Add(keyValidity),
-	}
-	p.keys[p.currentID] = key
-
-	return key, nil
-}
-
-func NewProvider() Provider {
-	p := Provider{}
-	p.currentID = 1
-
-	key := Key{}
 	value := make([]byte, 32)
 	_, err := rand.Read(value)
 	if err != nil {
 		panic("failed to read from rand")
 	}
 
-	p.hkdf = hkdf.New(sha256.New, value, nil, nil)
-
-	now := timebase.Now()
-	year, month, day := now.Date()
-
-	key.Value = value
-	key.Id = p.currentID
-	key.Start = time.Date(year, month, day, 0, 0, 0, 0, now.Location())
-	key.End = key.Start.Add(keyValidity)
-
-	p.keys = make(map[int]Key)
+	key := Key{
+		Value: value,
+		Id:    p.currentID,
+		Start: p.generatedAt,
+		End:   p.generatedAt.Add(keyValidity),
+	}
 	p.keys[p.currentID] = key
-	p.lastCreated = key.Start
+}
 
+func NewProvider() *Provider {
+	p := &Provider{}
+	p.currentID = 0
+	p.keys = make(map[int]Key)
+	p.generateNext()
 	return p
 }
 
 func (p *Provider) Get(id int) (Key, error) {
-	for p.lastCreated.Add(keyRenewalInterval).Before(timebase.Now()) {
-		_, err := p.generateNext()
-		return Key{}, err
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if p.generatedAt.Add(keyRenewalInterval).Before(timebase.Now()) {
+		p.generateNext()
 	}
 	key, ok := p.keys[id]
 	if !ok {
@@ -107,9 +91,10 @@ func (p *Provider) Get(id int) (Key, error) {
 }
 
 func (p *Provider) Current() (Key, error) {
-	for p.lastCreated.Add(keyRenewalInterval).Before(timebase.Now()) {
-		_, err := p.generateNext()
-		return Key{}, err
+	p.lock.Lock()
+	if p.generatedAt.Add(keyRenewalInterval).Before(timebase.Now()) {
+		p.generateNext()
 	}
+	p.lock.Unlock()
 	return p.Get(p.currentID)
 }
