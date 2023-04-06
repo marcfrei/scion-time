@@ -11,7 +11,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-const defaultNtskePort int = 4600
+const defaultNtskePort int = 4460
 
 func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *ntske.Provider) {
 	for {
