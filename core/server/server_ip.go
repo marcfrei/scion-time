@@ -104,8 +104,8 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			key, err := provider.Get(int(encryptedCookie.ID))
-			if err != nil {
+			key, ok := provider.Get(int(encryptedCookie.ID))
+			if !ok {
 				log.Info("failed to get key", zap.Error(err))
 				continue
 			}
@@ -148,13 +148,8 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsresp nts.NTSPacket
 		if authenticated {
 			var cookies [][]byte
-			key, err := provider.Current()
-			if err != nil {
-				log.Info("failed to get key", zap.Error(err))
-				continue
-			}
-
-			for i := 0; i < len(ntsreq.Cookies) + len(ntsreq.CookiePlaceholders); i++ {
+			key := provider.Current()
+			for i := 0; i < len(ntsreq.Cookies)+len(ntsreq.CookiePlaceholders); i++ {
 				encryptedCookie, err := plaintextCookie.Encrypt(key.Value, key.Id)
 				if err != nil {
 					log.Info("failed to encrypt cookie", zap.Error(err))

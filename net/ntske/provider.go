@@ -2,7 +2,6 @@ package ntske
 
 import (
 	"crypto/rand"
-	"errors"
 	"math"
 	"sync"
 	"time"
@@ -43,7 +42,7 @@ func (p *Provider) generateNext() {
 			delete(p.keys, id)
 		}
 	}
-	
+
 	if p.currentID == math.MaxInt {
 		panic("ID overflow")
 	}
@@ -73,28 +72,27 @@ func NewProvider() *Provider {
 	return p
 }
 
-func (p *Provider) Get(id int) (Key, error) {
+func (p *Provider) Get(id int) (Key, bool) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	key, ok := p.keys[id]
+	if !ok {
+		return Key{}, false
+	}
+	if !key.IsValid() {
+		return key, false
+	}
+	return key, true
+}
+
+func (p *Provider) Current() Key {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
 	if p.generatedAt.Add(keyRenewalInterval).Before(timebase.Now()) {
 		p.generateNext()
 	}
-	key, ok := p.keys[id]
-	if !ok {
-		return Key{}, errors.New("key does not exist for given id")
-	}
-	if !key.IsValid() {
-		return key, errors.New("key is no longer valid")
-	}
-	return key, nil
-}
 
-func (p *Provider) Current() (Key, error) {
-	p.lock.Lock()
-	if p.generatedAt.Add(keyRenewalInterval).Before(timebase.Now()) {
-		p.generateNext()
-	}
-	p.lock.Unlock()
-	return p.Get(p.currentID)
+	return p.keys[p.currentID]
 }
