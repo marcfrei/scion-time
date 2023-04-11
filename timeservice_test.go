@@ -21,14 +21,15 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 	remoteAddrSnet := snet.UDPAddr{}
 	err := remoteAddrSnet.Set(remoteAddr)
 	if err != nil {
-		t.Fatalf("failed to parse address %v", err)
+		t.Fatalf("failed to parse remote address %v", err)
 	}
 
 	localAddrSnet := snet.UDPAddr{}
 	err = localAddrSnet.Set(localAddr)
 	if err != nil {
-		t.Fatalf("failed to parse address %v", err)
+		t.Fatalf("failed to parse local address %v", err)
 	}
+
 	ctx := context.Background()
 
 	lclk := &clock.SystemClock{Log: log}
@@ -40,18 +41,18 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 		InterleavedMode: true,
 	}
 
-	ntskeServerName, port, err := net.SplitHostPort(ntskeServer)
+	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
-		t.Fatalf("failed to split host and port %v", err)
+		t.Fatalf("failed to split NTS-KE host and port %v", err)
 	}
 
 	c.Auth.Enabled = true
 	c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
 		InsecureSkipVerify: true,
-		ServerName:         ntskeServerName,
+		ServerName:         ntskeHost,
 		MinVersion:         tls.VersionTLS13,
 	}
-	c.Auth.NTSKEFetcher.Port = port
+	c.Auth.NTSKEFetcher.Port = ntskePort
 	c.Auth.NTSKEFetcher.Log = log
 
 	_, err = client.MeasureClockOffsetIP(ctx, log, c, laddr, raddr)
