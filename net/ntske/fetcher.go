@@ -9,8 +9,8 @@ import (
 )
 
 type Fetcher struct {
-	TLSConfig tls.Config
 	Log       *zap.Logger
+	TLSConfig tls.Config
 	Port      string
 	data      Data
 }
