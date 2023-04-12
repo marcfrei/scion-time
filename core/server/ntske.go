@@ -47,7 +47,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 			Port: uint16(localHost.Port),
 		})
 
-		var plaintextCookie ntske.PlainCookie
+		var plaintextCookie ntske.ServerCookie
 		plaintextCookie.Algo = ntske.AES_SIV_CMAC_256
 		plaintextCookie.C2S = ke.Meta.C2sKey
 		plaintextCookie.S2C = ke.Meta.S2cKey

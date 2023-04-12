@@ -20,7 +20,7 @@ const (
 
 var errUnexpectedCookieData = errors.New("unexpected cookie data")
 
-type PlainCookie struct {
+type ServerCookie struct {
 	Algo uint16
 	S2C  []byte
 	C2S  []byte
@@ -29,7 +29,7 @@ type PlainCookie struct {
 // Encodes cookie to byte slice with following format for each field
 // uint16 | uint16 | []byte
 // type   | length | value
-func (c *PlainCookie) Encode() []byte {
+func (c *ServerCookie) Encode() []byte {
 	var cookiesize int = 3*4 + 2 + len(c.C2S) + len(c.S2C)
 	b := make([]byte, cookiesize)
 	binary.BigEndian.PutUint16(b[0:], cookieTypeAlgorithm)
@@ -45,7 +45,7 @@ func (c *PlainCookie) Encode() []byte {
 	return b
 }
 
-func (c *PlainCookie) Decode(b []byte) error {
+func (c *ServerCookie) Decode(b []byte) error {
 	var pos int = 0
 	field_algo, field_s2c, field_c2s := false, false, false
 	for pos < len(b) {
@@ -72,13 +72,13 @@ func (c *PlainCookie) Decode(b []byte) error {
 	return nil
 }
 
-type EncryptedCookie struct {
+type EncryptedServerCookie struct {
 	ID         uint16
 	Nonce      []byte
 	Ciphertext []byte
 }
 
-func (c *EncryptedCookie) Encode() []byte {
+func (c *EncryptedServerCookie) Encode() []byte {
 	var encryptedcookiesize int = 3*4 + 2 + len(c.Nonce) + len(c.Ciphertext)
 	b := make([]byte, encryptedcookiesize)
 	binary.BigEndian.PutUint16(b[0:], cookieTypeKeyID)
@@ -94,7 +94,7 @@ func (c *EncryptedCookie) Encode() []byte {
 	return b
 }
 
-func (c *EncryptedCookie) Decode(b []byte) error {
+func (c *EncryptedServerCookie) Decode(b []byte) error {
 	var pos int = 0
 	field_id, field_nonce, field_ciphertext := false, false, false
 	for pos < len(b) {
@@ -121,21 +121,21 @@ func (c *EncryptedCookie) Decode(b []byte) error {
 	return nil
 }
 
-func (c *PlainCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedCookie, error) {
+func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerCookie, error) {
 	bits := make([]byte, 16)
 	_, err := rand.Read(bits)
 	if err != nil {
-		return EncryptedCookie{}, err
+		return EncryptedServerCookie{}, err
 	}
 
 	aessiv, err := siv.NewCMAC(key)
 	if err != nil {
-		return EncryptedCookie{}, err
+		return EncryptedServerCookie{}, err
 	}
 
 	b := c.Encode()
 
-	var ecookie EncryptedCookie
+	var ecookie EncryptedServerCookie
 	ecookie.ID = uint16(keyid)
 	ecookie.Nonce = bits
 	ecookie.Ciphertext = aessiv.Seal(nil /* dst */, ecookie.Nonce, b, nil /* additionalData */)
@@ -143,25 +143,25 @@ func (c *PlainCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedCookie, 
 	return ecookie, nil
 }
 
-func (c *EncryptedCookie) Decrypt(key []byte, keyid int) (PlainCookie, error) {
+func (c *EncryptedServerCookie) Decrypt(key []byte, keyid int) (ServerCookie, error) {
 	if c.ID != uint16(keyid) {
-		return PlainCookie{}, errors.New("Wrong Key ID")
+		return ServerCookie{}, errors.New("Wrong Key ID")
 	}
 
 	aessiv, err := siv.NewCMAC(key)
 	if err != nil {
-		return PlainCookie{}, err
+		return ServerCookie{}, err
 	}
 
 	b, err := aessiv.Open(nil /* dst */, c.Nonce, c.Ciphertext, nil /* additionalData */)
 	if err != nil {
-		return PlainCookie{}, err
+		return ServerCookie{}, err
 	}
 
-	var cookie PlainCookie
+	var cookie ServerCookie
 	err = cookie.Decode(b)
 	if err != nil {
-		return PlainCookie{}, err
+		return ServerCookie{}, err
 	}
 	return cookie, nil
 }
