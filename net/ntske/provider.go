@@ -5,8 +5,6 @@ import (
 	"math"
 	"sync"
 	"time"
-
-	"example.com/scion-time/core/timebase"
 )
 
 /*
@@ -29,14 +27,14 @@ type Key struct {
 }
 
 type Provider struct {
+	mu          sync.Mutex
 	keys        map[int]Key
 	currentID   int
 	generatedAt time.Time
-	lock        sync.Mutex
 }
 
 func (k *Key) IsValid() bool {
-	now := timebase.Now()
+	now := time.Now()
 	if !k.Start.Before(now) || !k.End.After(now) {
 		return false
 	}
@@ -54,7 +52,7 @@ func (p *Provider) generateNext() {
 		panic("ID overflow")
 	}
 	p.currentID = p.currentID + 1
-	p.generatedAt = timebase.Now()
+	p.generatedAt = time.Now()
 
 	value := make([]byte, 32)
 	_, err := rand.Read(value)
@@ -73,15 +71,14 @@ func (p *Provider) generateNext() {
 
 func NewProvider() *Provider {
 	p := &Provider{}
-	p.currentID = 0
 	p.keys = make(map[int]Key)
 	p.generateNext()
 	return p
 }
 
 func (p *Provider) Get(id int) (Key, bool) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	key, ok := p.keys[id]
 	if !ok {
@@ -94,10 +91,10 @@ func (p *Provider) Get(id int) (Key, bool) {
 }
 
 func (p *Provider) Current() Key {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	if p.generatedAt.Add(keyRenewalInterval).Before(timebase.Now()) {
+	if p.generatedAt.Add(keyRenewalInterval).Before(time.Now()) {
 		p.generateNext()
 	}
 
