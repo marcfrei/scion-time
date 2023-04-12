@@ -615,9 +615,9 @@ func main() {
 			if authMode != "" && authMode != authModeNTS {
 				exitWithUsage()
 			}
-			ntskeServerName := strings.Split(remoteAddrStr, ",")[1]
+			ntskeServer := strings.Split(remoteAddrStr, ",")[1]
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServerName, ntskeInsecureSkipVerify)
+			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServer, ntskeInsecureSkipVerify)
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
