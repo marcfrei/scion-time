@@ -173,7 +173,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 				return fmt.Errorf("unpack Cookie: %s", err)
 			}
 			pkt.Cookies = append(pkt.Cookies, cookie)
-		
+
 		case extCookiePlaceholder:
 			cookie := CookiePlaceholder{ExtHdr: eh}
 			err = cookie.unpack(msgbuf)
@@ -196,7 +196,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 		return errors.New("packet does not contain a valid authenticator")
 	}
 	if !unique {
-		return errors.New("packet not does not contain a unique identifier")
+		return errors.New("packet does not contain a unique identifier")
 	}
 
 	return nil
@@ -221,22 +221,22 @@ func ExtractCookie(b []byte) ([]byte, error) {
 			return cookie.Cookie, nil
 
 		default:
-			_, err := msgbuf.Seek(int64(eh.Length - uint16(binary.Size(eh))), io.SeekCurrent)
+			_, err := msgbuf.Seek(int64(eh.Length-uint16(binary.Size(eh))), io.SeekCurrent)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
 
-	return nil, errors.New("packet not does not contain a cookie")
+	return nil, errors.New("packet does not contain a cookie")
 }
 
 func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) error {
-	for _, cookie := range pkt.Cookies {
-		ntskeFetcher.StoreCookie(cookie.Cookie)
-	}
 	if !bytes.Equal(reqID, pkt.UniqueID.ID) {
 		return errors.New("unexpected response ID")
+	}
+	for _, cookie := range pkt.Cookies {
+		ntskeFetcher.StoreCookie(cookie.Cookie)
 	}
 	return nil
 }
