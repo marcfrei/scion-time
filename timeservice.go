@@ -53,6 +53,9 @@ type svcConfig struct {
 	MBGReferenceClocks []string `toml:"mbg_reference_clocks,omitempty"`
 	NTPReferenceClocks []string `toml:"ntp_reference_clocks,omitempty"`
 	SCIONPeers         []string `toml:"scion_peers,omitempty"`
+	NTSKECertFile      string   `toml:"ntske_cert_file,omitempty"`
+	NTSKEKeyFile       string   `toml:"ntske_key_file,omitempty"`
+	NTSKEServerName    string   `toml:"ntske_server_name,omitempty"`
 }
 
 type mbgReferenceClock struct {
@@ -236,6 +239,38 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 	return
 }
 
+func loadNTSKEConfig(log *zap.Logger, configFile string) tls.Config {
+	if configFile == "" {
+		panic("no config file given")
+	}
+
+	var cfg svcConfig
+	raw, err := os.ReadFile(configFile)
+	if err != nil {
+		log.Fatal("failed to load configuration", zap.Error(err))
+	}
+	err = toml.NewDecoder(bytes.NewReader(raw)).Strict(true).Decode(&cfg)
+	if err != nil {
+		log.Fatal("failed to decode configuration", zap.Error(err))
+	}
+
+	if cfg.NTSKEServerName == "" || cfg.NTSKECertFile == "" || cfg.NTSKEKeyFile == "" {
+		log.Fatal("missing parameters in configuration for NTSKE server")
+	}
+
+	cert, err := tls.LoadX509KeyPair(cfg.NTSKECertFile, cfg.NTSKEKeyFile)
+	if err != nil {
+		log.Fatal("failed to load TLS cert", zap.Error(err))
+	}
+
+	return tls.Config{
+		ServerName:   cfg.NTSKEServerName,
+		NextProtos:   []string{"ntske/1"},
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS13,
+	}
+}
+
 func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
@@ -254,22 +289,10 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
-	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
-	if err != nil {
-		log.Error("failed to load TLS cert", zap.Error(err))
-		return
-	}
-
-	config := &tls.Config{
-		ServerName:   "localhost",
-		NextProtos:   []string{"ntske/1"},
-		Certificates: []tls.Certificate{certs},
-		MinVersion:   tls.VersionTLS13,
-	}
-
+	config := loadNTSKEConfig(log, configFile)
 	provider := ntske.NewProvider()
-
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
+	
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -294,20 +317,10 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		log.Fatal("unexpected configuration", zap.Int("number of peers", len(netClocks)))
 	}
 
-	certs, err := tls.LoadX509KeyPair("./testnet/gen/tls.crt", "./testnet/gen/tls.key")
-	if err != nil {
-		log.Error("failed to load TLS cert", zap.Error(err))
-		return
-	}
-
-	config := &tls.Config{
-		ServerName:   "localhost",
-		NextProtos:   []string{"ntske/1"},
-		Certificates: []tls.Certificate{certs},
-		MinVersion:   tls.VersionTLS13,
-	}
+	config := loadNTSKEConfig(log, configFile)
 	provider := ntske.NewProvider()
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
+
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -497,7 +510,7 @@ func main() {
 		configFile              string
 		daemonAddr              string
 		localAddr               snet.UDPAddr
-		remoteAddrStr              string
+		remoteAddrStr           string
 		dispatcherMode          string
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr

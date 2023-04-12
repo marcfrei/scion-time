@@ -1,0 +1,3 @@
+ntske_cert_file = "./testnet/gen/tls.crt"
+ntske_key_file = "./testnet/gen/tls.key"
+ntske_server_name = "localhost"
