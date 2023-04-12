@@ -19,14 +19,12 @@ const (
 	keyRenewalInterval time.Duration = time.Hour * 24
 )
 
-
-
 type Key struct {
-	Id    int
-	Value []byte
+	Id       int
+	Value    []byte
 	Validity struct {
 		NotBefore time.Time
-		NotAfter time.Time
+		NotAfter  time.Time
 	}
 }
 
