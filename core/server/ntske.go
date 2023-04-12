@@ -53,7 +53,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 		plaintextCookie.S2C = ke.Meta.S2cKey
 		key := provider.Current()
 		for i := 0; i < 8; i++ {
-			encryptedCookie, err := plaintextCookie.Encrypt(key.Value, key.Id)
+			encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.Id)
 			if err != nil {
 				log.Info("failed to encrypt cookie", zap.Error(err))
 				continue

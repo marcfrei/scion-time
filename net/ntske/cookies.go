@@ -121,7 +121,7 @@ func (c *EncryptedCookie) Decode(b []byte) error {
 	return nil
 }
 
-func (c *PlainCookie) Encrypt(key []byte, keyid int) (EncryptedCookie, error) {
+func (c *PlainCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedCookie, error) {
 	bits := make([]byte, 16)
 	_, err := rand.Read(bits)
 	if err != nil {
