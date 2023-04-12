@@ -110,7 +110,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			plaintextCookie, err = encryptedCookie.Decrypt(key.Value, key.Id)
+			plaintextCookie, err = encryptedCookie.Decrypt(key.Value)
 			if err != nil {
 				log.Info("failed to decrypt cookie", zap.Error(err))
 				continue

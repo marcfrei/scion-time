@@ -143,11 +143,7 @@ func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerC
 	return ecookie, nil
 }
 
-func (c *EncryptedServerCookie) Decrypt(key []byte, keyid int) (ServerCookie, error) {
-	if c.ID != uint16(keyid) {
-		return ServerCookie{}, errors.New("Wrong Key ID")
-	}
-
+func (c *EncryptedServerCookie) Decrypt(key []byte) (ServerCookie, error) {
 	aessiv, err := siv.NewCMAC(key)
 	if err != nil {
 		return ServerCookie{}, err
