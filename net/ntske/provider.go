@@ -19,11 +19,15 @@ const (
 	keyRenewalInterval time.Duration = time.Hour * 24
 )
 
+
+
 type Key struct {
 	Id    int
 	Value []byte
-	Start time.Time
-	End   time.Time
+	Validity struct {
+		NotBefore time.Time
+		NotAfter time.Time
+	}
 }
 
 type Provider struct {
@@ -35,7 +39,7 @@ type Provider struct {
 
 func (k *Key) IsValid() bool {
 	now := time.Now()
-	if !k.Start.Before(now) || !k.End.After(now) {
+	if now.Before(k.Validity.NotBefore) || now.After(k.Validity.NotAfter) {
 		return false
 	}
 	return true
@@ -63,9 +67,10 @@ func (p *Provider) generateNext() {
 	key := Key{
 		Value: value,
 		Id:    p.currentID,
-		Start: p.generatedAt,
-		End:   p.generatedAt.Add(keyValidity),
 	}
+	key.Validity.NotBefore = p.generatedAt
+	key.Validity.NotAfter = p.generatedAt.Add(keyValidity)
+
 	p.keys[p.currentID] = key
 }
 
@@ -85,7 +90,7 @@ func (p *Provider) Get(id int) (Key, bool) {
 		return Key{}, false
 	}
 	if !key.IsValid() {
-		return key, false
+		return Key{}, false
 	}
 	return key, true
 }
