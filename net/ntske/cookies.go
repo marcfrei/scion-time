@@ -18,6 +18,8 @@ const (
 	cookieTypeCiphertext uint16 = 0x601
 )
 
+var errUnexpectedCookieData = errors.New("unexpected cookie data")
+
 type PlainCookie struct {
 	Algo uint16
 	S2C  []byte
@@ -62,10 +64,10 @@ func (c *PlainCookie) Decode(b []byte) error {
 		pos += 4 + int(len)
 	}
 	if pos != len(b) {
-		return errors.New("plain cookie has unexpected length")
+		return errUnexpectedCookieData
 	}
 	if !(field_algo && field_s2c && field_c2s) {
-		return errors.New("plain cookie has missing fields")
+		return errUnexpectedCookieData
 	}
 	return nil
 }
@@ -111,10 +113,10 @@ func (c *EncryptedCookie) Decode(b []byte) error {
 		pos += 4 + int(len)
 	}
 	if pos != len(b) {
-		return errors.New("encrypted cookie has unexpected length")
+		return errUnexpectedCookieData
 	}
 	if !(field_id && field_nonce && field_ciphertext) {
-		return errors.New("encrypted cookie has missing fields")
+		return errUnexpectedCookieData
 	}
 	return nil
 }
@@ -159,7 +161,7 @@ func (c *EncryptedCookie) Decrypt(key []byte, keyid int) (PlainCookie, error) {
 	var cookie PlainCookie
 	err = cookie.Decode(b)
 	if err != nil {
-		return cookie, err
+		return PlainCookie{}, err
 	}
 	return cookie, nil
 }
