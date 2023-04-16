@@ -345,7 +345,7 @@ func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 		}
 	}
 	if scionClocksAvailable {
-		server.StartSCIONDisptacher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
 	if len(refClocks) != 0 {
@@ -405,7 +405,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	timebase.RegisterClock(lclk)
 
 	if dispatcherMode == dispatcherModeInternal {
-		server.StartSCIONDisptacher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
 	dc := newDaemonConnector(ctx, log, daemonAddr)

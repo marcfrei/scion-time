@@ -1,4 +1,9 @@
 .DS_Store
+certs
+crypto
+keys
+trcs
+
 timeservice
 *.key
 *.crt

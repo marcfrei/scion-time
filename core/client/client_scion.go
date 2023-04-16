@@ -20,6 +20,7 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
+	"example.com/scion-time/core/config"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -168,6 +169,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	ntp.EncodePacket(&buf, &ntpreq)
 
 	var scionLayer slayers.SCION
+	scionLayer.TrafficClass = config.DSCP<<2
 	scionLayer.SrcIA = localAddr.IA
 	err = scionLayer.SetSrcAddr(srcAddr)
 	if err != nil {
@@ -431,10 +433,13 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 			return offset, weight, err
 		}
 
+		dscp := scionLayer.TrafficClass>>2
+
 		log.Debug("received response",
 			zap.Time("at", cRxTime),
 			zap.String("from", reference),
 			zap.Stringer("via", lastHop),
+			zap.Uint8("DSCP", dscp),
 			zap.Bool("auth", authenticated),
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpresp}),
 		)

@@ -22,6 +22,7 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
+	"example.com/scion-time/core/config"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -282,12 +283,14 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 				continue
 			}
 
+			dscp := scionLayer.TrafficClass>>2
 			clientID := scionLayer.SrcIA.String() + "," + srcAddr.String()
 
 			mtrcs.reqsAccepted.Inc()
 			log.Debug("received request",
 				zap.Time("at", rxt),
 				zap.String("from", clientID),
+				zap.Uint8("DSCP", dscp),
 				zap.Bool("auth", authenticated),
 				zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpreq}),
 			)
@@ -296,6 +299,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			var ntpresp ntp.Packet
 			handleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 
+			scionLayer.TrafficClass = config.DSCP<<2
 			scionLayer.DstIA, scionLayer.SrcIA = scionLayer.SrcIA, scionLayer.DstIA
 			scionLayer.DstAddrType, scionLayer.SrcAddrType = scionLayer.SrcAddrType, scionLayer.DstAddrType
 			scionLayer.RawDstAddr, scionLayer.RawSrcAddr = scionLayer.RawSrcAddr, scionLayer.RawDstAddr
@@ -432,7 +436,7 @@ func StartSCIONServer(ctx context.Context, log *zap.Logger,
 	}
 }
 
-func StartSCIONDisptacher(ctx context.Context, log *zap.Logger,
+func StartSCIONDispatcher(ctx context.Context, log *zap.Logger,
 	localHost *net.UDPAddr) {
 	log.Info("dispatcher listening via SCION",
 		zap.Stringer("ip", localHost.IP),
