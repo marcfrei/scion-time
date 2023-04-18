@@ -35,17 +35,17 @@ type Provider struct {
 	generatedAt time.Time
 }
 
-func (k *Key) IsValid() bool {
-	now := time.Now()
-	if now.Before(k.Validity.NotBefore) || now.After(k.Validity.NotAfter) {
+func (k *Key) IsValidAt(t time.Time) bool {
+	if t.Before(k.Validity.NotBefore) || t.After(k.Validity.NotAfter) {
 		return false
 	}
 	return true
 }
 
 func (p *Provider) generateNext() {
+	t := time.Now()
 	for id, key := range p.keys {
-		if !key.IsValid() {
+		if !key.IsValidAt(t) {
 			delete(p.keys, id)
 		}
 	}
@@ -54,7 +54,7 @@ func (p *Provider) generateNext() {
 		panic("ID overflow")
 	}
 	p.currentID = p.currentID + 1
-	p.generatedAt = time.Now()
+	p.generatedAt = t
 
 	value := make([]byte, 32)
 	_, err := rand.Read(value)
@@ -87,7 +87,7 @@ func (p *Provider) Get(id int) (Key, bool) {
 	if !ok {
 		return Key{}, false
 	}
-	if !key.IsValid() {
+	if !key.IsValidAt(time.Now()) {
 		return Key{}, false
 	}
 	return key, true
