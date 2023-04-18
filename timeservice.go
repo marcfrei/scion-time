@@ -239,7 +239,7 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 	return
 }
 
-func loadNTSKEConfig(log *zap.Logger, configFile string) tls.Config {
+func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 	if configFile == "" {
 		panic("no config file given")
 	}
@@ -263,7 +263,7 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) tls.Config {
 		log.Fatal("failed to load TLS cert", zap.Error(err))
 	}
 
-	return tls.Config{
+	return &tls.Config{
 		ServerName:   cfg.NTSKEServerName,
 		NextProtos:   []string{"ntske/1"},
 		Certificates: []tls.Certificate{cert},
@@ -292,7 +292,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	config := loadNTSKEConfig(log, configFile)
 	provider := ntske.NewProvider()
 	
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &config, provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
@@ -320,7 +320,7 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	config := loadNTSKEConfig(log, configFile)
 	provider := ntske.NewProvider()
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), &config, provider)
+	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
 
