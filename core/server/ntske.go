@@ -47,6 +47,7 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 	plaintextCookie.C2S = ke.Meta.C2sKey
 	plaintextCookie.S2C = ke.Meta.S2cKey
 	key := provider.Current()
+	addedCookie := false
 	for i := 0; i < 8; i++ {
 		encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.Id)
 		if err != nil {
@@ -58,6 +59,11 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 		msg.AddRecord(ntske.Cookie{
 			Cookie: b,
 		})
+		addedCookie = true
+	}
+	if !addedCookie {
+		log.Info("failed to add at least one cookie")
+		return
 	}
 
 	msg.AddRecord(ntske.End{})
@@ -82,7 +88,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAd
 			log.Info("failed to accept client", zap.Error(err))
 			continue
 		}
-		handleKeyExchange(log, ke, localHost, provider)
+		go handleKeyExchange(log, ke, localHost, provider)
 	}
 }
 

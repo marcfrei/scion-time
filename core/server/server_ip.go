@@ -148,6 +148,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		if authenticated {
 			var cookies [][]byte
 			key := provider.Current()
+			addedCookie := false
 			for i := 0; i < len(ntsreq.Cookies)+len(ntsreq.CookiePlaceholders); i++ {
 				encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.Id)
 				if err != nil {
@@ -156,7 +157,13 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				}
 				cookie := encryptedCookie.Encode()
 				cookies = append(cookies, cookie)
+				addedCookie = true
 			}
+			if !addedCookie {
+				log.Info("failed to add at least one cookie")
+				continue
+			}
+
 			ntsresp := nts.NewResponsePacket(buf, cookies, plaintextCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
