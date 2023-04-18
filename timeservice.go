@@ -240,10 +240,6 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 }
 
 func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
-	if configFile == "" {
-		panic("no config file given")
-	}
-
 	var cfg svcConfig
 	raw, err := os.ReadFile(configFile)
 	if err != nil {
@@ -291,7 +287,7 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 
 	config := loadNTSKEConfig(log, configFile)
 	provider := ntske.NewProvider()
-	
+
 	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), config, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host))
@@ -570,11 +566,17 @@ func main() {
 		if err != nil || serverFlags.NArg() != 0 {
 			exitWithUsage()
 		}
+		if configFile == "" {
+			exitWithUsage()
+		}
 		initLogger(verbose)
 		runServer(configFile, daemonAddr, &localAddr)
 	case relayFlags.Name():
 		err := relayFlags.Parse(os.Args[2:])
 		if err != nil || relayFlags.NArg() != 0 {
+			exitWithUsage()
+		}
+		if configFile == "" {
 			exitWithUsage()
 		}
 		initLogger(verbose)
