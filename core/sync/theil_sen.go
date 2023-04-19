@@ -10,13 +10,13 @@ import (
 )
 
 type theilSen struct {
-	log        *zap.Logger
-	clk        timebase.LocalClock
-	datapoints []point
+	log *zap.Logger
+	clk timebase.LocalClock
+	pts []point
 }
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, datapoints: make([]point, 64)}
+	return &theilSen{log: log, clk: clk, pts: make([]point, 64)}
 }
 
 type point struct {
@@ -24,29 +24,32 @@ type point struct {
 	y float64
 }
 
-func sortAndGetMedian(data []float64) float64 {
-	var length = len(data)
-	if length == 0 {
-		panic("invalid argument: array is empty, median undefined")
+func median(ds []float64) float64 {
+	n := len(ds)
+	if n == 0 {
+		panic("unexpected number of slopes")
 	}
 
-	sort.Float64s(data)
+	sort.Float64s(ds)
 
-	if length%2 == 0 {
-		return (data[length/2-1] + data[length/2]) / 2
+	var m float64
+	i := n / 2
+	if n%2 != 0 {
+		m = ds[i]
 	} else {
-		return data[length/2]
+		m = ds[i-1] + (ds[i]-ds[i-1])/2
 	}
+	return m
 }
 
-func getSlope(inputs *[]point) float64 {
-	if len(*inputs) == 1 {
-		return (*inputs)[0].y / (*inputs)[0].x
+func slope(inputs []point) float64 {
+	if len(inputs) == 1 {
+		return (inputs)[0].y / (inputs)[0].x
 	}
 
 	var medians []float64
-	for idxA, pointA := range *inputs {
-		for _, pointB := range (*inputs)[idxA+1:] {
+	for idxA, pointA := range inputs {
+		for _, pointB := range (inputs)[idxA+1:] {
 			// Like in the original paper by Sen (1968), ignore pairs with the same x coordinate
 			if pointA.x != pointB.x {
 				medians = append(medians, (pointA.y-pointB.y)/(pointA.x-pointB.x))
@@ -58,34 +61,34 @@ func getSlope(inputs *[]point) float64 {
 		panic("invalid inputs: all inputs have the same x coordinate")
 	}
 
-	return sortAndGetMedian(medians)
+	return median(medians)
 }
 
-func getIntercept(slope float64, inputs *[]point) float64 {
+func intercept(slope float64, inputs []point) float64 {
 	var medians []float64
-	for _, point := range *inputs {
+	for _, point := range inputs {
 		medians = append(medians, point.y-slope*point.x)
 	}
 
-	return sortAndGetMedian(medians)
+	return median(medians)
 }
 
-func makePrediction(slope float64, intercept float64, x float64) float64 {
+func prediction(slope float64, intercept float64, x float64) float64 {
 	return slope*x + intercept
 }
 
 func (l *theilSen) Do(offset time.Duration) {
 	now := l.clk.Now()
 
-	l.datapoints = l.datapoints[1:]
-	l.datapoints = append(l.datapoints, point{x: float64(now.Second()), y: float64(offset.Seconds())})
+	l.pts = l.pts[1:]
+	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Seconds())})
 
-	var slope = getSlope(&l.datapoints)
-	var intercept = getIntercept(slope, &l.datapoints)
-	predictedOffset := makePrediction(slope, intercept, float64(now.Nanosecond()))
+	slope := slope(l.pts)
+	intercept := intercept(slope, l.pts)
+	predictedOffset := prediction(slope, intercept, float64(now.Nanosecond()))
 
 	l.log.Debug("Theil-Sen estimate",
-		zap.Int("# of data points", len(l.datapoints)),
+		zap.Int("# of data points", len(l.pts)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
 		zap.Float64("predicted offset", predictedOffset),
