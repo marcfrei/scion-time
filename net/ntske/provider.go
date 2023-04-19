@@ -20,7 +20,7 @@ const (
 )
 
 type Key struct {
-	Id       int
+	ID       int
 	Value    []byte
 	Validity struct {
 		NotBefore time.Time
@@ -64,7 +64,7 @@ func (p *Provider) generateNext() {
 
 	key := Key{
 		Value: value,
-		Id:    p.currentID,
+		ID:    p.currentID,
 	}
 	key.Validity.NotBefore = p.generatedAt
 	key.Validity.NotAfter = p.generatedAt.Add(keyValidity)

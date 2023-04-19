@@ -49,7 +49,7 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 	key := provider.Current()
 	addedCookie := false
 	for i := 0; i < 8; i++ {
-		encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.Id)
+		encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.ID)
 		if err != nil {
 			log.Info("failed to encrypt cookie", zap.Error(err))
 			continue

@@ -279,18 +279,9 @@ func (h *ExtHdr) unpack(buf *bytes.Reader) error {
 
 func (h ExtHdr) Header() ExtHdr { return h }
 
-func (h ExtHdr) string() string {
-	return fmt.Sprintf("Extension field type: %v, len: %v\n", h.Type, h.Length)
-}
-
 type UniqueIdentifier struct {
 	ExtHdr
 	ID []byte
-}
-
-func (u UniqueIdentifier) string() string {
-	return fmt.Sprintf("-- UniqueIdentifier EF\n"+
-		"  ID: %x\n", u.ID)
 }
 
 func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
@@ -357,11 +348,6 @@ type Cookie struct {
 	Cookie []byte
 }
 
-func (c Cookie) string() string {
-	return fmt.Sprintf("-- Cookie EF\n"+
-		"  %x\n", c.Cookie)
-}
-
 func (c Cookie) pack(buf *bytes.Buffer) error {
 	value := new(bytes.Buffer)
 	origlen, err := value.Write(c.Cookie)
@@ -410,10 +396,6 @@ type CookiePlaceholder struct {
 	Cookie []byte
 }
 
-func (c CookiePlaceholder) string() string {
-	return "-- CookiePlacholder EF\n"
-}
-
 func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
 	value := new(bytes.Buffer)
 	origlen, err := value.Write(c.Cookie)
@@ -454,23 +436,6 @@ type Authenticator struct {
 	AssociatedData []byte
 	CipherText     []byte
 	Key            Key
-}
-
-func (a Authenticator) string() string {
-	return fmt.Sprintf("-- Authenticator EF\n"+
-		"  NonceLen: %v\n"+
-		"  CipherTextLen: %v\n"+
-		"  Nonce: %x\n"+
-		"  AssociatedData %x\n"+
-		"  Ciphertext: %x\n"+
-		"  Key: %x\n",
-		a.NonceLen,
-		a.CipherTextLen,
-		a.AssociatedData,
-		a.Nonce,
-		a.CipherText,
-		a.Key,
-	)
 }
 
 func (a Authenticator) pack(buf *bytes.Buffer) error {

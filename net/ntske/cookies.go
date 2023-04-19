@@ -26,12 +26,12 @@ type ServerCookie struct {
 	C2S  []byte
 }
 
-// Encodes cookie to byte slice with following format for each field
+// Encode cookie to byte slice with following format for each field
 // uint16 | uint16 | []byte
 // type   | length | value
 func (c *ServerCookie) Encode() []byte {
-	var cookiesize int = 3*4 + 2 + len(c.C2S) + len(c.S2C)
-	b := make([]byte, cookiesize)
+	cookieLen := 3*4 + 2 + len(c.C2S) + len(c.S2C)
+	b := make([]byte, cookieLen)
 	binary.BigEndian.PutUint16(b[0:], cookieTypeAlgorithm)
 	binary.BigEndian.PutUint16(b[2:], 0x2)
 	binary.BigEndian.PutUint16(b[4:], c.Algo)
@@ -46,27 +46,27 @@ func (c *ServerCookie) Encode() []byte {
 }
 
 func (c *ServerCookie) Decode(b []byte) error {
-	var pos int = 0
-	field_algo, field_s2c, field_c2s := false, false, false
+	pos := 0
+	algo, s2c, c2s := false, false, false
 	for pos < len(b) {
-		var t uint16 = binary.BigEndian.Uint16(b[pos:])
-		var len uint16 = binary.BigEndian.Uint16(b[pos+2:])
+		t := binary.BigEndian.Uint16(b[pos:])
+		len := binary.BigEndian.Uint16(b[pos+2:])
 		if t == cookieTypeAlgorithm {
 			c.Algo = binary.BigEndian.Uint16(b[pos+4:])
-			field_algo = true
+			algo = true
 		} else if t == cookieTypeKeyS2C {
 			c.S2C = b[pos+4 : pos+4+int(len)]
-			field_s2c = true
+			s2c = true
 		} else if t == cookieTypeKeyC2S {
 			c.C2S = b[pos+4 : pos+4+int(len)]
-			field_c2s = true
+			c2s = true
 		}
 		pos += 4 + int(len)
 	}
 	if pos != len(b) {
 		return errUnexpectedCookieData
 	}
-	if !(field_algo && field_s2c && field_c2s) {
+	if !(algo && s2c && c2s) {
 		return errUnexpectedCookieData
 	}
 	return nil
@@ -79,8 +79,8 @@ type EncryptedServerCookie struct {
 }
 
 func (c *EncryptedServerCookie) Encode() []byte {
-	var encryptedcookiesize int = 3*4 + 2 + len(c.Nonce) + len(c.Ciphertext)
-	b := make([]byte, encryptedcookiesize)
+	encryptedCookieLen := 3*4 + 2 + len(c.Nonce) + len(c.Ciphertext)
+	b := make([]byte, encryptedCookieLen)
 	binary.BigEndian.PutUint16(b[0:], cookieTypeKeyID)
 	binary.BigEndian.PutUint16(b[2:], 0x2)
 	binary.BigEndian.PutUint16(b[4:], c.ID)
@@ -95,27 +95,27 @@ func (c *EncryptedServerCookie) Encode() []byte {
 }
 
 func (c *EncryptedServerCookie) Decode(b []byte) error {
-	var pos int = 0
-	field_id, field_nonce, field_ciphertext := false, false, false
+	pos := 0
+	id, nonce, ciphertext := false, false, false
 	for pos < len(b) {
-		var t uint16 = binary.BigEndian.Uint16(b[pos:])
-		var len uint16 = binary.BigEndian.Uint16(b[pos+2:])
+		t := binary.BigEndian.Uint16(b[pos:])
+		len := binary.BigEndian.Uint16(b[pos+2:])
 		if t == cookieTypeKeyID {
 			c.ID = binary.BigEndian.Uint16(b[pos+4:])
-			field_id = true
+			id = true
 		} else if t == cookieTypeNonce {
 			c.Nonce = b[pos+4 : pos+4+int(len)]
-			field_nonce = true
+			nonce = true
 		} else if t == cookieTypeCiphertext {
 			c.Ciphertext = b[pos+4 : pos+4+int(len)]
-			field_ciphertext = true
+			ciphertext = true
 		}
 		pos += 4 + int(len)
 	}
 	if pos != len(b) {
 		return errUnexpectedCookieData
 	}
-	if !(field_id && field_nonce && field_ciphertext) {
+	if !(id && nonce && ciphertext) {
 		return errUnexpectedCookieData
 	}
 	return nil
