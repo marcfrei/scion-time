@@ -43,9 +43,9 @@ func (k *Key) IsValidAt(t time.Time) bool {
 }
 
 func (p *Provider) generateNext() {
-	t := time.Now()
+	tNow := time.Now()
 	for id, key := range p.keys {
-		if !key.IsValidAt(t) {
+		if !key.IsValidAt(tNow) {
 			delete(p.keys, id)
 		}
 	}
@@ -54,7 +54,7 @@ func (p *Provider) generateNext() {
 		panic("ID overflow")
 	}
 	p.currentID = p.currentID + 1
-	p.generatedAt = t
+	p.generatedAt = tNow
 
 	value := make([]byte, 32)
 	_, err := rand.Read(value)
@@ -97,7 +97,8 @@ func (p *Provider) Current() Key {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.generatedAt.Add(keyRenewalInterval).Before(time.Now()) {
+	tNow := time.Now()
+	if key := p.keys[p.currentID]; !key.IsValidAt(tNow) || p.generatedAt.Add(keyRenewalInterval).Before(tNow) {
 		p.generateNext()
 	}
 
