@@ -75,6 +75,28 @@ type ntpReferenceClockSCION struct {
 	pather     *scion.Pather
 }
 
+const tlsCertReloadInterval = time.Minute * 10
+
+type tlsCertCache struct {
+	cert     *tls.Certificate
+	updated  time.Time
+	certFile string
+	keyFile  string
+}
+
+func (c *tlsCertCache) loadCert(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	tNow := time.Now()
+	if c.updated.Add(tlsCertReloadInterval).Before(tNow) {
+		cert, err := tls.LoadX509KeyPair(c.certFile, c.keyFile)
+		if err != nil {
+			return &tls.Certificate{}, err
+		}
+		c.cert = &cert
+		c.updated = tNow
+	}
+	return c.cert, nil
+}
+
 var (
 	log *zap.Logger
 )
@@ -254,14 +276,16 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 		log.Fatal("missing parameters in configuration for NTSKE server")
 	}
 
+	tlsConfigCache := tlsCertCache{
+		certFile: cfg.NTSKECertFile,
+		keyFile:  cfg.NTSKEKeyFile,
+	}
+
 	return &tls.Config{
-		ServerName: cfg.NTSKEServerName,
-		NextProtos: []string{"ntske/1"},
-		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			cert, err := tls.LoadX509KeyPair(cfg.NTSKECertFile, cfg.NTSKEKeyFile)
-			return &cert, err
-		},
-		MinVersion: tls.VersionTLS13,
+		ServerName:     cfg.NTSKEServerName,
+		NextProtos:     []string{"ntske/1"},
+		GetCertificate: tlsConfigCache.loadCert,
+		MinVersion:     tls.VersionTLS13,
 	}
 }
 
