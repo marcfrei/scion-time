@@ -254,16 +254,14 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 		log.Fatal("missing parameters in configuration for NTSKE server")
 	}
 
-	cert, err := tls.LoadX509KeyPair(cfg.NTSKECertFile, cfg.NTSKEKeyFile)
-	if err != nil {
-		log.Fatal("failed to load TLS cert", zap.Error(err))
-	}
-
 	return &tls.Config{
-		ServerName:   cfg.NTSKEServerName,
-		NextProtos:   []string{"ntske/1"},
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS13,
+		ServerName: cfg.NTSKEServerName,
+		NextProtos: []string{"ntske/1"},
+		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert, err := tls.LoadX509KeyPair(cfg.NTSKECertFile, cfg.NTSKEKeyFile)
+			return &cert, err
+		},
+		MinVersion: tls.VersionTLS13,
 	}
 }
 
