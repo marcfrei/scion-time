@@ -56,6 +56,7 @@ type svcConfig struct {
 	NTSKECertFile      string   `toml:"ntske_cert_file,omitempty"`
 	NTSKEKeyFile       string   `toml:"ntske_key_file,omitempty"`
 	NTSKEServerName    string   `toml:"ntske_server_name,omitempty"`
+	UseTheilSen        bool     `toml:"use_theil_sen,omitempty"`
 }
 
 type mbgReferenceClock struct {
@@ -160,7 +161,7 @@ func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string)
 
 func loadConfig(ctx context.Context, log *zap.Logger,
 	configFile, daemonAddr string, localAddr *snet.UDPAddr) (
-	refClocks, netClocks []client.ReferenceClock) {
+	refClocks, netClocks []client.ReferenceClock, useTheilSen bool) {
 	if configFile != "" {
 		var cfg svcConfig
 		raw, err := os.ReadFile(configFile)
@@ -235,6 +236,7 @@ func loadConfig(ctx context.Context, log *zap.Logger,
 				}
 			}
 		}
+		useTheilSen = cfg.UseTheilSen
 	}
 	return
 }
@@ -267,10 +269,10 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 	}
 }
 
-func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, useTheilSen bool) {
+func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
-	refClocks, netClocks := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
+	refClocks, netClocks, useTheilSen := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
 	lclk := &clock.SystemClock{Log: log}
@@ -295,10 +297,10 @@ func runServer(configFile, daemonAddr string, localAddr *snet.UDPAddr, useTheilS
 	runMonitor(log)
 }
 
-func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr, useTheilSen bool) {
+func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
-	refClocks, netClocks := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
+	refClocks, netClocks, useTheilSen := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
 	lclk := &clock.SystemClock{Log: log}
@@ -323,10 +325,10 @@ func runRelay(configFile, daemonAddr string, localAddr *snet.UDPAddr, useTheilSe
 	runMonitor(log)
 }
 
-func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr, useTheilSen bool) {
+func runClient(configFile, daemonAddr string, localAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
-	refClocks, netClocks := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
+	refClocks, netClocks, useTheilSen := loadConfig(ctx, log, configFile, daemonAddr, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
 	lclk := &clock.SystemClock{Log: log}
@@ -507,7 +509,6 @@ func main() {
 		daemonAddr              string
 		localAddr               snet.UDPAddr
 		remoteAddrStr           string
-		theilSen                bool
 		dispatcherMode          string
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
@@ -543,7 +544,6 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
-	toolFlags.BoolVar(&theilSen, "theil-sen", false, "Use Theil-Sen instead of PLL")
 	toolFlags.StringVar(&authMode, "auth", "", "Authentication mode")
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 
@@ -572,7 +572,7 @@ func main() {
 			exitWithUsage()
 		}
 		initLogger(verbose)
-		runServer(configFile, daemonAddr, &localAddr, theilSen)
+		runServer(configFile, daemonAddr, &localAddr)
 	case relayFlags.Name():
 		err := relayFlags.Parse(os.Args[2:])
 		if err != nil || relayFlags.NArg() != 0 {
@@ -582,14 +582,14 @@ func main() {
 			exitWithUsage()
 		}
 		initLogger(verbose)
-		runRelay(configFile, daemonAddr, &localAddr, theilSen)
+		runRelay(configFile, daemonAddr, &localAddr)
 	case clientFlags.Name():
 		err := clientFlags.Parse(os.Args[2:])
 		if err != nil || clientFlags.NArg() != 0 {
 			exitWithUsage()
 		}
 		initLogger(verbose)
-		runClient(configFile, daemonAddr, &localAddr, theilSen)
+		runClient(configFile, daemonAddr, &localAddr)
 	case toolFlags.Name():
 		err := toolFlags.Parse(os.Args[2:])
 		if err != nil || toolFlags.NArg() != 0 {
