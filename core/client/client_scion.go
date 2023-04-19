@@ -24,6 +24,8 @@ import (
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/net/nts"
+	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -32,10 +34,12 @@ type SCIONClient struct {
 	InterleavedMode bool
 	Auth            struct {
 		Enabled      bool
+		NTSEnabled   bool
 		DRKeyFetcher *scion.Fetcher
 		opt          *slayers.EndToEndOption
 		buf          []byte
 		mac          []byte
+		NTSKEFetcher ntske.Fetcher
 	}
 	prev struct {
 		reference string
@@ -152,6 +156,17 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	srcAddr := &net.IPAddr{IP: localAddr.Host.IP}
 	dstAddr := &net.IPAddr{IP: remoteAddr.Host.IP}
 
+	var ntskeData ntske.Data
+	if c.Auth.NTSEnabled {
+		ntskeData, err = c.Auth.NTSKEFetcher.FetchData()
+		if err != nil {
+			log.Info("failed to fetch key exchange data", zap.Error(err))
+			return offset, weight, err
+		}
+		remoteAddr.Host.Port = int(ntskeData.Port)
+		remoteAddr.Host.IP = net.ParseIP(ntskeData.Server)
+	}
+
 	buf := make([]byte, scion.MTU)
 
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
@@ -171,6 +186,13 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 	}
 	ntp.EncodePacket(&buf, &ntpreq)
+
+	var requestID []byte
+	var ntsreq nts.NTSPacket
+	if c.Auth.NTSEnabled {
+		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
+		nts.EncodePacket(&buf, &ntsreq)
+	}
 
 	var scionLayer slayers.SCION
 	scionLayer.TrafficClass = config.DSCP<<2
@@ -417,6 +439,29 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 				continue
 			}
 			return offset, weight, err
+		}
+
+		var ntsresp nts.NTSPacket
+		if c.Auth.NTSEnabled {
+			err = nts.DecodePacket(&ntsresp, udpLayer.Payload, ntskeData.S2cKey)
+			if err != nil {
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					log.Info("failed to decode and authenticate NTS packet", zap.Error(err))
+					numRetries++
+					continue
+				}
+				return offset, weight, err
+			}
+
+			err = nts.ProcessResponse(&c.Auth.NTSKEFetcher, &ntsresp, requestID)
+			if err != nil {
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					log.Info("failed to process NTS packet", zap.Error(err))
+					numRetries++
+					continue
+				}
+				return offset, weight, err
+			}
 		}
 
 		interleaved = false
