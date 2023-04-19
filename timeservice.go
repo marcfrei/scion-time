@@ -422,19 +422,19 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	c.Auth.Enabled = true
 	c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
 
-	ntskeServerName, port, err := net.SplitHostPort(ntskeServer)
+	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
-		log.Info("failed to split host and port", zap.Error(err))
+		log.Info("failed to split NTS-KE host and port", zap.Error(err))
 	}
 
 	if authMode == authModeNTS {
 		c.Auth.NTSEnabled = true
 		c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
 			InsecureSkipVerify: ntskeInsecureSkipVerify,
-			ServerName:         ntskeServerName,
+			ServerName:         ntskeHost,
 			MinVersion:         tls.VersionTLS13,
 		}
-		c.Auth.NTSKEFetcher.Port = port
+		c.Auth.NTSKEFetcher.Port = ntskePort
 		c.Auth.NTSKEFetcher.Log = log
 	} else {
 		c.Auth.NTSEnabled = false
