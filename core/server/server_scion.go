@@ -326,7 +326,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 				continue
 			}
 
-			dscp := scionLayer.TrafficClass>>2
+			dscp := scionLayer.TrafficClass >> 2
 			clientID := scionLayer.SrcIA.String() + "," + srcAddr.String()
 
 			mtrcs.reqsAccepted.Inc()
@@ -342,7 +342,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			var ntpresp ntp.Packet
 			handleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 
-			scionLayer.TrafficClass = config.DSCP<<2
+			scionLayer.TrafficClass = config.DSCP << 2
 			scionLayer.DstIA, scionLayer.SrcIA = scionLayer.SrcIA, scionLayer.DstIA
 			scionLayer.DstAddrType, scionLayer.SrcAddrType = scionLayer.SrcAddrType, scionLayer.DstAddrType
 			scionLayer.RawDstAddr, scionLayer.RawSrcAddr = scionLayer.RawSrcAddr, scionLayer.RawDstAddr
@@ -355,10 +355,10 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			udpLayer.DstPort, udpLayer.SrcPort = udpLayer.SrcPort, udpLayer.DstPort
 			ntp.EncodePacket(&udpLayer.Payload, &ntpresp)
 
-			var ntsresp nts.NTSPacket
 			if NTSauthenticated {
 				var cookies [][]byte
 				key := provider.Current()
+				addedCookie := false
 				for i := 0; i < len(ntsreq.Cookies)+len(ntsreq.CookiePlaceholders); i++ {
 					encryptedCookie, err := serverCookie.EncryptWithNonce(key.Value, key.ID)
 					if err != nil {
@@ -367,8 +367,14 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					}
 					cookie := encryptedCookie.Encode()
 					cookies = append(cookies, cookie)
+					addedCookie = true
 				}
-				ntsresp = nts.NewResponsePacket(udpLayer.Payload, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
+				if !addedCookie {
+					log.Info("failed to add at least one cookie")
+					continue
+				}
+
+				ntsresp := nts.NewResponsePacket(udpLayer.Payload, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 				nts.EncodePacket(&udpLayer.Payload, &ntsresp)
 			}
 
