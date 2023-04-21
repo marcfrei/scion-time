@@ -276,7 +276,7 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 		log.Fatal("missing parameters in configuration for NTSKE server")
 	}
 
-	tlsConfigCache := tlsCertCache{
+	certCache := tlsCertCache{
 		certFile: cfg.NTSKECertFile,
 		keyFile:  cfg.NTSKEKeyFile,
 	}
@@ -284,7 +284,7 @@ func loadNTSKEConfig(log *zap.Logger, configFile string) *tls.Config {
 	return &tls.Config{
 		ServerName:     cfg.NTSKEServerName,
 		NextProtos:     []string{"ntske/1"},
-		GetCertificate: tlsConfigCache.loadCert,
+		GetCertificate: certCache.loadCert,
 		MinVersion:     tls.VersionTLS13,
 	}
 }
