@@ -99,6 +99,7 @@ func (l *theilSen) Do(offset time.Duration) {
 	)
 
 	if predictedOffset > 0 {
+		l.clk.AdjustOffset(time.Duration(predictedOffset))
 		// TODO: Find out what frequency to pass
 		// Option 1: Do the same calculation as the PLL. Probably bad idea, since
 		// the PLL is not fully understood.

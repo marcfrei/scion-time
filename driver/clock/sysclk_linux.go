@@ -5,6 +5,7 @@ package clock
 // Based on Ntimed by Poul-Henning Kamp, https://github.com/bsdphk/Ntimed
 
 import (
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -167,6 +168,21 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 			setFrequency(log, adj.afterFreq)
 		}
 	}(c.Log, c.adjustment)
+}
+
+func (c *SystemClock) AdjustOffset(offset time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	tx := unix.Timex{
+		Modes:  unix.ADJ_OFFSET | unix.ADJ_STATUS | unix.ADJ_NANO,
+		Time:   nsecToNsecTimeval(offset.Nanoseconds()),
+		Status: unix.STA_PLL,
+	}
+	_, err := unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+	if err != nil {
+		log.Fatal("unix.ClockAdjtime failed", zap.Error(err))
+	}
 }
 
 func (c *SystemClock) Sleep(duration time.Duration) {
