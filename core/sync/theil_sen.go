@@ -15,8 +15,10 @@ type theilSen struct {
 	pts []point
 }
 
+const MeasurementBufferSize = 64
+
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, pts: make([]point, 64)}
+	return &theilSen{log: log, clk: clk, pts: make([]point, 0)}
 }
 
 type point struct {
@@ -80,7 +82,9 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 func (l *theilSen) Do(offset time.Duration) {
 	now := l.clk.Now()
 
-	l.pts = l.pts[1:]
+	if len(l.pts) == MeasurementBufferSize {
+		l.pts = l.pts[1:]
+	}
 	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Seconds())})
 
 	slope := slope(l.pts)
