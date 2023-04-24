@@ -175,7 +175,7 @@ func (c *SystemClock) AdjustOffset(offset time.Duration) {
 	defer c.mu.Unlock()
 
 	tx := unix.Timex{
-		Modes:  unix.ADJ_OFFSET | unix.ADJ_STATUS | unix.ADJ_NANO,
+		Modes:  unix.ADJ_OFFSET | unix.ADJ_NANO,
 		Time:   nsecToNsecTimeval(offset.Nanoseconds()),
 		Status: unix.STA_PLL,
 	}

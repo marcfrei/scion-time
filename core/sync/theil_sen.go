@@ -85,26 +85,22 @@ func (l *theilSen) Do(offset time.Duration) {
 	if len(l.pts) == MeasurementBufferSize {
 		l.pts = l.pts[1:]
 	}
-	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Seconds())})
+	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Nanoseconds() + int64(now.UnixNano()))})
 
 	slope := slope(l.pts)
 	intercept := intercept(slope, l.pts)
-	predictedOffset := prediction(slope, intercept, float64(now.Nanosecond()))
+	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
+	predictedOffset := time.Duration(float64(now.UnixNano()) - predictedTime)
 
 	l.log.Debug("Theil-Sen estimate",
+		zap.Duration("offset", offset),
 		zap.Int("# of data points", len(l.pts)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
-		zap.Float64("predicted offset", predictedOffset),
+		zap.Duration("predicted offset", predictedOffset),
 	)
 
-	if predictedOffset > 0 {
-		l.clk.AdjustOffset(time.Duration(predictedOffset))
-		// TODO: Find out what frequency to pass
-		// Option 1: Do the same calculation as the PLL. Probably bad idea, since
-		// the PLL is not fully understood.
-		// Option 2: Read the current frequency via a call to adjtimex.
-		// Option 3: Offer a second Adjust() interface that does not require a frequency.
-		// l.clk.Adjust(timemath.Duration(1), timemath.Duration(predictedOffset))
+	if predictedOffset.Abs().Nanoseconds() > 0 {
+		l.clk.AdjustOffset(predictedOffset)
 	}
 }
