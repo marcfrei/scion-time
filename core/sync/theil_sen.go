@@ -90,7 +90,7 @@ func (l *theilSen) Do(offset time.Duration) {
 	slope := slope(l.pts)
 	intercept := intercept(slope, l.pts)
 	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
-	predictedOffset := time.Duration(float64(now.UnixNano()) - predictedTime)
+	predictedOffset := time.Duration(predictedTime - float64(now.UnixNano()))
 
 	l.log.Debug("Theil-Sen estimate",
 		zap.Duration("offset", offset),
@@ -101,6 +101,6 @@ func (l *theilSen) Do(offset time.Duration) {
 	)
 
 	if predictedOffset.Abs().Nanoseconds() > 0 {
-		l.clk.AdjustOffset(predictedOffset)
+		l.clk.Adjust(predictedOffset, time.Second*3, 0)
 	}
 }

@@ -41,12 +41,6 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 	)
 }
 
-func (c *SystemClock) AdjustOffset(offset time.Duration) {
-	c.Log.Debug("SystemClock.AdjustOffset, not yet implemented",
-		zap.Duration("offset", offset),
-	)
-}
-
 func (c *SystemClock) Sleep(duration time.Duration) {
 	c.Log.Debug("SystemClock.Sleep", zap.Duration("duration", duration))
 	time.Sleep(duration)
