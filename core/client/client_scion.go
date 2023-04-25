@@ -140,6 +140,17 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 
 	localPort := conn.LocalAddr().(*net.UDPAddr).Port
 
+	var ntskeData ntske.Data
+	if c.Auth.NTSEnabled {
+		ntskeData, err = c.Auth.NTSKEFetcher.FetchData()
+		if err != nil {
+			log.Info("failed to fetch key exchange data", zap.Error(err))
+			return offset, weight, err
+		}
+		remoteAddr.Host.IP = net.ParseIP(ntskeData.Server)
+		remoteAddr.Host.Port = int(ntskeData.Port)
+	}
+
 	nextHop := path.UnderlayNextHop().AddrPort()
 	nextHopAddr := nextHop.Addr()
 	if nextHopAddr.Is4In6() {
@@ -155,17 +166,6 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 
 	srcAddr := &net.IPAddr{IP: localAddr.Host.IP}
 	dstAddr := &net.IPAddr{IP: remoteAddr.Host.IP}
-
-	var ntskeData ntske.Data
-	if c.Auth.NTSEnabled {
-		ntskeData, err = c.Auth.NTSKEFetcher.FetchData()
-		if err != nil {
-			log.Info("failed to fetch key exchange data", zap.Error(err))
-			return offset, weight, err
-		}
-		remoteAddr.Host.Port = int(ntskeData.Port)
-		remoteAddr.Host.IP = net.ParseIP(ntskeData.Server)
-	}
 
 	buf := make([]byte, scion.MTU)
 
@@ -441,6 +441,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 			return offset, weight, err
 		}
 
+		ntsAuthenticated := false
 		var ntsresp nts.NTSPacket
 		if c.Auth.NTSEnabled {
 			err = nts.DecodePacket(&ntsresp, udpLayer.Payload, ntskeData.S2cKey)
@@ -462,6 +463,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 				}
 				return offset, weight, err
 			}
+			ntsAuthenticated = true
 		}
 
 		interleaved = false
@@ -490,6 +492,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 			zap.Stringer("via", lastHop),
 			zap.Uint8("DSCP", dscp),
 			zap.Bool("auth", authenticated),
+			zap.Bool("ntsauth", ntsAuthenticated),
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpresp}),
 		)
 
