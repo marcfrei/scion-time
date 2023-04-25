@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/libp2p/go-reuseport"
@@ -212,7 +213,8 @@ func StartIPServer(ctx context.Context, log *zap.Logger,
 		go runIPServer(log, mtrcs, conn, localHost.Zone, provider)
 	} else {
 		for i := ipServerNumGoroutine; i > 0; i-- {
-			conn, err := reuseport.ListenPacket("udp", localHost.String())
+			conn, err := reuseport.ListenPacket("udp",
+				net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHost.Port)))
 			if err != nil {
 				log.Fatal("failed to listen for packets", zap.Error(err))
 			}

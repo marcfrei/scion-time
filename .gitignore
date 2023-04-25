@@ -1,9 +1,9 @@
 .DS_Store
+*.crt
+*.key
 certs
 crypto
 keys
-trcs
-
+ntimed-tool
 timeservice
-*.key
-*.crt
+trcs

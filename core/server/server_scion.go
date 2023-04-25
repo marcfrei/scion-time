@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/netip"
+	"strconv"
 	"time"
 
 	"github.com/google/gopacket"
@@ -493,7 +494,8 @@ func StartSCIONServer(ctx context.Context, log *zap.Logger,
 	} else {
 		for i := scionServerNumGoroutine; i > 0; i-- {
 			f := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
-			conn, err := reuseport.ListenPacket("udp", localHost.String())
+			conn, err := reuseport.ListenPacket("udp",
+				net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHost.Port)))
 			if err != nil {
 				log.Fatal("failed to listen for packets", zap.Error(err))
 			}

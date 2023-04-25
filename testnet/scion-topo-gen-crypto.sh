@@ -11,7 +11,7 @@ git checkout --quiet tools/topology/net.py
 git checkout --quiet tools/docker-ip
 
 export PYTHONPATH=python/:.
- ~/scion-time/testnet/scion-topo-add-drkey.py
+~/scion-time/testnet/scion-topo-add-drkey.py
 
 cd ~/scion-time/testnet/
 
@@ -108,3 +108,9 @@ rm -rf gen-cache
 rm -rf gen-certs
 mkdir gen-cache
 mkdir gen-certs
+
+rm -f gen/tls.crt
+rm -f gen/tls.key
+
+cd ~/scion-time/
+sh testnet/tls-gen-cert.sh

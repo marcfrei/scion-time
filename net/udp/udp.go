@@ -38,7 +38,7 @@ func TimestampLen() int {
 	return unix.CmsgSpace(3 * 16)
 }
 
-func SetDSCP (conn *net.UDPConn, dscp uint8) error {
+func SetDSCP(conn *net.UDPConn, dscp uint8) error {
 	// Based on Meta's time libraries at https://github.com/facebook/time
 	if dscp > 63 {
 		panic("invalid argument: dscp must not be greater than 63")
@@ -63,4 +63,3 @@ func SetDSCP (conn *net.UDPConn, dscp uint8) error {
 	}
 	return res.err
 }
-

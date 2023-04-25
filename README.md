@@ -124,13 +124,15 @@ rm -rf logs
 In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
-sudo ip netns exec netns0 ~/scion-time/timeservice server -verbose -config ~/scion-time/testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
+cd ~/scion-time
+sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
 ```
 
 In session no. 2, run server at `1-ff00:0:112,10.1.1.12:123`:
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice server -verbose -config ~/scion-time/testnet/gen-eh/ASff00_0_112/ts1-ff00_0_112-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:123
+cd ~/scion-time
+sudo ip netns exec netns1 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_112/ts1-ff00_0_112-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:123
 ```
 
 ## Querying SCION-based servers
@@ -152,13 +154,15 @@ sudo ip netns exec netns0 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.
 In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
-sudo ip netns exec netns0 ~/scion-time/timeservice server -verbose -config ~/scion-time/testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
+cd ~/scion-time
+sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
 ```
 
 And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice client -verbose -config ~/scion-time/testnet/test-ff00_0_111-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0
+cd ~/scion-time
+sudo ip netns exec netns1 ./timeservice client -verbose -config testnet/test-ff00_0_111-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0
 ```
 
 ## Stopping the SCION test network

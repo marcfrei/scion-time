@@ -1,1 +1,5 @@
 mbg_reference_clocks = ["/dev/mbgclock0"]
+
+ntske_cert_file = "gen/tls.crt"
+ntske_key_file = "gen/tls.key"
+ntske_server_name = "localhost"
