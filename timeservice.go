@@ -393,7 +393,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode string, ntskeServer
 
 	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
-		log.Info("failed to split NTS-KE host and port", zap.Error(err))
+		log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
 	}
 
 	if authMode == authModeNTS {
@@ -446,7 +446,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 
 	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
-		log.Info("failed to split NTS-KE host and port", zap.Error(err))
+		log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
 	}
 
 	if authMode == authModeNTS {

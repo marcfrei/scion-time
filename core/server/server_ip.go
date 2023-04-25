@@ -95,7 +95,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 
 		var authenticated bool
 		var ntsreq nts.NTSPacket
-		var plaintextCookie ntske.ServerCookie
+		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
 			cookie, err := nts.ExtractCookie(buf)
 			if err != nil {
@@ -116,13 +116,13 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			plaintextCookie, err = encryptedCookie.Decrypt(key.Value)
+			serverCookie, err = encryptedCookie.Decrypt(key.Value)
 			if err != nil {
 				log.Info("failed to decrypt cookie", zap.Error(err))
 				continue
 			}
 
-			err = nts.DecodePacket(&ntsreq, buf, plaintextCookie.C2S)
+			err = nts.DecodePacket(&ntsreq, buf, serverCookie.C2S)
 			if err != nil {
 				log.Info("failed to decode packet", zap.Error(err))
 				continue
@@ -142,6 +142,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		log.Debug("received request",
 			zap.Time("at", rxt),
 			zap.String("from", clientID),
+			zap.Bool("ntsauth", authenticated),
 			zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpreq}),
 		)
 
@@ -156,7 +157,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 			key := provider.Current()
 			addedCookie := false
 			for i := 0; i < len(ntsreq.Cookies)+len(ntsreq.CookiePlaceholders); i++ {
-				encryptedCookie, err := plaintextCookie.EncryptWithNonce(key.Value, key.ID)
+				encryptedCookie, err := serverCookie.EncryptWithNonce(key.Value, key.ID)
 				if err != nil {
 					log.Info("failed to encrypt cookie", zap.Error(err))
 					continue
@@ -170,7 +171,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			ntsresp := nts.NewResponsePacket(buf, cookies, plaintextCookie.S2C, ntsreq.UniqueID.ID)
+			ntsresp := nts.NewResponsePacket(buf, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
 

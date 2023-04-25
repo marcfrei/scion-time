@@ -71,7 +71,8 @@ func newSCIONServerMetrics() *scionServerMetrics {
 }
 
 func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetrics,
-	conn *net.UDPConn, localHostIface string, localHostPort int, f *scion.Fetcher, provider *ntske.Provider) {
+	conn *net.UDPConn, localHostIface string, localHostPort int,
+	fetcher *scion.Fetcher, provider *ntske.Provider) {
 	defer conn.Close()
 	err := udp.EnableTimestamping(conn, localHostIface)
 	if err != nil {
@@ -108,7 +109,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 	}
 
 	var authBuf, authMAC []byte
-	if f != nil {
+	if fetcher != nil {
 		authBuf = make([]byte, spao.MACBufferSize)
 		authMAC = make([]byte, scion.PacketAuthMACLen)
 	}
@@ -231,13 +232,13 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			)
 			authenticated := false
 
-			if f != nil && len(decoded) >= 3 &&
+			if fetcher != nil && len(decoded) >= 3 &&
 				decoded[len(decoded)-2] == slayers.LayerTypeEndToEndExtn {
 				authOpt, err = e2eLayer.FindOption(slayers.OptTypeAuthenticator)
 				if err == nil {
 					spi, algo := scion.PacketAuthOptMetadata(authOpt)
 					if spi == scion.PacketAuthSPIClient && algo == scion.PacketAuthAlgorithm {
-						hostASKey, err := f.FetchHostASKey(ctx, drkey.HostASMeta{
+						hostASKey, err := fetcher.FetchHostASKey(ctx, drkey.HostASMeta{
 							ProtoId:  scion.DRKeyProtocolTS,
 							Validity: rxt,
 							SrcIA:    scionLayer.DstIA,
@@ -284,7 +285,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 				continue
 			}
 
-			var NTSauthenticated bool = false
+			var ntsAuthenticated bool = false
 			var ntsreq nts.NTSPacket
 			var serverCookie ntske.ServerCookie
 			if len(udpLayer.Payload) > ntp.PacketLen {
@@ -318,7 +319,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					log.Info("failed to decode packet", zap.Error(err))
 					continue
 				}
-				NTSauthenticated = true
+				ntsAuthenticated = true
 			}
 
 			err = ntp.ValidateRequest(&ntpreq, udpLayer.SrcPort)
@@ -336,6 +337,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 				zap.String("from", clientID),
 				zap.Uint8("DSCP", dscp),
 				zap.Bool("auth", authenticated),
+				zap.Bool("ntsauth", ntsAuthenticated),
 				zap.Object("data", ntp.PacketMarshaler{Pkt: &ntpreq}),
 			)
 
@@ -356,7 +358,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			udpLayer.DstPort, udpLayer.SrcPort = udpLayer.SrcPort, udpLayer.DstPort
 			ntp.EncodePacket(&udpLayer.Payload, &ntpresp)
 
-			if NTSauthenticated {
+			if ntsAuthenticated {
 				var cookies [][]byte
 				key := provider.Current()
 				addedCookie := false
@@ -485,21 +487,21 @@ func StartSCIONServer(ctx context.Context, log *zap.Logger,
 	mtrcs := newSCIONServerMetrics()
 
 	if scionServerNumGoroutine == 1 {
-		f := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
+		fetcher := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
 		conn, err := net.ListenUDP("udp", localHost)
 		if err != nil {
 			log.Fatal("failed to listen for packets", zap.Error(err))
 		}
-		go runSCIONServer(ctx, log, mtrcs, conn, localHost.Zone, localHostPort, f, provider)
+		go runSCIONServer(ctx, log, mtrcs, conn, localHost.Zone, localHostPort, fetcher, provider)
 	} else {
 		for i := scionServerNumGoroutine; i > 0; i-- {
-			f := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
+			fetcher := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
 			conn, err := reuseport.ListenPacket("udp",
 				net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHost.Port)))
 			if err != nil {
 				log.Fatal("failed to listen for packets", zap.Error(err))
 			}
-			go runSCIONServer(ctx, log, mtrcs, conn.(*net.UDPConn), localHost.Zone, localHostPort, f, provider)
+			go runSCIONServer(ctx, log, mtrcs, conn.(*net.UDPConn), localHost.Zone, localHostPort, fetcher, provider)
 		}
 	}
 }
@@ -523,5 +525,5 @@ func StartSCIONDispatcher(ctx context.Context, log *zap.Logger,
 	if err != nil {
 		log.Fatal("failed to listen for packets", zap.Error(err))
 	}
-	go runSCIONServer(ctx, log, mtrcs, conn, localHost.Zone, localHost.Port, nil /* DRKey fetcher */, nil /* Provider */)
+	go runSCIONServer(ctx, log, mtrcs, conn, localHost.Zone, localHost.Port, nil /* DRKey fetcher */, nil /* NTSKE provider */)
 }
