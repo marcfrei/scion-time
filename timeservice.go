@@ -46,6 +46,8 @@ const (
 	dispatcherModeInternal = "internal"
 	authModeNTS            = "nts"
 
+	tlsCertReloadInterval = time.Minute * 10
+
 	scionRefClockNumClient = 5
 )
 
@@ -75,24 +77,22 @@ type ntpReferenceClockSCION struct {
 	pather     *scion.Pather
 }
 
-const tlsCertReloadInterval = time.Minute * 10
-
 type tlsCertCache struct {
-	cert     *tls.Certificate
-	updated  time.Time
-	certFile string
-	keyFile  string
+	cert       *tls.Certificate
+	reloadedAt time.Time
+	certFile   string
+	keyFile    string
 }
 
 func (c *tlsCertCache) loadCert(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	tNow := time.Now()
-	if c.updated.Add(tlsCertReloadInterval).Before(tNow) {
+	now := time.Now()
+	if now.Before(c.reloadedAt) || !now.Before(c.reloadedAt.Add(tlsCertReloadInterval)) {
 		cert, err := tls.LoadX509KeyPair(c.certFile, c.keyFile)
 		if err != nil {
 			return &tls.Certificate{}, err
 		}
 		c.cert = &cert
-		c.updated = tNow
+		c.reloadedAt = now
 	}
 	return c.cert, nil
 }
