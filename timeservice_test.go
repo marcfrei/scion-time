@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"os"
 	"testing"
 
 	"example.com/scion-time/core/client"
@@ -13,6 +14,11 @@ import (
 )
 
 func TestTimeserviceNTSChrony(t *testing.T) {
+	hasChrony := os.Getenv("HAS_CHRONY")
+	if hasChrony == "" {
+		t.Skip("set up and start chrony to run this integration test")
+	}
+
 	initLogger(true /* verbose */)
 	remoteAddr := "0-0,127.0.0.1:4460"
 	localAddr := "0-0,0.0.0.0:0"
