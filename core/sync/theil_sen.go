@@ -93,8 +93,8 @@ func (l *theilSen) Do(offset time.Duration) {
 	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
 	predictedOffset := predictedTime - float64(now.UnixNano())
 
-	// Since the predictedFreqOffset is in ppm, this corresponds to 2s
-	updateInterval := 2e6
+	// predictedOffset and updateInterval are in ns, so this equals an interval of 2s
+	updateInterval := 2e9
 	predictedFreqOffset := predictedOffset / updateInterval
 
 	l.log.Debug("Theil-Sen estimate",
