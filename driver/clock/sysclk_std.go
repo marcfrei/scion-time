@@ -41,6 +41,12 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 	)
 }
 
+func (c *SystemClock) AdjustWithTick(frequencyPPM float64) {
+	c.Log.Debug("SystemClock.AdjustWithTick, not yet implemented",
+		zap.Float64("frequency (ppm)", frequencyPPM),
+	)
+}
+
 func (c *SystemClock) Sleep(duration time.Duration) {
 	c.Log.Debug("SystemClock.Sleep", zap.Duration("duration", duration))
 	time.Sleep(duration)

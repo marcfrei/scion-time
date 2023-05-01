@@ -13,6 +13,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/tklauser/go-sysconf"
+
 	"example.com/scion-time/base/timebase"
 	"example.com/scion-time/base/timemath"
 )
@@ -167,6 +169,35 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 			setFrequency(log, adj.afterFreq)
 		}
 	}(c.Log, c.adjustment)
+}
+
+func (c *SystemClock) AdjustWithTick(frequencyPPM float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	realtimeHz, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
+	if err != nil {
+		c.Log.Fatal("sysconf(_SC_CLK_TCK) failed", zap.Error(err))
+	}
+
+	// mirror kernel definition (jiffies.h, USER_TICK_USEC)
+	realtimeNominalTick := (1_000_000 + realtimeHz/2) / realtimeHz
+
+	tickDelta := math.Round(frequencyPPM / float64(realtimeHz))
+	frequency := -(frequencyPPM - float64(realtimeHz)*tickDelta)
+	c.Log.Debug("setting frequency", zap.Float64("frequency", frequency))
+
+	tx := unix.Timex{
+		Modes:  unix.ADJ_FREQUENCY | unix.ADJ_TICK,
+		Freq:   int64(math.Floor(frequency * 65536)),
+		Tick:   realtimeNominalTick - int64(tickDelta),
+		Status: unix.STA_PLL,
+	}
+
+	_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+	if err != nil {
+		c.Log.Fatal("unix.ClockAdjtime failed", zap.Error(err))
+	}
 }
 
 func (c *SystemClock) Sleep(duration time.Duration) {

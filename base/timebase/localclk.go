@@ -10,5 +10,6 @@ type LocalClock interface {
 	MaxDrift(duration time.Duration) time.Duration
 	Step(offset time.Duration)
 	Adjust(offset, duration time.Duration, frequency float64)
+	AdjustWithTick(frequency float64)
 	Sleep(duration time.Duration)
 }
