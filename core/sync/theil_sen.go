@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"math"
 	"sort"
 	"time"
 
@@ -80,14 +79,17 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 	return slope*x + intercept
 }
 
-func (l *theilSen) Do(offset time.Duration) {
+func (l *theilSen) AddSample(offset time.Duration) {
 	now := l.clk.Now()
 
 	if len(l.pts) == MeasurementBufferSize {
 		l.pts = l.pts[1:]
 	}
 	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Nanoseconds() + now.UnixNano())})
+}
 
+func (l *theilSen) GetFrequencyPPM() float64 {
+	now := l.clk.Now()
 	slope := slope(l.pts)
 	intercept := intercept(slope, l.pts)
 	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
@@ -98,14 +100,11 @@ func (l *theilSen) Do(offset time.Duration) {
 	predictedFreqOffset := predictedOffset / updateInterval
 
 	l.log.Debug("Theil-Sen estimate",
-		zap.Duration("offset", offset),
 		zap.Int("# of data points", len(l.pts)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
 		zap.Float64("predicted freq offset (ppm)", predictedFreqOffset),
 	)
 
-	if math.Abs(predictedFreqOffset) > 0 {
-		l.clk.AdjustWithTick(predictedFreqOffset)
-	}
+	return predictedFreqOffset
 }

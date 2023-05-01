@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -101,7 +102,12 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen bo
 			}
 			// lclk.Adjust(corr, refClkInterval, 0)
 			if useTheilSen {
-				theilSen.Do(corr)
+				theilSen.AddSample(corr)
+				frequencyPPM := theilSen.GetFrequencyPPM()
+
+				if math.Abs(frequencyPPM) > 0 {
+					lclk.AdjustWithTick(frequencyPPM)
+				}
 			} else {
 				pll.Do(corr, 1000.0 /* weight */)
 			}
@@ -150,7 +156,12 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen b
 			}
 			// lclk.Adjust(corr, netClkInterval, 0)
 			if useTheilSen {
-				theilSen.Do(corr)
+				theilSen.AddSample(corr)
+				frequencyPPM := theilSen.GetFrequencyPPM()
+
+				if math.Abs(frequencyPPM) > 0 {
+					lclk.AdjustWithTick(frequencyPPM)
+				}
 			} else {
 				pll.Do(corr, 1000.0 /* weight */)
 			}
