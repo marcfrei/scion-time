@@ -103,7 +103,8 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen bo
 			// lclk.Adjust(corr, refClkInterval, 0)
 			if useTheilSen {
 				theilSen.AddSample(corr)
-				frequencyPPM := theilSen.GetFrequencyPPM()
+				offset := theilSen.GetOffsetNs()
+				frequencyPPM := offset / float64(refClkInterval.Nanoseconds())
 
 				if math.Abs(frequencyPPM) > 0 {
 					lclk.AdjustWithTick(frequencyPPM)
@@ -157,7 +158,8 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen b
 			// lclk.Adjust(corr, netClkInterval, 0)
 			if useTheilSen {
 				theilSen.AddSample(corr)
-				frequencyPPM := theilSen.GetFrequencyPPM()
+				offset := theilSen.GetOffsetNs()
+				frequencyPPM := offset / float64(netClkInterval.Nanoseconds())
 
 				if math.Abs(frequencyPPM) > 0 {
 					lclk.AdjustWithTick(frequencyPPM)

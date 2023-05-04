@@ -88,23 +88,19 @@ func (l *theilSen) AddSample(offset time.Duration) {
 	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Nanoseconds() + now.UnixNano())})
 }
 
-func (l *theilSen) GetFrequencyPPM() float64 {
+func (l *theilSen) GetOffsetNs() float64 {
 	now := l.clk.Now()
 	slope := slope(l.pts)
 	intercept := intercept(slope, l.pts)
 	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
 	predictedOffset := predictedTime - float64(now.UnixNano())
 
-	// predictedOffset and updateInterval are in ns, so this equals an interval of 2s
-	updateInterval := 2e9
-	predictedFreqOffset := predictedOffset / updateInterval
-
 	l.log.Debug("Theil-Sen estimate",
 		zap.Int("# of data points", len(l.pts)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
-		zap.Float64("predicted freq offset (ppm)", predictedFreqOffset),
+		zap.Float64("predicted offset (ns)", predictedOffset),
 	)
 
-	return predictedFreqOffset
+	return predictedOffset
 }
