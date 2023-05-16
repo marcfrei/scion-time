@@ -155,7 +155,7 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
+func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -164,7 +164,6 @@ func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remote
 		InterleavedMode: true,
 	}
 	if authMode == authModeNTS {
-		ntskeServer := strings.Split(remoteAddrStr, ",")[1]
 		configureIPClientNTS(c.ntpc, ntskeServer, ntskeInsecureSkipVerify)
 	}
 	return c
@@ -190,7 +189,7 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
+func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -200,7 +199,6 @@ func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, remo
 			InterleavedMode: true,
 		}
 		if authMode == authModeNTS {
-			ntskeServer := strings.Split(remoteAddrStr, ",")[1]
 			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify)
 		}
 	}
@@ -280,12 +278,13 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 			log.Fatal("failed to parse reference clock address",
 				zap.String("address", s), zap.Error(err))
 		}
+		ntskeServer := strings.Split(s, ",")[1]
 		if !remoteAddr.IA.IsZero() {
 			refClocks = append(refClocks, newNTPReferenceClockSCION(
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
 				cfg.AuthMode,
-				s,
+				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
 			))
 			dstIAs = append(dstIAs, remoteAddr.IA)
@@ -294,7 +293,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 				localAddr.Host,
 				remoteAddr.Host,
 				cfg.AuthMode,
-				s,
+				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
 			))
 		}
@@ -308,11 +307,12 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 		if remoteAddr.IA.IsZero() {
 			log.Fatal("unexpected peer address", zap.String("address", s), zap.Error(err))
 		}
+		ntskeServer := strings.Split(s, ",")[1]
 		netClocks = append(netClocks, newNTPReferenceClockSCION(
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
 			cfg.AuthMode,
-			s,
+			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
 		))
 		dstIAs = append(dstIAs, remoteAddr.IA)
