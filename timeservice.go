@@ -155,21 +155,6 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool) {
-	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
-	if err != nil {
-		log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
-	}
-	c.Auth.NTSEnabled = true
-	c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
-		InsecureSkipVerify: ntskeInsecureSkipVerify,
-		ServerName:         ntskeHost,
-		MinVersion:         tls.VersionTLS13,
-	}
-	c.Auth.NTSKEFetcher.Port = ntskePort
-	c.Auth.NTSKEFetcher.Log = log
-}
-
 func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
@@ -188,6 +173,21 @@ func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remote
 func (c *ntpReferenceClockIP) MeasureClockOffset(ctx context.Context, log *zap.Logger) (
 	time.Duration, error) {
 	return client.MeasureClockOffsetIP(ctx, log, c.ntpc, c.localAddr, c.remoteAddr)
+}
+
+func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool) {
+	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
+	if err != nil {
+		log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
+	}
+	c.Auth.NTSEnabled = true
+	c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
+		InsecureSkipVerify: ntskeInsecureSkipVerify,
+		ServerName:         ntskeHost,
+		MinVersion:         tls.VersionTLS13,
+	}
+	c.Auth.NTSKEFetcher.Port = ntskePort
+	c.Auth.NTSKEFetcher.Log = log
 }
 
 func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
@@ -228,16 +228,15 @@ func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string)
 }
 
 func loadConfig(log *zap.Logger, configFile string) svcConfig {
-	var cfg svcConfig
 	raw, err := os.ReadFile(configFile)
 	if err != nil {
 		log.Fatal("failed to load configuration", zap.Error(err))
 	}
+	var cfg svcConfig
 	err = toml.NewDecoder(bytes.NewReader(raw)).DisallowUnknownFields().Decode(&cfg)
 	if err != nil {
 		log.Fatal("failed to decode configuration", zap.Error(err))
 	}
-
 	return cfg
 }
 
@@ -250,7 +249,6 @@ func localAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
 	if err != nil {
 		log.Fatal("failed to parse local address")
 	}
-
 	return &localAddr
 }
 
@@ -263,7 +261,6 @@ func remoteAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
 	if err != nil {
 		log.Fatal("failed to parse remote address")
 	}
-
 	return &remoteAddr
 }
 
@@ -354,12 +351,10 @@ func tlsConfig(log *zap.Logger, cfg svcConfig) *tls.Config {
 	if cfg.NTSKEServerName == "" || cfg.NTSKECertFile == "" || cfg.NTSKEKeyFile == "" {
 		log.Fatal("missing parameters in configuration for NTSKE server")
 	}
-
 	certCache := tlsCertCache{
 		certFile: cfg.NTSKECertFile,
 		keyFile:  cfg.NTSKEKeyFile,
 	}
-
 	return &tls.Config{
 		ServerName:     cfg.NTSKEServerName,
 		NextProtos:     []string{"ntske/1"},
