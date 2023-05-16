@@ -53,9 +53,9 @@ const (
 )
 
 type svcConfig struct {
-	LocalAddress            string   `toml:"local_address,omitempty"`
-	DaemonAddress           string   `toml:"daemon_address,omitempty"`
-	RemoteAddress           string   `toml:"remote_address,omitempty"`
+	LocalAddr               string   `toml:"local_address,omitempty"`
+	DaemonAddr              string   `toml:"daemon_address,omitempty"`
+	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	NTPReferenceClocks      []string `toml:"ntp_reference_clocks,omitempty"`
 	SCIONPeers              []string `toml:"scion_peers,omitempty"`
@@ -247,11 +247,11 @@ func loadConfig(log *zap.Logger, configFile string) svcConfig {
 }
 
 func localAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
-	if cfg.LocalAddress == "" {
+	if cfg.LocalAddr == "" {
 		log.Fatal("local_address not specified in config")
 	}
 	var localAddr snet.UDPAddr
-	err := localAddr.Set(cfg.LocalAddress)
+	err := localAddr.Set(cfg.LocalAddr)
 	if err != nil {
 		log.Fatal("failed to parse local address")
 	}
@@ -259,11 +259,11 @@ func localAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
 }
 
 func remoteAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
-	if cfg.RemoteAddress == "" {
+	if cfg.RemoteAddr == "" {
 		log.Fatal("remote_address not specified in config")
 	}
 	var remoteAddr snet.UDPAddr
-	err := remoteAddr.Set(cfg.RemoteAddress)
+	err := remoteAddr.Set(cfg.RemoteAddr)
 	if err != nil {
 		log.Fatal("failed to parse remote address")
 	}
@@ -271,7 +271,7 @@ func remoteAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
 }
 
 func daemonAddress(log *zap.Logger, cfg svcConfig) string {
-	return cfg.DaemonAddress
+	return cfg.DaemonAddr
 }
 
 func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localAddr *snet.UDPAddr) (
