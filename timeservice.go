@@ -170,7 +170,7 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPRefernceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
+func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -190,7 +190,7 @@ func (c *ntpReferenceClockIP) MeasureClockOffset(ctx context.Context, log *zap.L
 	return client.MeasureClockOffsetIP(ctx, log, c.ntpc, c.localAddr, c.remoteAddr)
 }
 
-func newNTPRefernceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
+func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, remoteAddrStr string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -284,7 +284,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 				zap.String("address", s), zap.Error(err))
 		}
 		if !remoteAddr.IA.IsZero() {
-			refClocks = append(refClocks, newNTPRefernceClockSCION(
+			refClocks = append(refClocks, newNTPReferenceClockSCION(
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
 				cfg.AuthMode,
@@ -293,7 +293,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 			))
 			dstIAs = append(dstIAs, remoteAddr.IA)
 		} else {
-			refClocks = append(refClocks, newNTPRefernceClockIP(
+			refClocks = append(refClocks, newNTPReferenceClockIP(
 				localAddr.Host,
 				remoteAddr.Host,
 				cfg.AuthMode,
@@ -311,7 +311,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 		if remoteAddr.IA.IsZero() {
 			log.Fatal("unexpected peer address", zap.String("address", s), zap.Error(err))
 		}
-		netClocks = append(netClocks, newNTPRefernceClockSCION(
+		netClocks = append(netClocks, newNTPReferenceClockSCION(
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
 			cfg.AuthMode,
