@@ -135,6 +135,14 @@ func runMonitor(log *zap.Logger) {
 	log.Fatal("failed to serve metrics", zap.Error(err))
 }
 
+func ntskeServerFromRemoteAddr(remoteAddr string) string {
+	split := strings.Split(remoteAddr, ",")
+	if len(split) < 2 {
+		panic("remote address has wrong format")
+	}
+	return split[1]
+}
+
 func (c *mbgReferenceClock) MeasureClockOffset(ctx context.Context, log *zap.Logger) (
 	time.Duration, error) {
 	return mbg.MeasureClockOffset(ctx, log, c.dev)
@@ -262,6 +270,10 @@ func remoteAddress(log *zap.Logger, cfg svcConfig) *snet.UDPAddr {
 	return &remoteAddr
 }
 
+func daemonAddress(log *zap.Logger, cfg svcConfig) string {
+	return cfg.DaemonAddress
+}
+
 func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localAddr *snet.UDPAddr) (
 	refClocks, netClocks []client.ReferenceClock) {
 
@@ -278,7 +290,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 			log.Fatal("failed to parse reference clock address",
 				zap.String("address", s), zap.Error(err))
 		}
-		ntskeServer := strings.Split(s, ",")[1]
+		ntskeServer := ntskeServerFromRemoteAddr(s)
 		if !remoteAddr.IA.IsZero() {
 			refClocks = append(refClocks, newNTPReferenceClockSCION(
 				udp.UDPAddrFromSnet(localAddr),
@@ -307,7 +319,7 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 		if remoteAddr.IA.IsZero() {
 			log.Fatal("unexpected peer address", zap.String("address", s), zap.Error(err))
 		}
-		ntskeServer := strings.Split(s, ",")[1]
+		ntskeServer := ntskeServerFromRemoteAddr(s)
 		netClocks = append(netClocks, newNTPReferenceClockSCION(
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
@@ -318,10 +330,11 @@ func referenceClocks(ctx context.Context, log *zap.Logger, cfg svcConfig, localA
 		dstIAs = append(dstIAs, remoteAddr.IA)
 	}
 
-	if cfg.DaemonAddress != "" {
+	daemonAddr := daemonAddress(log, cfg)
+	if daemonAddr != "" {
 		ctx := context.Background()
-		pather := scion.StartPather(ctx, log, cfg.DaemonAddress, dstIAs)
-		drkeyFetcher := scion.NewFetcher(newDaemonConnector(ctx, log, cfg.DaemonAddress))
+		pather := scion.StartPather(ctx, log, daemonAddr, dstIAs)
+		drkeyFetcher := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
@@ -368,7 +381,7 @@ func runServer(configFile string) {
 
 	cfg := loadConfig(log, configFile)
 	localAddr := localAddress(log, cfg)
-	daemonAddr := cfg.DaemonAddress
+	daemonAddr := daemonAddress(log, cfg)
 	refClocks, netClocks := referenceClocks(ctx, log, cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
@@ -399,7 +412,7 @@ func runRelay(configFile string) {
 
 	cfg := loadConfig(log, configFile)
 	localAddr := localAddress(log, cfg)
-	daemonAddr := cfg.DaemonAddress
+	daemonAddr := daemonAddress(log, cfg)
 	refClocks, netClocks := referenceClocks(ctx, log, cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
@@ -541,7 +554,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 func runBenchmark(configFile string) {
 	cfg := loadConfig(log, configFile)
 	localAddr := localAddress(log, cfg)
-	daemonAddr := cfg.DaemonAddress
+	daemonAddr := daemonAddress(log, cfg)
 	remoteAddr := remoteAddress(log, cfg)
 
 	if !remoteAddr.IA.IsZero() {
@@ -726,7 +739,7 @@ func main() {
 			if authMode != "" && authMode != authModeNTS {
 				exitWithUsage()
 			}
-			ntskeServer := strings.Split(remoteAddrStr, ",")[1]
+			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
 			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, authMode, ntskeServer, ntskeInsecureSkipVerify)
 		} else {
@@ -739,7 +752,7 @@ func main() {
 			if authMode != "" && authMode != authModeNTS {
 				exitWithUsage()
 			}
-			ntskeServer := strings.Split(remoteAddrStr, ",")[1]
+			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
 			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServer, ntskeInsecureSkipVerify)
 		}
