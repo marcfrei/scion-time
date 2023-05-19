@@ -46,6 +46,7 @@ const (
 	dispatcherModeExternal = "external"
 	dispatcherModeInternal = "internal"
 	authModeNTS            = "nts"
+	authModeSPAO           = "spao"
 
 	tlsCertReloadInterval = time.Minute * 10
 
@@ -62,7 +63,7 @@ type svcConfig struct {
 	NTSKECertFile           string   `toml:"ntske_cert_file,omitempty"`
 	NTSKEKeyFile            string   `toml:"ntske_key_file,omitempty"`
 	NTSKEServerName         string   `toml:"ntske_server_name,omitempty"`
-	AuthMode                string   `toml:"auth_mode,omitempty"`
+	AuthModes               []string `toml:"auth_modes,omitempty"`
 	NTSKEInsecureSkipVerify bool     `toml:"ntske_insecure_skip_verify,omitempty"`
 }
 
@@ -93,6 +94,15 @@ type tlsCertCache struct {
 var (
 	log *zap.Logger
 )
+
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
 
 func initLogger(verbose bool) {
 	c := zap.NewDevelopmentConfig()
@@ -163,7 +173,9 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
+func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) (
+	*ntpReferenceClockIP) {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -171,7 +183,7 @@ func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, authMode, ntskeS
 	c.ntpc = &client.IPClient{
 		InterleavedMode: true,
 	}
-	if authMode == authModeNTS {
+	if contains(authModes, authModeNTS) {
 		configureIPClientNTS(c.ntpc, ntskeServer, ntskeInsecureSkipVerify)
 	}
 	return c
@@ -197,7 +209,9 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
+func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) (
+	*ntpReferenceClockSCION) {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -206,7 +220,7 @@ func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, authMode, ntsk
 		c.ntpcs[i] = &client.SCIONClient{
 			InterleavedMode: true,
 		}
-		if authMode == authModeNTS {
+		if contains(authModes, authModeNTS) {
 			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify)
 		}
 	}
@@ -311,7 +325,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			refClocks = append(refClocks, newNTPReferenceClockSCION(
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
-				cfg.AuthMode,
+				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
 			))
@@ -320,7 +334,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			refClocks = append(refClocks, newNTPReferenceClockIP(
 				localAddr.Host,
 				remoteAddr.Host,
-				cfg.AuthMode,
+				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
 			))
@@ -339,7 +353,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 		netClocks = append(netClocks, newNTPReferenceClockSCION(
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
-			cfg.AuthMode,
+			cfg.AuthModes,
 			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
 		))
@@ -350,14 +364,19 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 	if daemonAddr != "" {
 		ctx := context.Background()
 		pather := scion.StartPather(ctx, log, daemonAddr, dstIAs)
-		drkeyFetcher := scion.NewFetcher(newDaemonConnector(ctx, daemonAddr))
+		var drkeyFetcher *scion.Fetcher
+		if contains(cfg.AuthModes, authModeSPAO) {
+			drkeyFetcher = scion.NewFetcher(newDaemonConnector(ctx, daemonAddr))
+		}
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				for i := 0; i != len(scionclk.ntpcs); i++ {
-					scionclk.ntpcs[i].Auth.Enabled = true
-					scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+				if drkeyFetcher != nil {
+					for i := 0; i != len(scionclk.ntpcs); i++ {
+						scionclk.ntpcs[i].Auth.Enabled = true
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+					}
 				}
 			}
 		}
@@ -365,9 +384,11 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				for i := 0; i != len(scionclk.ntpcs); i++ {
-					scionclk.ntpcs[i].Auth.Enabled = true
-					scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+				if drkeyFetcher != nil {
+					for i := 0; i != len(scionclk.ntpcs); i++ {
+						scionclk.ntpcs[i].Auth.Enabled = true
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+					}
 				}
 			}
 		}
