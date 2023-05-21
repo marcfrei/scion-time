@@ -162,7 +162,7 @@ And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `
 
 ```
 cd ~/scion-time
-sudo ip netns exec netns1 ./timeservice client -verbose --config testnet/gen-eh/ASff00_0_112/test-client.toml
+sudo ip netns exec netns1 ./timeservice client -verbose -config testnet/gen-eh/ASff00_0_112/test-client.toml
 ```
 
 ## Stopping the SCION test network
