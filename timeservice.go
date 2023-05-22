@@ -174,8 +174,7 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 }
 
 func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr,
-	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) (
-	*ntpReferenceClockIP) {
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -210,8 +209,7 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 }
 
 func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr,
-	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) (
-	*ntpReferenceClockSCION) {
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
@@ -494,8 +492,8 @@ func runClient(configFile string) {
 	runMonitor(log)
 }
 
-func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode,
-	ntskeServer string, ntskeInsecureSkipVerify bool) {
+func runIPTool(localAddr, remoteAddr *snet.UDPAddr,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
 
@@ -507,8 +505,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode,
 	c := &client.IPClient{
 		InterleavedMode: true,
 	}
-
-	if authMode == authModeNTS {
+	if contains(authModes, authModeNTS) {
 		configureIPClientNTS(c, ntskeServer, ntskeInsecureSkipVerify)
 	}
 
@@ -519,7 +516,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr, authMode,
 }
 
 func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr,
-	authMode, ntskeServer string, ntskeInsecureSkipVerify bool) {
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
 
@@ -555,10 +552,11 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	c := &client.SCIONClient{
 		InterleavedMode: true,
 	}
-	c.Auth.Enabled = true
-	c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
-
-	if authMode == authModeNTS {
+	if contains(authModes, authModeSPAO) {
+		c.Auth.Enabled = true
+		c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
+	}
+	if contains(authModes, authModeNTS) {
 		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify)
 	}
 
@@ -668,7 +666,7 @@ func main() {
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
 		drkeyClientAddr         snet.UDPAddr
-		authMode                string
+		authModesStr            string
 		ntskeInsecureSkipVerify bool
 	)
 
@@ -693,7 +691,7 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
-	toolFlags.StringVar(&authMode, "auth", "", "Authentication mode")
+	toolFlags.StringVar(&authModesStr, "auth", "", "Authentication modes")
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -750,6 +748,10 @@ func main() {
 		if err != nil {
 			exitWithUsage()
 		}
+		authModes := strings.Split(authModesStr, ",")
+		for i := range authModes {
+			authModes[i] = strings.TrimSpace(authModes[i])
+		}
 		if !remoteAddr.IA.IsZero() {
 			if dispatcherMode == "" {
 				dispatcherMode = dispatcherModeExternal
@@ -757,12 +759,9 @@ func main() {
 				dispatcherMode != dispatcherModeInternal {
 				exitWithUsage()
 			}
-			if authMode != "" && authMode != authModeNTS {
-				exitWithUsage()
-			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
-			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, authMode, ntskeServer, ntskeInsecureSkipVerify)
+			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, authModes, ntskeServer, ntskeInsecureSkipVerify)
 		} else {
 			if daemonAddr != "" {
 				exitWithUsage()
@@ -770,12 +769,9 @@ func main() {
 			if dispatcherMode != "" {
 				exitWithUsage()
 			}
-			if authMode != "" && authMode != authModeNTS {
-				exitWithUsage()
-			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, authMode, ntskeServer, ntskeInsecureSkipVerify)
+			runIPTool(&localAddr, &remoteAddr, authModes, ntskeServer, ntskeInsecureSkipVerify)
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
