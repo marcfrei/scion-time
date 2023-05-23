@@ -455,66 +455,51 @@ func (a Authenticator) pack(buf *bytes.Buffer) error {
 	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, buf.Bytes())
 	a.CipherTextLen = uint16(len(a.CipherText))
 
-	noncebuf := new(bytes.Buffer)
-	err = binary.Write(noncebuf, binary.BigEndian, a.Nonce)
-	if err != nil {
-		return err
-	}
-	a.NonceLen = uint16(noncebuf.Len())
+	a.NonceLen = uint16(len(a.Nonce))
+	noncepadlen := (4 - a.NonceLen) % 4
 
-	cipherbuf := new(bytes.Buffer)
-	err = binary.Write(cipherbuf, binary.BigEndian, a.CipherText)
-	if err != nil {
-		return err
-	}
-	a.CipherTextLen = uint16(cipherbuf.Len())
-
-	extbuf := new(bytes.Buffer)
-
-	err = binary.Write(extbuf, binary.BigEndian, a.NonceLen)
-	if err != nil {
-		return err
-	}
-
-	err = binary.Write(extbuf, binary.BigEndian, a.CipherTextLen)
-	if err != nil {
-		return err
-	}
-
-	_, err = extbuf.ReadFrom(noncebuf)
-	if err != nil {
-		return err
-	}
-	noncepadding := make([]byte, (noncebuf.Len()+3) & ^3)
-	_, err = extbuf.Write(noncepadding)
-	if err != nil {
-		return err
-	}
-
-	_, err = extbuf.ReadFrom(cipherbuf)
-	if err != nil {
-		return err
-	}
-	cipherpadding := make([]byte, (cipherbuf.Len()+3) & ^3)
-	_, err = extbuf.Write(cipherpadding)
-	if err != nil {
-		return err
-
-	}
-	// FIXME Add additionalpadding as described in section 5.6 of nts draft?
+	a.CipherTextLen = uint16(len(a.CipherText))
+	cipherpadlen := (4 - a.CipherTextLen) % 4
 
 	a.ExtHdr.Type = extAuthenticator
-	a.ExtHdr.Length = 4 + uint16(extbuf.Len())
+	a.ExtHdr.Length = 4 + 2 + 2 + a.NonceLen + noncepadlen + a.CipherTextLen + cipherpadlen
 	err = a.ExtHdr.pack(buf)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.ReadFrom(extbuf)
+	err = binary.Write(buf, binary.BigEndian, a.NonceLen)
 	if err != nil {
-
 		return err
 	}
+
+	err = binary.Write(buf, binary.BigEndian, a.CipherTextLen)
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, a.Nonce)
+	if err != nil {
+		return err
+	}
+
+	noncepadding := make([]byte, noncepadlen)
+	err = binary.Write(buf, binary.BigEndian, noncepadding)
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, a.CipherText)
+	if err != nil {
+		return err
+	}
+
+	cipherpadding := make([]byte, cipherpadlen)
+	_, err = buf.Write(cipherpadding)
+	if err != nil {
+		return err
+	}
+
 	//_, err = buf.Write(additionalpadding)
 	//if err != nil {
 	//	return err
