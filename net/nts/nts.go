@@ -89,7 +89,7 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	if len(pkt.NTPHeader) != ntpHeaderLen {
 		panic("unexpected NTP header")
 	}
-	_, _ = buf.Write((pkt.NTPHeader))
+	_, _ = buf.Write(pkt.NTPHeader)
 
 	err := pkt.UniqueID.pack(buf)
 	if err != nil {
@@ -285,26 +285,21 @@ type UniqueIdentifier struct {
 }
 
 func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
-	value := new(bytes.Buffer)
-	err := binary.Write(value, binary.BigEndian, u.ID)
-	if err != nil {
-		return err
-	}
-	if value.Len() < 32 {
+	if len(u.ID) < 32 {
 		return fmt.Errorf("UniqueIdentifier.ID < 32 bytes")
 	}
 
-	newlen := (value.Len() + 3) & ^3
-	padding := make([]byte, newlen-value.Len())
+	newlen := (len(u.ID) + 3) & ^3
+	padding := make([]byte, newlen-len(u.ID))
 
 	u.ExtHdr.Type = extUniqueIdentifier
 	u.ExtHdr.Length = 4 + uint16(newlen)
-	err = u.ExtHdr.pack(buf)
+	err := u.ExtHdr.pack(buf)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.ReadFrom(value)
+	err = binary.Write(buf, binary.BigEndian, u.ID)
 	if err != nil {
 		return err
 	}
@@ -349,24 +344,19 @@ type Cookie struct {
 }
 
 func (c Cookie) pack(buf *bytes.Buffer) error {
-	value := new(bytes.Buffer)
-	origlen, err := value.Write(c.Cookie)
-	if err != nil {
-		return err
-	}
-
 	// Round up to nearest word boundary
+	origlen := len(c.Cookie)
 	newlen := (origlen + 3) & ^3
 	padding := make([]byte, newlen-origlen)
 
 	c.ExtHdr.Type = extCookie
 	c.ExtHdr.Length = 4 + uint16(newlen)
-	err = c.ExtHdr.pack(buf)
+	err := c.ExtHdr.pack(buf)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.ReadFrom(value)
+	err = binary.Write(buf, binary.BigEndian, c.Cookie)
 	if err != nil {
 		return err
 	}
@@ -397,24 +387,19 @@ type CookiePlaceholder struct {
 }
 
 func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
-	value := new(bytes.Buffer)
-	origlen, err := value.Write(c.Cookie)
-	if err != nil {
-		return err
-	}
-
 	// Round up to nearest word boundary
+	origlen := len(c.Cookie)
 	newlen := (origlen + 3) & ^3
 	padding := make([]byte, newlen-origlen)
 
-	c.ExtHdr.Type = extCookiePlaceholder
+	c.ExtHdr.Type = extCookie
 	c.ExtHdr.Length = 4 + uint16(newlen)
-	err = c.ExtHdr.pack(buf)
+	err := c.ExtHdr.pack(buf)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.ReadFrom(value)
+	err = binary.Write(buf, binary.BigEndian, c.Cookie)
 	if err != nil {
 		return err
 	}
