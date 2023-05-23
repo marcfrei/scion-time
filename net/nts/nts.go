@@ -36,7 +36,7 @@ import (
 	"io"
 
 	"example.com/scion-time/net/ntske"
-	"github.com/secure-io/siv-go"
+	"github.com/miscreant/miscreant.go"
 )
 
 const (
@@ -151,7 +151,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 				return fmt.Errorf("unpack Authenticator: %s", err)
 			}
 
-			aessiv, err := siv.NewCMAC(key)
+			aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 			if err != nil {
 				return err
 			}
@@ -256,7 +256,7 @@ func NewResponsePacket(ntpheader []byte, cookies [][]byte, key []byte, uniqueid 
 
 	var auth Authenticator
 	auth.Key = key
-	auth.AssociatedData = buf.Bytes()
+	auth.PlainText = buf.Bytes()
 	pkt.Auth = auth
 
 	return pkt
@@ -430,16 +430,16 @@ type Key []byte
 
 type Authenticator struct {
 	ExtHdr
-	NonceLen       uint16
-	CipherTextLen  uint16
-	Nonce          []byte
-	AssociatedData []byte
-	CipherText     []byte
-	Key            Key
+	NonceLen      uint16
+	CipherTextLen uint16
+	Nonce         []byte
+	PlainText     []byte
+	CipherText    []byte
+	Key           Key
 }
 
 func (a Authenticator) pack(buf *bytes.Buffer) error {
-	aessiv, err := siv.NewCMAC(a.Key)
+	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", a.Key, 16)
 	if err != nil {
 		return err
 	}
@@ -452,7 +452,7 @@ func (a Authenticator) pack(buf *bytes.Buffer) error {
 
 	a.Nonce = bits
 
-	a.CipherText = aessiv.Seal(nil, a.Nonce, a.AssociatedData, buf.Bytes())
+	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, buf.Bytes())
 	a.CipherTextLen = uint16(len(a.CipherText))
 
 	noncebuf := new(bytes.Buffer)

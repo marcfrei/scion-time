@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/secure-io/siv-go"
+	"github.com/miscreant/miscreant.go"
 )
 
 const (
@@ -128,7 +128,7 @@ func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerC
 		return EncryptedServerCookie{}, err
 	}
 
-	aessiv, err := siv.NewCMAC(key)
+	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 	if err != nil {
 		return EncryptedServerCookie{}, err
 	}
@@ -144,7 +144,7 @@ func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerC
 }
 
 func (c *EncryptedServerCookie) Decrypt(key []byte) (ServerCookie, error) {
-	aessiv, err := siv.NewCMAC(key)
+	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 	if err != nil {
 		return ServerCookie{}, err
 	}
