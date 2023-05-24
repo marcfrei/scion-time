@@ -129,7 +129,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		remoteAddr.IP = ip4
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, ntp.PacketLen)
 
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
@@ -153,7 +153,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	var requestID []byte
 	var ntsreq nts.NTSPacket
 	if c.Auth.Enabled {
-		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
+		ntsreq, requestID = nts.NewPacket(ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 

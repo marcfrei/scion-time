@@ -196,7 +196,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	var requestID []byte
 	var ntsreq nts.NTSPacket
 	if c.Auth.NTSEnabled {
-		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
+		ntsreq, requestID = nts.NewPacket(ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 
