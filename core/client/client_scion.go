@@ -460,7 +460,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 				return offset, weight, err
 			}
 
-			err = ntsresp.Authenticate(&buf, ntskeData.S2cKey)
+			err = ntsresp.Authenticate(&udpLayer.Payload, ntskeData.S2cKey)
 			if err != nil {
 				log.Info("failed to authenticate packet", zap.Error(err))
 				continue
