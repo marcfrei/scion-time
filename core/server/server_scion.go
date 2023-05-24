@@ -325,7 +325,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					continue
 				}
 
-				err = ntsreq.Authenticate(&buf, serverCookie.C2S)
+				err = ntsreq.Authenticate(&udpLayer.Payload, serverCookie.C2S)
 				if err != nil {
 					log.Info("failed to authenticate packet", zap.Error(err))
 					continue
