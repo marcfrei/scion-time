@@ -89,7 +89,6 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 		panic("unexpected NTP header")
 	}
 	pktlen := 1024
-	print(cap(*b))
 	if cap(*b) < pktlen {
 		t := make([]byte, ntpHeaderLen)
 		copy(t, *b)
