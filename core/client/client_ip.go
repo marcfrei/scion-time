@@ -129,7 +129,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		remoteAddr.IP = ip4
 	}
 
-	buf := make([]byte, ntp.PacketLen)
+	buf := make([]byte, 1024)
 
 	reference := remoteAddr.String()
 	cTxTime0 := timebase.Now()
@@ -230,7 +230,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		authenticated := false
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf)
+			err = nts.DecodePacket(&ntsresp, &buf)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					log.Info("failed to decode and authenticate NTS packet", zap.Error(err))

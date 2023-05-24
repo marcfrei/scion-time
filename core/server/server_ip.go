@@ -97,7 +97,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsreq nts.NTSPacket
 		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
-			err = nts.DecodePacket(&ntsreq, buf)
+			err = nts.DecodePacket(&ntsreq, &buf)
 			if err != nil {
 				log.Info("failed to decode packet", zap.Error(err))
 				continue
@@ -176,7 +176,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			ntsresp := nts.NewResponsePacket(buf, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
+			ntsresp := nts.NewResponsePacket(cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
 

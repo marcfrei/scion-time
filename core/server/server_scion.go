@@ -295,7 +295,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			var ntsreq nts.NTSPacket
 			var serverCookie ntske.ServerCookie
 			if len(udpLayer.Payload) > ntp.PacketLen {
-				err = nts.DecodePacket(&ntsreq, udpLayer.Payload)
+				err = nts.DecodePacket(&ntsreq, &udpLayer.Payload)
 				if err != nil {
 					log.Info("failed to decode packet", zap.Error(err))
 					continue
@@ -388,7 +388,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					continue
 				}
 
-				ntsresp := nts.NewResponsePacket(udpLayer.Payload, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
+				ntsresp := nts.NewResponsePacket(cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 				nts.EncodePacket(&udpLayer.Payload, &ntsresp)
 			}
 

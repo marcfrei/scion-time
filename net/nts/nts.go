@@ -85,46 +85,45 @@ func NewPacket(ntpHeader []byte, ntskeData ntske.Data) (pkt NTSPacket, uniqueid 
 }
 
 func EncodePacket(b *[]byte, pkt *NTSPacket) {
-	buf := new(bytes.Buffer)
-	if len(pkt.NTPHeader) != ntpHeaderLen {
+	if len(*b) != ntpHeaderLen {
 		panic("unexpected NTP header")
 	}
-	_, _ = buf.Write(pkt.NTPHeader)
+	pktlen := 1024
+	if cap(*b) < pktlen {
+		buf := make([]byte, pktlen)
+		copy((buf), (*b)[:48])
+		b = &buf
+	}
+	*b = (*b)[:pktlen]
 
-	err := pkt.UniqueID.pack(buf)
+	pos := 48
+
+	pos, err := pkt.UniqueID.pack(b, pos)
 	if err != nil {
 		panic(err)
 	}
 	for _, c := range pkt.Cookies {
-		err = c.pack(buf)
+		pos, err = c.pack(b, pos)
 		if err != nil {
 			panic(err)
 		}
 	}
 	for _, c := range pkt.CookiePlaceholders {
-		err = c.pack(buf)
+		pos, err = c.pack(b, pos)
 		if err != nil {
 			panic(err)
 		}
 	}
-	err = pkt.Auth.pack(buf)
+	pos, err = pkt.Auth.pack(b, pos)
 	if err != nil {
 		panic(err)
 	}
-
-	pktlen := buf.Len()
-	if cap(*b) < pktlen {
-		*b = make([]byte, pktlen)
-	} else {
-		*b = (*b)[:pktlen]
-	}
-
-	copy((*b)[:pktlen], buf.Bytes())
+	*b = (*b)[:pos]
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte) (err error) {
+func DecodePacket(pkt *NTSPacket, b *[]byte) (err error) {
 	pos := ntpHeaderLen
-	msgbuf := bytes.NewReader(b[48:])
+	msgbuf := bytes.NewReader((*b)[48:])
 	authenticated := false
 	unique := false
 	for msgbuf.Len() >= 28 {
@@ -240,22 +239,22 @@ func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) 
 	return nil
 }
 
-func NewResponsePacket(ntpheader []byte, cookies [][]byte, key []byte, uniqueid []byte) (pkt NTSPacket) {
-	pkt.NTPHeader = ntpheader
+func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt NTSPacket) {
 	var uid UniqueIdentifier
 	uid.ID = uniqueid
 	pkt.UniqueID = uid
 
-	buf := new(bytes.Buffer)
+	lencookies := len(cookies) * (4 + len(cookies[0]))
+	buf := make([]byte, lencookies)
 	for _, c := range cookies {
 		var cookie Cookie
 		cookie.Cookie = c
-		cookie.pack(buf)
+		cookie.pack(&buf, 0)
 	}
 
 	var auth Authenticator
 	auth.Key = key
-	auth.PlainText = buf.Bytes()
+	auth.PlainText = buf
 	pkt.Auth = auth
 
 	return pkt
@@ -266,9 +265,10 @@ type ExtHdr struct {
 	Length uint16
 }
 
-func (h ExtHdr) pack(buf *bytes.Buffer) error {
-	err := binary.Write(buf, binary.BigEndian, h)
-	return err
+func (h ExtHdr) pack(buf *[]byte, pos int) (int, error) {
+	binary.BigEndian.PutUint16((*buf)[pos:], h.Type)
+	binary.BigEndian.PutUint16((*buf)[pos+2:], h.Length)
+	return pos + 4, nil
 }
 
 func (h *ExtHdr) unpack(buf *bytes.Reader) error {
@@ -283,9 +283,9 @@ type UniqueIdentifier struct {
 	ID []byte
 }
 
-func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
+func (u UniqueIdentifier) pack(buf *[]byte, pos int) (int, error) {
 	if len(u.ID) < 32 {
-		return fmt.Errorf("UniqueIdentifier.ID < 32 bytes")
+		return 0, fmt.Errorf("UniqueIdentifier.ID < 32 bytes")
 	}
 
 	newlen := (len(u.ID) + 3) & ^3
@@ -293,22 +293,14 @@ func (u UniqueIdentifier) pack(buf *bytes.Buffer) error {
 
 	u.ExtHdr.Type = extUniqueIdentifier
 	u.ExtHdr.Length = 4 + uint16(newlen)
-	err := u.ExtHdr.pack(buf)
-	if err != nil {
-		return err
-	}
+	pos, _ = u.ExtHdr.pack(buf, pos)
 
-	err = binary.Write(buf, binary.BigEndian, u.ID)
-	if err != nil {
-		return err
-	}
+	n := copy((*buf)[pos:], u.ID)
+	pos += n
+	n = copy((*buf)[pos:], padding)
+	pos += n
 
-	_, err = buf.Write(padding)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return pos, nil
 }
 
 func (u *UniqueIdentifier) unpack(buf *bytes.Reader) error {
@@ -342,7 +334,7 @@ type Cookie struct {
 	Cookie []byte
 }
 
-func (c Cookie) pack(buf *bytes.Buffer) error {
+func (c Cookie) pack(buf *[]byte, pos int) (int, error) {
 	// Round up to nearest word boundary
 	origlen := len(c.Cookie)
 	newlen := (origlen + 3) & ^3
@@ -350,21 +342,14 @@ func (c Cookie) pack(buf *bytes.Buffer) error {
 
 	c.ExtHdr.Type = extCookie
 	c.ExtHdr.Length = 4 + uint16(newlen)
-	err := c.ExtHdr.pack(buf)
-	if err != nil {
-		return err
-	}
+	pos, _ = c.ExtHdr.pack(buf, pos)
 
-	err = binary.Write(buf, binary.BigEndian, c.Cookie)
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(padding)
-	if err != nil {
-		return err
-	}
+	n := copy((*buf)[pos:], c.Cookie)
+	pos += n
+	n = copy((*buf)[pos:], padding)
+	pos += n
 
-	return nil
+	return pos, nil
 }
 
 func (c *Cookie) unpack(buf *bytes.Reader) error {
@@ -385,7 +370,7 @@ type CookiePlaceholder struct {
 	Cookie []byte
 }
 
-func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
+func (c CookiePlaceholder) pack(buf *[]byte, pos int) (int, error) {
 	// Round up to nearest word boundary
 	origlen := len(c.Cookie)
 	newlen := (origlen + 3) & ^3
@@ -393,21 +378,14 @@ func (c CookiePlaceholder) pack(buf *bytes.Buffer) error {
 
 	c.ExtHdr.Type = extCookie
 	c.ExtHdr.Length = 4 + uint16(newlen)
-	err := c.ExtHdr.pack(buf)
-	if err != nil {
-		return err
-	}
+	pos, _ = c.ExtHdr.pack(buf, pos)
 
-	err = binary.Write(buf, binary.BigEndian, c.Cookie)
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(padding)
-	if err != nil {
-		return err
-	}
+	n := copy((*buf)[pos:], c.Cookie)
+	pos += n
+	n = copy((*buf)[pos:], padding)
+	pos += n
 
-	return nil
+	return pos, nil
 }
 
 type Key []byte
@@ -423,21 +401,21 @@ type Authenticator struct {
 	pos           int
 }
 
-func (a Authenticator) pack(buf *bytes.Buffer) error {
+func (a Authenticator) pack(buf *[]byte, pos int) (int, error) {
 	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", a.Key, 16)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	bits := make([]byte, 16)
 	_, err = rand.Read(bits)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	a.Nonce = bits
 
-	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, buf.Bytes())
+	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, (*buf)[:pos])
 	a.CipherTextLen = uint16(len(a.CipherText))
 
 	a.NonceLen = uint16(len(a.Nonce))
@@ -448,49 +426,25 @@ func (a Authenticator) pack(buf *bytes.Buffer) error {
 
 	a.ExtHdr.Type = extAuthenticator
 	a.ExtHdr.Length = 4 + 2 + 2 + a.NonceLen + noncepadlen + a.CipherTextLen + cipherpadlen
-	err = a.ExtHdr.pack(buf)
-	if err != nil {
-		return err
-	}
+	pos, _ = a.ExtHdr.pack(buf, pos)
 
-	err = binary.Write(buf, binary.BigEndian, a.NonceLen)
-	if err != nil {
-		return err
-	}
+	binary.BigEndian.PutUint16((*buf)[pos:], a.NonceLen)
+	binary.BigEndian.PutUint16((*buf)[pos+2:], a.CipherTextLen)
+	pos += 4
 
-	err = binary.Write(buf, binary.BigEndian, a.CipherTextLen)
-	if err != nil {
-		return err
-	}
-
-	err = binary.Write(buf, binary.BigEndian, a.Nonce)
-	if err != nil {
-		return err
-	}
-
+	n := copy((*buf)[pos:], a.Nonce)
+	pos += n
 	noncepadding := make([]byte, noncepadlen)
-	err = binary.Write(buf, binary.BigEndian, noncepadding)
-	if err != nil {
-		return err
-	}
+	n = copy((*buf)[pos:], noncepadding)
+	pos += n
 
-	err = binary.Write(buf, binary.BigEndian, a.CipherText)
-	if err != nil {
-		return err
-	}
-
+	n = copy((*buf)[pos:], a.CipherText)
+	pos += n
 	cipherpadding := make([]byte, cipherpadlen)
-	_, err = buf.Write(cipherpadding)
-	if err != nil {
-		return err
-	}
+	n = copy((*buf)[pos:], cipherpadding)
+	pos += n
 
-	//_, err = buf.Write(additionalpadding)
-	//if err != nil {
-	//	return err
-	//}
-
-	return nil
+	return pos, nil
 }
 
 func (a *Authenticator) unpack(buf *bytes.Reader) error {

@@ -450,7 +450,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 		ntsAuthenticated := false
 		var ntsresp nts.NTSPacket
 		if c.Auth.NTSEnabled {
-			err = nts.DecodePacket(&ntsresp, udpLayer.Payload)
+			err = nts.DecodePacket(&ntsresp, &udpLayer.Payload)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					log.Info("failed to decode and authenticate NTS packet", zap.Error(err))
