@@ -230,7 +230,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		authenticated := false
 		var ntsresp nts.NTSPacket
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf, ntskeData.S2cKey)
+			err = nts.DecodePacket(&ntsresp, buf)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					log.Info("failed to decode and authenticate NTS packet", zap.Error(err))
@@ -238,6 +238,12 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 					continue
 				}
 				return offset, weight, err
+			}
+
+			err = ntsresp.Authenticate(&buf, ntskeData.S2cKey)
+			if err != nil {
+				log.Info("failed to authenticate packet", zap.Error(err))
+				continue
 			}
 
 			err = nts.ProcessResponse(&c.Auth.NTSKEFetcher, &ntsresp, requestID)

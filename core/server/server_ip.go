@@ -97,14 +97,19 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsreq nts.NTSPacket
 		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
-			cookie, err := nts.ExtractCookie(buf)
+			err = nts.DecodePacket(&ntsreq, buf)
 			if err != nil {
+				log.Info("failed to decode packet", zap.Error(err))
+				continue
+			}
+
+			if ntsreq.Cookies == nil || len(ntsreq.Cookies) < 1 {
 				log.Info("failed to extract cookie", zap.Error(err))
 				continue
 			}
 
 			var encryptedCookie ntske.EncryptedServerCookie
-			err = encryptedCookie.Decode(cookie)
+			err = encryptedCookie.Decode(ntsreq.Cookies[0].Cookie)
 			if err != nil {
 				log.Info("failed to decode cookie", zap.Error(err))
 				continue
@@ -122,9 +127,9 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			err = nts.DecodePacket(&ntsreq, buf, serverCookie.C2S)
+			err = ntsreq.Authenticate(&buf, serverCookie.C2S)
 			if err != nil {
-				log.Info("failed to decode packet", zap.Error(err))
+				log.Info("failed to authenticate packet", zap.Error(err))
 				continue
 			}
 			authenticated = true

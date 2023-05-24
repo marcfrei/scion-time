@@ -122,7 +122,7 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	copy((*b)[:pktlen], buf.Bytes())
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
+func DecodePacket(pkt *NTSPacket, b []byte) (err error) {
 	pos := ntpHeaderLen
 	msgbuf := bytes.NewReader(b[48:])
 	authenticated := false
@@ -150,21 +150,10 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 			if err != nil {
 				return fmt.Errorf("unpack Authenticator: %s", err)
 			}
-
-			aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
-			if err != nil {
-				return err
-			}
-
-			decrytedBuf, err := aessiv.Open(nil, a.Nonce, a.CipherText, b[:pos])
-			if err != nil {
-				return err
-			}
+			a.pos = pos
 			pkt.Auth = a
-
-			//ignore unauthenticated fields and only continue with decrypted
-			msgbuf = bytes.NewReader(decrytedBuf)
 			authenticated = true
+			break
 
 		case extCookie:
 			cookie := Cookie{ExtHdr: eh}
@@ -193,7 +182,7 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 	}
 
 	if !authenticated {
-		return errors.New("packet does not contain a valid authenticator")
+		return errors.New("packet does not contain an authenticator")
 	}
 	if !unique {
 		return errors.New("packet does not contain a unique identifier")
@@ -202,13 +191,23 @@ func DecodePacket(pkt *NTSPacket, b []byte, key []byte) (err error) {
 	return nil
 }
 
-func ExtractCookie(b []byte) ([]byte, error) {
-	msgbuf := bytes.NewReader(b[48:])
+func (pkt *NTSPacket) Authenticate(b *[]byte, key []byte) error {
+	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
+	if err != nil {
+		return err
+	}
+
+	decrytedBuf, err := aessiv.Open(nil, pkt.Auth.Nonce, pkt.Auth.CipherText, (*b)[:pkt.Auth.pos])
+	if err != nil {
+		return err
+	}
+
+	msgbuf := bytes.NewReader(decrytedBuf)
 	for msgbuf.Len() >= 28 {
 		var eh ExtHdr
 		err := eh.unpack(msgbuf)
 		if err != nil {
-			return nil, fmt.Errorf("unpack extension field: %s", err)
+			return fmt.Errorf("unpack extension field: %s", err)
 		}
 
 		switch eh.Type {
@@ -216,19 +215,19 @@ func ExtractCookie(b []byte) ([]byte, error) {
 			cookie := Cookie{ExtHdr: eh}
 			err = cookie.unpack(msgbuf)
 			if err != nil {
-				return nil, fmt.Errorf("unpack Cookie: %s", err)
+				return fmt.Errorf("unpack Cookie: %s", err)
 			}
-			return cookie.Cookie, nil
+			pkt.Cookies = append(pkt.Cookies, cookie)
 
 		default:
-			_, err := msgbuf.Seek(int64(eh.Length-uint16(binary.Size(eh))), io.SeekCurrent)
+			_, err := msgbuf.Seek(int64(eh.Length), io.SeekCurrent)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
-	return nil, errors.New("packet does not contain a cookie")
+	return nil
 }
 
 func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) error {
@@ -421,6 +420,7 @@ type Authenticator struct {
 	PlainText     []byte
 	CipherText    []byte
 	Key           Key
+	pos           int
 }
 
 func (a Authenticator) pack(buf *bytes.Buffer) error {
