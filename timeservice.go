@@ -723,7 +723,6 @@ func main() {
 		if profileCPU {
 			defer profile.Start(profile.CPUProfile).Stop()
 		}
-
 		initLogger(verbose)
 		runServer(configFile)
 	case relayFlags.Name():
