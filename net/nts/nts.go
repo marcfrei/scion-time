@@ -404,10 +404,10 @@ func (a Authenticator) pack(buf *[]byte, pos int) (int, error) {
 	a.CipherTextLen = uint16(len(a.CipherText))
 
 	a.NonceLen = uint16(len(a.Nonce))
-	noncepadlen := (4 - a.NonceLen) % 4
+	noncepadlen := (-a.NonceLen) % 4
 
 	a.CipherTextLen = uint16(len(a.CipherText))
-	cipherpadlen := (4 - a.CipherTextLen) % 4
+	cipherpadlen := (-a.CipherTextLen) % 4
 
 	a.ExtHdr.Type = extAuthenticator
 	a.ExtHdr.Length = 4 + 2 + 2 + a.NonceLen + noncepadlen + a.CipherTextLen + cipherpadlen

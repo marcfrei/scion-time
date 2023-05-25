@@ -670,7 +670,7 @@ func main() {
 		drkeyClientAddr         snet.UDPAddr
 		authModesStr            string
 		ntskeInsecureSkipVerify bool
-		profileCPU bool
+		profileCPU              bool
 	)
 
 	serverFlags := flag.NewFlagSet("server", flag.ExitOnError)
