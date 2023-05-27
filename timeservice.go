@@ -399,6 +399,10 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 	return
 }
 
+func copyIP(ip net.IP) net.IP {
+	return append(ip[:0:0], ip...)
+}
+
 func runServer(configFile string) {
 	ctx := context.Background()
 
@@ -423,7 +427,7 @@ func runServer(configFile string) {
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), tlsConfig, provider)
+	server.StartNTSKEServer(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
 
@@ -454,7 +458,7 @@ func runRelay(configFile string) {
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
-	server.StartNTSKEServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), tlsConfig, provider)
+	server.StartNTSKEServer(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
 

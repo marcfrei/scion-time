@@ -337,8 +337,8 @@ func NewListener(listener net.Listener) (*KeyExchange, error) {
 
 	ke.reader = bufio.NewReader(ke.Conn)
 
-	state := ke.Conn.ConnectionState()
-	fmt.Printf("negotiated proto: %v\n", state.NegotiatedProtocol)
+	// state := ke.Conn.ConnectionState()
+	// fmt.Printf("negotiated proto: %v\n", state.NegotiatedProtocol)
 	// if state.NegotiatedProtocol != alpn {
 	// 	return nil, fmt.Errorf("client not speaking ntske/1")
 	// }
