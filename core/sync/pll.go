@@ -25,7 +25,7 @@ func newPLL(log *zap.Logger, clk timebase.LocalClock) *pll {
 	return &pll{log: log, clk: clk}
 }
 
-func (l *pll) Do(offset time.Duration, weight float64) {
+func (l *pll) AddSampleAndGetData(offset time.Duration, weight float64) (float64, float64, float64) {
 	offset = timemath.Inv(offset)
 	if l.epoch != l.clk.Epoch() {
 		l.epoch = l.clk.Epoch()
@@ -116,7 +116,6 @@ func (l *pll) Do(offset time.Duration, weight float64) {
 		zap.Float64("a", a),
 		zap.Float64("b", b),
 	)
-	if d > 0.0 {
-		l.clk.Adjust(timemath.Duration(p), timemath.Duration(d), l.i)
-	}
+
+	return p, d, l.i
 }

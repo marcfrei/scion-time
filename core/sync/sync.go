@@ -100,17 +100,32 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen bo
 			if float64(timemath.Abs(corr)) > maxCorr {
 				corr = time.Duration(float64(timemath.Sign(corr)) * maxCorr)
 			}
-			// lclk.Adjust(corr, refClkInterval, 0)
-			if useTheilSen {
-				theilSen.AddSample(corr)
-				offset := theilSen.GetOffsetNs()
-				frequencyPPM := offset / float64(refClkInterval.Nanoseconds())
 
-				if math.Abs(frequencyPPM) > 0 {
-					lclk.AdjustWithTick(frequencyPPM)
+			theilSen.AddSample(corr)
+			offset := theilSen.GetOffsetNs()
+			frequencyPPB := offset / float64(refClkInterval.Nanoseconds()) * 1e9
+			log.Debug("Prediction from Theil-Sen: ",
+				zap.Float64("offset", offset),
+				zap.Float64("freqPPB", frequencyPPB),
+			)
+
+			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
+			pllFreq := int64(math.Floor((startFreq + (correction / interval)) * 65536 * 1e6))
+			log.Debug("Prediction from PLL: ",
+				zap.Float64("correction", correction),
+				zap.Float64("interval", interval),
+				zap.Float64("startFreq", startFreq),
+				zap.Int64("finalFreq", pllFreq),
+			)
+
+			if useTheilSen {
+				if math.Abs(frequencyPPB) > 0 {
+					lclk.AdjustWithTick(frequencyPPB)
 				}
 			} else {
-				pll.Do(corr, 1000.0 /* weight */)
+				if interval > 0.0 {
+					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
+				}
 			}
 			corrGauge.Set(float64(corr))
 		}
@@ -155,17 +170,31 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, useTheilSen b
 			if float64(timemath.Abs(corr)) > maxCorr {
 				corr = time.Duration(float64(timemath.Sign(corr)) * maxCorr)
 			}
-			// lclk.Adjust(corr, netClkInterval, 0)
-			if useTheilSen {
-				theilSen.AddSample(corr)
-				offset := theilSen.GetOffsetNs()
-				frequencyPPM := offset / float64(netClkInterval.Nanoseconds())
+			theilSen.AddSample(corr)
+			offset := theilSen.GetOffsetNs()
+			frequencyPPB := offset / float64(netClkInterval.Nanoseconds()) * 1e9
+			log.Debug("Prediction from Theil-Sen: ",
+				zap.Float64("offset", offset),
+				zap.Float64("freqPPB", frequencyPPB),
+			)
 
-				if math.Abs(frequencyPPM) > 0 {
-					lclk.AdjustWithTick(frequencyPPM)
+			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
+			pllFreq := int64(math.Floor((startFreq + (correction / interval)) * 65536 * 1e6))
+			log.Debug("Prediction from PLL: ",
+				zap.Float64("correction", correction),
+				zap.Float64("interval", interval),
+				zap.Float64("startFreq", startFreq),
+				zap.Int64("finalFreq", pllFreq),
+			)
+
+			if useTheilSen {
+				if math.Abs(frequencyPPB) > 0 {
+					lclk.AdjustWithTick(frequencyPPB)
 				}
 			} else {
-				pll.Do(corr, 1000.0 /* weight */)
+				if interval > 0.0 {
+					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
+				}
 			}
 			corrGauge.Set(float64(corr))
 		}
