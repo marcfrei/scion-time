@@ -10,20 +10,21 @@ import (
 )
 
 type theilSen struct {
-	log *zap.Logger
-	clk timebase.LocalClock
-	pts []point
+	log       *zap.Logger
+	clk       timebase.LocalClock
+	pts       []point
+	startTime time.Time
 }
 
-const MeasurementBufferSize = 64
+const MeasurementBufferSize = 32
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, pts: make([]point, 0)}
+	return &theilSen{log: log, clk: clk, pts: make([]point, 0), startTime: clk.Now()}
 }
 
 type point struct {
-	x float64
-	y float64
+	x int64
+	y int64
 }
 
 func median(ds []float64) float64 {
@@ -46,7 +47,7 @@ func median(ds []float64) float64 {
 
 func slope(inputs []point) float64 {
 	if len(inputs) == 1 {
-		return (inputs)[0].y / (inputs)[0].x
+		return float64((inputs)[0].y) / float64((inputs)[0].x)
 	}
 
 	var medians []float64
@@ -54,7 +55,7 @@ func slope(inputs []point) float64 {
 		for _, pointB := range (inputs)[idxA+1:] {
 			// Like in the original paper by Sen (1968), ignore pairs with the same x coordinate
 			if pointA.x != pointB.x {
-				medians = append(medians, (pointA.y-pointB.y)/(pointA.x-pointB.x))
+				medians = append(medians, (float64(pointA.y-pointB.y))/(float64(pointA.x-pointB.x)))
 			}
 		}
 	}
@@ -69,7 +70,7 @@ func slope(inputs []point) float64 {
 func intercept(slope float64, inputs []point) float64 {
 	var medians []float64
 	for _, point := range inputs {
-		medians = append(medians, point.y-slope*point.x)
+		medians = append(medians, float64(point.y)-slope*float64(point.x))
 	}
 
 	return median(medians)
@@ -85,15 +86,15 @@ func (l *theilSen) AddSample(offset time.Duration) {
 	if len(l.pts) == MeasurementBufferSize {
 		l.pts = l.pts[1:]
 	}
-	l.pts = append(l.pts, point{x: float64(now.UnixNano()), y: float64(offset.Nanoseconds() + now.UnixNano())})
+	l.pts = append(l.pts, point{x: now.Sub(l.startTime).Nanoseconds(), y: offset.Nanoseconds() + (now.Sub(l.startTime).Nanoseconds())})
 }
 
 func (l *theilSen) GetOffsetNs() float64 {
 	now := l.clk.Now()
 	slope := slope(l.pts)
 	intercept := intercept(slope, l.pts)
-	predictedTime := prediction(slope, intercept, float64(now.UnixNano()))
-	predictedOffset := predictedTime - float64(now.UnixNano())
+	predictedTime := prediction(slope, intercept, float64(now.Sub(l.startTime).Nanoseconds()))
+	predictedOffset := predictedTime - float64(now.Sub(l.startTime).Nanoseconds())
 
 	l.log.Debug("Theil-Sen estimate",
 		zap.Int("# of data points", len(l.pts)),

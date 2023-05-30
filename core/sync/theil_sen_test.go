@@ -5,7 +5,7 @@ import (
 )
 
 func TestTheilSenIdentityLine(t *testing.T) {
-	identityLinePts := []point{{x: -1.0, y: -1.0}, {x: 3.5, y: 3.5}, {x: 11.2, y: 11.2}}
+	identityLinePts := []point{{x: -1.0, y: -1.0}, {x: 35, y: 35}, {x: 112, y: 112}}
 
 	slope := slope(identityLinePts)
 	if slope != 1.0 {
