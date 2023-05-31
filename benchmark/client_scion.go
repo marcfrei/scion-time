@@ -40,6 +40,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 	// const numRequestPerClient = 10000
 	const numClientGoroutine = 1
 	const numRequestPerClient = 20_000
+	var err error
 	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
@@ -48,7 +49,6 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
 			hg := hdrhistogram.New(1, 50000, 5)
-			var err error
 			ctx := context.Background()
 
 			dc := newDaemonConnector(ctx, log, daemonAddr)
@@ -77,6 +77,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 				InterleavedMode: true,
 				Histo:           hg,
 			}
+
 			if contains(authModes, "spao") {
 				c.Auth.Enabled = true
 				c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
@@ -99,10 +100,11 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 
 			defer wg.Done()
 			<-sg
+			ntpcs := []*client.SCIONClient{c}
 			for j := numRequestPerClient; j > 0; j-- {
-				_, err = client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)
+				_, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, ps)
 				if err != nil {
-					log.Fatal("failed to measure clock offset",
+					log.Info("failed to measure clock offset",
 						zap.Stringer("remoteIA", raddr.IA),
 						zap.Stringer("remoteHost", raddr.Host),
 						zap.Error(err),

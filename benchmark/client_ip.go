@@ -8,30 +8,22 @@ import (
 	"sync"
 	"time"
 
-	"example.com/scion-time/core/client"
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"go.uber.org/zap"
-)
 
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
+	"example.com/scion-time/core/client"
+)
 
 func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntskeServer string, log *zap.Logger) {
 	// const numClientGoroutine = 8
 	// const numRequestPerClient = 10000
 	const numClientGoroutine = 1
 	const numRequestPerClient = 20_000
+	var err error
 	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(numClientGoroutine)
-	var err error
 
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
@@ -63,7 +55,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 			for j := numRequestPerClient; j > 0; j-- {
 				_, err = client.MeasureClockOffsetIP(ctx, log, c, localAddr, remoteAddr)
 				if err != nil {
-					log.Info("measure failed", zap.Error(err))
+					log.Info("failed to measure clock offset", zap.Error(err))
 				}
 			}
 			mu.Lock()
