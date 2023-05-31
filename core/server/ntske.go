@@ -13,7 +13,7 @@ import (
 
 const defaultNtskePort int = 4460
 
-func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UDPAddr, provider *ntske.Provider) {
+func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localPort int, provider *ntske.Provider) {
 	defer ke.Conn.Close()
 
 	err := ke.Read()
@@ -28,6 +28,8 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 		return
 	}
 
+	localIP := ke.Conn.LocalAddr().(*net.TCPAddr).IP
+
 	var msg ntske.ExchangeMsg
 	msg.AddRecord(ntske.NextProto{
 		NextProto: ntske.NTPv4,
@@ -36,10 +38,10 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 		Algo: []uint16{ntske.AES_SIV_CMAC_256},
 	})
 	msg.AddRecord(ntske.Server{
-		Addr: []byte(localHost.IP.String()),
+		Addr: []byte(localIP.String()),
 	})
 	msg.AddRecord(ntske.Port{
-		Port: uint16(localHost.Port),
+		Port: uint16(localPort),
 	})
 
 	var plaintextCookie ntske.ServerCookie
@@ -81,21 +83,21 @@ func handleKeyExchange(log *zap.Logger, ke *ntske.KeyExchange, localHost *net.UD
 	}
 }
 
-func runNTSKEServer(log *zap.Logger, listener net.Listener, localHost *net.UDPAddr, provider *ntske.Provider) {
+func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provider *ntske.Provider) {
 	for {
 		ke, err := ntske.NewListener(listener)
 		if err != nil {
 			log.Info("failed to accept client", zap.Error(err))
 			continue
 		}
-		go handleKeyExchange(log, ke, localHost, provider)
+		go handleKeyExchange(log, ke, localPort, provider)
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAddr, config *tls.Config, provider *ntske.Provider) {
-	ntskeAddr := net.JoinHostPort(localHost.IP.String(), strconv.Itoa(defaultNtskePort))
+func StartNTSKEServer(ctx context.Context, log *zap.Logger, localIP net.IP, localPort int, config *tls.Config, provider *ntske.Provider) {
+	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNtskePort))
 	log.Info("server listening via IP",
-		zap.Stringer("ip", localHost.IP),
+		zap.Stringer("ip", localIP),
 		zap.Int("port", defaultNtskePort),
 	)
 
@@ -104,5 +106,5 @@ func StartNTSKEServer(ctx context.Context, log *zap.Logger, localHost *net.UDPAd
 		log.Error("failed to create TLS listener")
 	}
 
-	go runNTSKEServer(log, listener, localHost, provider)
+	go runNTSKEServer(log, listener, localPort, provider)
 }

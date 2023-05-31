@@ -2,6 +2,7 @@ package udp
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -22,6 +23,18 @@ var (
 type UDPAddr struct {
 	IA   addr.IA
 	Host *net.UDPAddr
+}
+
+func (a UDPAddr) Network() string {
+	return "scion+udp"
+}
+
+func (a UDPAddr) String() string {
+	if a.Host.IP.To4() == nil {
+		return fmt.Sprintf("%s,[%s]:%d", a.IA, a.Host.IP, a.Host.Port)
+	} else {
+		return fmt.Sprintf("%s,%s:%d", a.IA, a.Host.IP, a.Host.Port)
+	}
 }
 
 func UDPAddrFromSnet(a *snet.UDPAddr) UDPAddr {
