@@ -97,7 +97,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		var ntsreq nts.NTSPacket
 		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
-			err = nts.DecodePacket(&ntsreq, &buf)
+			err = nts.DecodePacket(&ntsreq, buf)
 			if err != nil {
 				log.Info("failed to decode packet", zap.Error(err))
 				continue
@@ -128,7 +128,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			err = ntsreq.Authenticate(&buf, serverCookie.C2S)
+			err = ntsreq.Authenticate(buf, serverCookie.C2S)
 			if err != nil {
 				log.Info("failed to authenticate packet", zap.Error(err))
 				continue
