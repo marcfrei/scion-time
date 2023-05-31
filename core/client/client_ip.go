@@ -25,12 +25,12 @@ import (
 
 type IPClient struct {
 	InterleavedMode bool
-	Histo           *hdrhistogram.Histogram
 	Auth            struct {
 		Enabled      bool
 		NTSKEFetcher ntske.Fetcher
 	}
-	prev struct {
+	Histo *hdrhistogram.Histogram
+	prev  struct {
 		reference string
 		cTxTime   ntp.Time64
 		cRxTime   ntp.Time64
