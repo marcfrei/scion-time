@@ -6,11 +6,12 @@ pip3 install plumbum toml supervisor-wildcards
 
 
 # install go
+cd ~
 sudo rm -rf /usr/local/go
-curl -LO https://golang.org/dl/go1.19.7.linux-arm64.tar.gz
-echo "071ea7bf386fdd08df524859b878d99fc359e491e7ad65c1c1cc55b67972c882 go1.19.7.linux-arm64.tar.gz" | sha256sum -c
-sudo tar -C /usr/local -xzf go1.19.7.linux-arm64.tar.gz
-rm go1.19.7.linux-arm64.tar.gz
+curl -LO https://golang.org/dl/go1.19.9.linux-amd64.tar.gz
+echo "e858173b489ec1ddbe2374894f52f53e748feed09dde61be5b4b4ba2d73ef34b go1.19.9.linux-amd64.tar.gz" | sha256sum -c
+sudo tar -C /usr/local -xzf go1.19.9.linux-amd64.tar.gz
+rm go1.19.9.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 go version
 

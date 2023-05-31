@@ -12,7 +12,6 @@ cd chrony-4.3-src/
 make
 sudo make install
 
-
 sh /home/ubuntu/scion-time/testnet/tls-gen-cert.sh
 sudo systemctl stop chronyd
 
