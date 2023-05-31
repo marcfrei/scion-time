@@ -51,6 +51,7 @@ const (
 
 var (
 	unexpectedEFHeader = errors.New("expected unpacked EF header")
+	noCookies          = errors.New("packet does not contain cookies")
 )
 
 type NTSPacket struct {
@@ -185,6 +186,15 @@ func DecodePacket(pkt *NTSPacket, b *[]byte) (err error) {
 	}
 
 	return nil
+}
+
+func (pkt *NTSPacket) GetFirstCookie() ([]byte, error) {
+	var cookie []byte
+	if pkt.Cookies == nil || len(pkt.Cookies) < 1 {
+		return cookie, noCookies
+	}
+	cookie = pkt.Cookies[0].Cookie
+	return cookie, nil
 }
 
 func (pkt *NTSPacket) Authenticate(b *[]byte, key []byte) error {

@@ -301,13 +301,14 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					continue
 				}
 
-				if ntsreq.Cookies == nil || len(ntsreq.Cookies) < 1 {
-					log.Info("failed to extract cookie", zap.Error(err))
+				cookie, err := ntsreq.GetFirstCookie()
+				if err != nil {
+					log.Info("failed to get cookie", zap.Error(err))
 					continue
 				}
 
 				var encryptedCookie ntske.EncryptedServerCookie
-				err = encryptedCookie.Decode(ntsreq.Cookies[0].Cookie)
+				err = encryptedCookie.Decode(cookie)
 				if err != nil {
 					log.Info("failed to decode cookie", zap.Error(err))
 					continue
