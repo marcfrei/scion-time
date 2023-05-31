@@ -108,7 +108,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				log.Info("failed to get cookie", zap.Error(err))
 				continue
 			}
-			
+
 			var encryptedCookie ntske.EncryptedServerCookie
 			err = encryptedCookie.Decode(cookie)
 			if err != nil {

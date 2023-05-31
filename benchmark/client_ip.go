@@ -19,7 +19,6 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 	// const numRequestPerClient = 10000
 	const numClientGoroutine = 1
 	const numRequestPerClient = 20_000
-	var err error
 	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
@@ -27,6 +26,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
+			var err error
 			hg := hdrhistogram.New(1, 50000, 5)
 			ctx := context.Background()
 

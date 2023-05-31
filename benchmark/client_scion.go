@@ -40,7 +40,6 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 	// const numRequestPerClient = 10000
 	const numClientGoroutine = 1
 	const numRequestPerClient = 20_000
-	var err error
 	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
@@ -48,6 +47,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
+			var err error
 			hg := hdrhistogram.New(1, 50000, 5)
 			ctx := context.Background()
 
