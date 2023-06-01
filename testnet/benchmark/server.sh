@@ -30,7 +30,7 @@ cd ~
 
 # build timeservice
 cd ~
-git clone -b miscreant https://github.com/aaronbojarski/scion-time.git
+git clone https://github.com/marcfrei/scion-time.git
 
 cd ~/scion-time
 go build timeservice.go timeservicex.go

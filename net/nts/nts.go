@@ -242,7 +242,7 @@ func ProcessResponse(b []byte, key []byte, ntskeFetcher *ntske.Fetcher, pkt *Pac
 	if !bytes.Equal(reqID, pkt.UniqueID.ID) {
 		return unexpectedResponseID
 	}
-	
+
 	err := pkt.authenticate(b, key)
 	if err != nil {
 		return err
