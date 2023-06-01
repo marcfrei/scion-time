@@ -206,7 +206,7 @@ func (pkt *Packet) GetFirstCookie() ([]byte, error) {
 	return cookie, nil
 }
 
-func (pkt *Packet) Authenticate(b []byte, key []byte) error {
+func (pkt *Packet) authenticate(b []byte, key []byte) error {
 	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 	if err != nil {
 		return err
@@ -238,10 +238,16 @@ func (pkt *Packet) Authenticate(b []byte, key []byte) error {
 	return nil
 }
 
-func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *Packet, reqID []byte) error {
+func ProcessResponse(b []byte, key []byte, ntskeFetcher *ntske.Fetcher, pkt *Packet, reqID []byte) error {
 	if !bytes.Equal(reqID, pkt.UniqueID.ID) {
 		return unexpectedResponseID
 	}
+	
+	err := pkt.authenticate(b, key)
+	if err != nil {
+		return err
+	}
+
 	for _, cookie := range pkt.Cookies {
 		ntskeFetcher.StoreCookie(cookie.Cookie)
 	}
@@ -272,6 +278,14 @@ func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt Packe
 	pkt.Auth = auth
 
 	return pkt
+}
+
+func ProcessRequest(b []byte, key []byte, pkt *Packet) error {
+	err := pkt.authenticate(b, key)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type extHdr struct {

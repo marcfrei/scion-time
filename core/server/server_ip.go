@@ -128,7 +128,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			err = ntsreq.Authenticate(buf, serverCookie.C2S)
+			err = nts.ProcessRequest(buf, serverCookie.C2S, &ntsreq)
 			if err != nil {
 				log.Info("failed to authenticate packet", zap.Error(err))
 				continue

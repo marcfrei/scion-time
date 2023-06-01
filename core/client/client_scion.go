@@ -460,13 +460,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 				return offset, weight, err
 			}
 
-			err = ntsresp.Authenticate(udpLayer.Payload, ntskeData.S2cKey)
-			if err != nil {
-				log.Info("failed to authenticate packet", zap.Error(err))
-				continue
-			}
-
-			err = nts.ProcessResponse(&c.Auth.NTSKEFetcher, &ntsresp, requestID)
+			err = nts.ProcessResponse(udpLayer.Payload, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					log.Info("failed to process NTS packet", zap.Error(err))
