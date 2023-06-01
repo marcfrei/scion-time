@@ -292,7 +292,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			}
 
 			ntsAuthenticated := false
-			var ntsreq nts.NTSPacket
+			var ntsreq nts.Packet
 			var serverCookie ntske.ServerCookie
 			if len(udpLayer.Payload) > ntp.PacketLen {
 				err = nts.DecodePacket(&ntsreq, udpLayer.Payload)

@@ -94,7 +94,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		}
 
 		var authenticated bool
-		var ntsreq nts.NTSPacket
+		var ntsreq nts.Packet
 		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
 			err = nts.DecodePacket(&ntsreq, buf)

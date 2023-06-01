@@ -58,14 +58,14 @@ var (
 	shortUniqueID        = errors.New("UniqueIdentifier.ID < 32 bytes")
 )
 
-type NTSPacket struct {
+type Packet struct {
 	UniqueID           UniqueIdentifier
 	Cookies            []Cookie
 	CookiePlaceholders []CookiePlaceholder
 	Auth               Authenticator
 }
 
-func NewPacket(ntskeData ntske.Data) (pkt NTSPacket, uniqueid []byte) {
+func NewRequestPacket(ntskeData ntske.Data) (pkt Packet, uniqueid []byte) {
 	var uid UniqueIdentifier
 	uid.Generate()
 	pkt.UniqueID = uid
@@ -89,7 +89,7 @@ func NewPacket(ntskeData ntske.Data) (pkt NTSPacket, uniqueid []byte) {
 	return pkt, uid.ID
 }
 
-func EncodePacket(b *[]byte, pkt *NTSPacket) {
+func EncodePacket(b *[]byte, pkt *Packet) {
 	if len(*b) != ntpPacketLen {
 		panic("unexpected NTP header")
 	}
@@ -127,7 +127,7 @@ func EncodePacket(b *[]byte, pkt *NTSPacket) {
 	*b = (*b)[:pos]
 }
 
-func DecodePacket(pkt *NTSPacket, b []byte) (err error) {
+func DecodePacket(pkt *Packet, b []byte) (err error) {
 	pos := ntpPacketLen
 	authenticated := false
 	unique := false
@@ -192,7 +192,7 @@ func DecodePacket(pkt *NTSPacket, b []byte) (err error) {
 	return nil
 }
 
-func (pkt *NTSPacket) GetFirstCookie() ([]byte, error) {
+func (pkt *Packet) GetFirstCookie() ([]byte, error) {
 	var cookie []byte
 	if pkt.Cookies == nil || len(pkt.Cookies) < 1 {
 		return cookie, noCookies
@@ -201,7 +201,7 @@ func (pkt *NTSPacket) GetFirstCookie() ([]byte, error) {
 	return cookie, nil
 }
 
-func (pkt *NTSPacket) Authenticate(b []byte, key []byte) error {
+func (pkt *Packet) Authenticate(b []byte, key []byte) error {
 	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 	if err != nil {
 		return err
@@ -233,7 +233,7 @@ func (pkt *NTSPacket) Authenticate(b []byte, key []byte) error {
 	return nil
 }
 
-func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) error {
+func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *Packet, reqID []byte) error {
 	if !bytes.Equal(reqID, pkt.UniqueID.ID) {
 		return unexpectedResponseID
 	}
@@ -243,7 +243,7 @@ func ProcessResponse(ntskeFetcher *ntske.Fetcher, pkt *NTSPacket, reqID []byte) 
 	return nil
 }
 
-func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt NTSPacket) {
+func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt Packet) {
 	var uid UniqueIdentifier
 	uid.ID = uniqueid
 	pkt.UniqueID = uid
@@ -388,9 +388,9 @@ type Authenticator struct {
 	NonceLen      uint16
 	CipherTextLen uint16
 	Nonce         []byte
-	PlainText     []byte
 	CipherText    []byte
 	Key           []byte
+	PlainText     []byte
 	pos           int
 }
 

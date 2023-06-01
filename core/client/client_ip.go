@@ -151,9 +151,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	ntp.EncodePacket(&buf, &ntpreq)
 
 	var requestID []byte
-	var ntsreq nts.NTSPacket
+	var ntsreq nts.Packet
 	if c.Auth.Enabled {
-		ntsreq, requestID = nts.NewPacket(ntskeData)
+		ntsreq, requestID = nts.NewRequestPacket(ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 
@@ -228,7 +228,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		}
 
 		authenticated := false
-		var ntsresp nts.NTSPacket
+		var ntsresp nts.Packet
 		if c.Auth.Enabled {
 			err = nts.DecodePacket(&ntsresp, buf)
 			if err != nil {
