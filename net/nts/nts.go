@@ -38,6 +38,7 @@ import (
 )
 
 const (
+	MaxPacketLen     = 1024
 	numStoredCookies = 8
 	ntpPacketLen     = 48
 )
@@ -66,8 +67,13 @@ type Packet struct {
 }
 
 func NewRequestPacket(ntskeData ntske.Data) (pkt Packet, uniqueid []byte) {
+	id, err := newID()
+	if err != nil {
+		panic(err)
+	}
+
 	var uid UniqueIdentifier
-	uid.Generate()
+	uid.ID = id
 	pkt.UniqueID = uid
 
 	var cookie Cookie
@@ -86,21 +92,20 @@ func NewRequestPacket(ntskeData ntske.Data) (pkt Packet, uniqueid []byte) {
 	auth.Key = ntskeData.C2sKey
 	pkt.Auth = auth
 
-	return pkt, uid.ID
+	return pkt, id
 }
 
 func EncodePacket(b *[]byte, pkt *Packet) {
 	if len(*b) != ntpPacketLen {
 		panic("unexpected NTP header")
 	}
-	pktlen := 1024
-	if cap(*b) < pktlen {
+	if cap(*b) < MaxPacketLen {
 		t := make([]byte, ntpPacketLen)
 		copy(t, *b)
-		*b = make([]byte, pktlen)
+		*b = make([]byte, MaxPacketLen)
 		copy(*b, t)
 	} else {
-		*b = (*b)[:pktlen]
+		*b = (*b)[:MaxPacketLen]
 	}
 
 	pos := ntpPacketLen
@@ -134,7 +139,7 @@ func DecodePacket(pkt *Packet, b []byte) (err error) {
 
 	for len(b)-pos >= 28 {
 		var eh extHdr
-		_ = eh.unpack(b, pos)
+		eh.unpack(b, pos)
 		pos += 4
 
 		switch eh.Type {
@@ -215,7 +220,7 @@ func (pkt *Packet) Authenticate(b []byte, key []byte) error {
 	pos := 0
 	for len(decrytedBuf)-pos >= 28 {
 		var eh extHdr
-		_ = eh.unpack(decrytedBuf, pos)
+		eh.unpack(decrytedBuf, pos)
 		pos += 4
 
 		switch eh.Type {
@@ -250,10 +255,15 @@ func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt Packe
 
 	lencookies := len(cookies) * (4 + len(cookies[0]))
 	buf := make([]byte, lencookies)
+	var err error
+	pos := 0
 	for _, c := range cookies {
 		var cookie Cookie
 		cookie.Cookie = c
-		cookie.pack(buf, 0)
+		pos, err = cookie.pack(buf, pos)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	var auth Authenticator
@@ -269,16 +279,15 @@ type extHdr struct {
 	Length uint16
 }
 
-func (h extHdr) pack(buf []byte, pos int) (int, error) {
+func (h extHdr) pack(buf []byte, pos int) int {
 	binary.BigEndian.PutUint16(buf[pos:], h.Type)
 	binary.BigEndian.PutUint16(buf[pos+2:], h.Length)
-	return pos + 4, nil
+	return pos + 4
 }
 
-func (h *extHdr) unpack(buf []byte, pos int) error {
+func (h *extHdr) unpack(buf []byte, pos int) {
 	h.Type = binary.BigEndian.Uint16(buf[pos:])
 	h.Length = binary.BigEndian.Uint16(buf[pos+2:])
-	return nil
 }
 
 type UniqueIdentifier struct {
@@ -296,7 +305,7 @@ func (u UniqueIdentifier) pack(buf []byte, pos int) (int, error) {
 
 	u.extHdr.Type = extUniqueIdentifier
 	u.extHdr.Length = 4 + uint16(newlen)
-	pos, _ = u.extHdr.pack(buf, pos)
+	pos = u.extHdr.pack(buf, pos)
 
 	n := copy(buf[pos:], u.ID)
 	pos += n
@@ -317,13 +326,12 @@ func (u *UniqueIdentifier) unpack(buf []byte, pos int) error {
 	return nil
 }
 
-func (u *UniqueIdentifier) Generate() ([]byte, error) {
+func newID() ([]byte, error) {
 	id := make([]byte, 32)
 	_, err := rand.Read(id)
 	if err != nil {
 		return nil, err
 	}
-	u.ID = id
 
 	return id, nil
 }
@@ -340,7 +348,7 @@ func (c Cookie) pack(buf []byte, pos int) (int, error) {
 
 	c.extHdr.Type = extCookie
 	c.extHdr.Length = 4 + uint16(newlen)
-	pos, _ = c.extHdr.pack(buf, pos)
+	pos = c.extHdr.pack(buf, pos)
 
 	n := copy(buf[pos:], c.Cookie)
 	pos += n
@@ -373,7 +381,7 @@ func (c CookiePlaceholder) pack(buf []byte, pos int) (int, error) {
 
 	c.extHdr.Type = extCookie
 	c.extHdr.Length = 4 + uint16(newlen)
-	pos, _ = c.extHdr.pack(buf, pos)
+	pos = c.extHdr.pack(buf, pos)
 
 	n := copy(buf[pos:], c.Cookie)
 	pos += n
@@ -381,6 +389,13 @@ func (c CookiePlaceholder) pack(buf []byte, pos int) (int, error) {
 	pos += n
 
 	return pos, nil
+}
+
+func (c *CookiePlaceholder) unpack(buf []byte, pos int) error {
+	if c.extHdr.Type != extCookiePlaceholder {
+		return unexpectedExtHdrType
+	}
+	return nil
 }
 
 type Authenticator struct {
@@ -419,7 +434,7 @@ func (a Authenticator) pack(buf []byte, pos int) (int, error) {
 
 	a.extHdr.Type = extAuthenticator
 	a.extHdr.Length = 4 + 2 + 2 + a.NonceLen + noncepadlen + a.CipherTextLen + cipherpadlen
-	pos, _ = a.extHdr.pack(buf, pos)
+	pos = a.extHdr.pack(buf, pos)
 
 	binary.BigEndian.PutUint16(buf[pos:], a.NonceLen)
 	binary.BigEndian.PutUint16(buf[pos+2:], a.CipherTextLen)
