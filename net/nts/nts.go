@@ -400,13 +400,11 @@ func (c *CookiePlaceholder) unpack(buf []byte, pos int) error {
 
 type Authenticator struct {
 	extHdr
-	NonceLen      uint16
-	CipherTextLen uint16
-	Nonce         []byte
-	CipherText    []byte
-	Key           []byte
-	PlainText     []byte
-	pos           int
+	Nonce      []byte
+	CipherText []byte
+	Key        []byte
+	PlainText  []byte
+	pos        int
 }
 
 func (a Authenticator) pack(buf []byte, pos int) (int, error) {
@@ -422,22 +420,19 @@ func (a Authenticator) pack(buf []byte, pos int) (int, error) {
 	}
 
 	a.Nonce = bits
+	nonceLen := uint16(len(a.Nonce))
+	noncepadlen := (-nonceLen) % 4
 
 	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, buf[:pos])
-	a.CipherTextLen = uint16(len(a.CipherText))
-
-	a.NonceLen = uint16(len(a.Nonce))
-	noncepadlen := (-a.NonceLen) % 4
-
-	a.CipherTextLen = uint16(len(a.CipherText))
-	cipherpadlen := (-a.CipherTextLen) % 4
+	cipherTextLen := uint16(len(a.CipherText))
+	cipherpadlen := (-cipherTextLen) % 4
 
 	a.extHdr.Type = extAuthenticator
-	a.extHdr.Length = 4 + 2 + 2 + a.NonceLen + noncepadlen + a.CipherTextLen + cipherpadlen
+	a.extHdr.Length = 4 + 2 + 2 + nonceLen + noncepadlen + cipherTextLen + cipherpadlen
 	pos = a.extHdr.pack(buf, pos)
 
-	binary.BigEndian.PutUint16(buf[pos:], a.NonceLen)
-	binary.BigEndian.PutUint16(buf[pos+2:], a.CipherTextLen)
+	binary.BigEndian.PutUint16(buf[pos:], nonceLen)
+	binary.BigEndian.PutUint16(buf[pos+2:], cipherTextLen)
 	pos += 4
 
 	n := copy(buf[pos:], a.Nonce)
@@ -460,18 +455,16 @@ func (a *Authenticator) unpack(buf []byte, pos int) error {
 		return unexpectedExtHdrType
 	}
 
-	a.NonceLen = binary.BigEndian.Uint16(buf[pos:])
-	a.CipherTextLen = binary.BigEndian.Uint16(buf[pos+2:])
+	nonceLen := binary.BigEndian.Uint16(buf[pos:])
+	cipherTextLen := binary.BigEndian.Uint16(buf[pos+2:])
 	pos += 4
 
-	// Nonce
-	nonce := make([]byte, a.NonceLen)
+	nonce := make([]byte, nonceLen)
 	n := copy(nonce, buf[pos:])
 	a.Nonce = nonce
 	pos += n
 
-	// Ciphertext
-	ciphertext := make([]byte, a.CipherTextLen)
+	ciphertext := make([]byte, cipherTextLen)
 	copy(ciphertext, buf[pos:])
 	a.CipherText = ciphertext
 
