@@ -63,6 +63,7 @@ type svcConfig struct {
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	NTPReferenceClocks      []string `toml:"ntp_reference_clocks,omitempty"`
+	ClockAlgo               string   `toml:"clock_algo,omitempty"`
 	SCIONPeers              []string `toml:"scion_peers,omitempty"`
 	NTSKECertFile           string   `toml:"ntske_cert_file,omitempty"`
 	NTSKEKeyFile            string   `toml:"ntske_key_file,omitempty"`
@@ -399,6 +400,17 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 	return
 }
 
+func clockAlgo(cfg svcConfig) int {
+	var algo int
+	switch cfg.ClockAlgo {
+	case "", "pll": algo = sync.ClockAlgoPLL
+	case "ts":      algo = sync.ClockAlgoTS
+	default:
+		log.Fatal("unexpected clock steering algorithm")
+	}
+	return algo
+}
+
 func copyIP(ip net.IP) net.IP {
 	return append(ip[:0:0], ip...)
 }
@@ -411,17 +423,18 @@ func runServer(configFile string) {
 	daemonAddr := daemonAddress(cfg)
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
+	clkAlgo := clockAlgo(cfg)
 
 	lclk := &clock.SystemClock{Log: log}
 	timebase.RegisterClock(lclk)
 
 	if len(refClocks) != 0 {
 		sync.SyncToRefClocks(log, lclk)
-		go sync.RunLocalClockSync(log, lclk)
+		go sync.RunLocalClockSync(log, lclk, clkAlgo)
 	}
 
 	if len(netClocks) != 0 {
-		go sync.RunGlobalClockSync(log, lclk)
+		go sync.RunGlobalClockSync(log, lclk, clkAlgo)
 	}
 
 	tlsConfig := tlsConfig(cfg)
@@ -442,13 +455,14 @@ func runRelay(configFile string) {
 	daemonAddr := daemonAddress(cfg)
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
+	clkAlgo := clockAlgo(cfg)
 
 	lclk := &clock.SystemClock{Log: log}
 	timebase.RegisterClock(lclk)
 
 	if len(refClocks) != 0 {
 		sync.SyncToRefClocks(log, lclk)
-		go sync.RunLocalClockSync(log, lclk)
+		go sync.RunLocalClockSync(log, lclk, clkAlgo)
 	}
 
 	if len(netClocks) != 0 {
@@ -472,6 +486,7 @@ func runClient(configFile string) {
 	localAddr := localAddress(cfg)
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
+	clkAlgo := clockAlgo(cfg)	
 
 	lclk := &clock.SystemClock{Log: log}
 	timebase.RegisterClock(lclk)
@@ -490,7 +505,7 @@ func runClient(configFile string) {
 
 	if len(refClocks) != 0 {
 		sync.SyncToRefClocks(log, lclk)
-		go sync.RunLocalClockSync(log, lclk)
+		go sync.RunLocalClockSync(log, lclk, clkAlgo)
 	}
 
 	if len(netClocks) != 0 {
