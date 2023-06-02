@@ -73,7 +73,7 @@ func SyncToRefClocks(log *zap.Logger, lclk timebase.LocalClock) {
 	}
 }
 
-func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, clkAlgo int) {
+func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	if refClkImpact <= 1.0 {
 		panic("invalid reference clock impact factor")
 	}
@@ -118,7 +118,7 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, clkAlgo int) {
 				zap.Int64("finalFreq", pllFreq),
 			)
 
-			switch clkAlgo {
+			switch algo {
 			case ClockAlgoPLL:
 				if interval > 0.0 {
 					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
@@ -141,7 +141,7 @@ func measureOffsetToNetClocks(log *zap.Logger, timeout time.Duration) time.Durat
 	return timemath.FaultTolerantMidpoint(netClkOffsets)
 }
 
-func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, clkAlgo int) {
+func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	if netClkImpact <= 1.0 {
 		panic("invalid network clock impact factor")
 	}
@@ -188,7 +188,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, clkAlgo int) 
 				zap.Int64("finalFreq", pllFreq),
 			)
 
-			switch clkAlgo {
+			switch algo {
 			case ClockAlgoPLL:
 				if interval > 0.0 {
 					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
