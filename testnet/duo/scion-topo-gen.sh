@@ -14,5 +14,3 @@ sed -i "s/data\[\"Non-core\"]/(data.get(\"Non-core\") or \[])/" acceptance/commo
 export PYTHONPATH=pythonx/:.
 ~/scion-time/testnet/scion-topo-add-drkey.py
 git checkout --quiet acceptance/common/scion.py
-
-

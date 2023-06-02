@@ -17,9 +17,9 @@ We are currently building out the first end-to-end implementation of G-SINC whic
 
 ## Publication
 
-G-SINC: Global Synchronization Infrastructure for Network Clocks.  
-Marc Frei, Jonghoon Kwon, Seyedali Tabaeiaghdaei, Marc Wyss, Christoph Lenzen, and Adrian Perrig.  
-In Proceedings of the Symposium on Reliable Distributed Systems (SRDS) 2022.  
+G-SINC: Global Synchronization Infrastructure for Network Clocks.
+Marc Frei, Jonghoon Kwon, Seyedali Tabaeiaghdaei, Marc Wyss, Christoph Lenzen, and Adrian Perrig.
+In Proceedings of the Symposium on Reliable Distributed Systems (SRDS) 2022.
 \[[pdf](https://netsec.ethz.ch/publications/papers/G-SINC.pdf)\], \[[doi](https://doi.org/10.1109/SRDS55811.2022.00021)\], \[[arXiv](https://arxiv.org/abs/2207.06116)\]
 
 
@@ -34,7 +34,7 @@ git clone https://github.com/marcfrei/scion-time.git
 cd ~/scion-time
 go build timeservice.go timeservicex.go
 
-~/scion-time/timeservice server -verbose -local 0-0,0.0.0.0:10123
+sudo ~/scion-time/timeservice server -verbose -config testnet/test-server.toml
 ```
 
 ## Querying an IP-based server
@@ -43,6 +43,14 @@ In an additional session:
 
 ```
 ~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0:0 -remote 0-0,127.0.0.1:10123
+```
+
+## Querying an IP-based server with Network Time Security (NTS)
+
+In an additional session:
+
+```
+~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0:0 -remote 0-0,127.0.0.1:4460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ## Installing prerequisites for a SCION test environment
@@ -59,10 +67,10 @@ On x86-64:
 
 ```
 sudo rm -rf /usr/local/go
-curl -LO https://golang.org/dl/go1.19.7.linux-amd64.tar.gz
-echo "7a75720c9b066ae1750f6bcc7052aba70fa3813f4223199ee2a2315fd3eb533d go1.19.7.linux-amd64.tar.gz" | sha256sum -c
-sudo tar -C /usr/local -xzf go1.19.7.linux-amd64.tar.gz
-rm go1.19.7.linux-amd64.tar.gz
+curl -LO https://golang.org/dl/go1.19.9.linux-amd64.tar.gz
+echo "e858173b489ec1ddbe2374894f52f53e748feed09dde61be5b4b4ba2d73ef34b go1.19.9.linux-amd64.tar.gz" | sha256sum -c
+sudo tar -C /usr/local -xzf go1.19.9.linux-amd64.tar.gz
+rm go1.19.9.linux-amd64.tar.gz
 echo >> .bash_profile
 echo 'export PATH=$PATH:/usr/local/go/bin' >> .bash_profile
 source ~/.bash_profile
@@ -73,10 +81,10 @@ On ARM64:
 
 ```
 sudo rm -rf /usr/local/go
-curl -LO https://golang.org/dl/go1.19.7.linux-arm64.tar.gz
-echo "071ea7bf386fdd08df524859b878d99fc359e491e7ad65c1c1cc55b67972c882 go1.19.7.linux-arm64.tar.gz" | sha256sum -c
-sudo tar -C /usr/local -xzf go1.19.7.linux-arm64.tar.gz
-rm go1.19.7.linux-arm64.tar.gz
+curl -LO https://golang.org/dl/go1.19.9.linux-arm64.tar.gz
+echo "b947e457be9d7b52a082c68e42b6939f9cc151f1ad5b3d8fd646ca3352f6f2f1 go1.19.9.linux-arm64.tar.gz" | sha256sum -c
+sudo tar -C /usr/local -xzf go1.19.9.linux-arm64.tar.gz
+rm go1.19.9.linux-arm64.tar.gz
 echo >> .bash_profile
 echo 'export PATH=$PATH:/usr/local/go/bin' >> .bash_profile
 source ~/.bash_profile
@@ -125,14 +133,14 @@ In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
 cd ~/scion-time
-sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
+sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
 ```
 
 In session no. 2, run server at `1-ff00:0:112,10.1.1.12:123`:
 
 ```
 cd ~/scion-time
-sudo ip netns exec netns1 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_112/ts1-ff00_0_112-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:123
+sudo ip netns exec netns1 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_112/ts1-ff00_0_112-1.toml
 ```
 
 ## Querying SCION-based servers
@@ -149,20 +157,50 @@ Or query server at `1-ff00:0:112,10.1.1.12:123` from `1-ff00:0:111,10.1.1.11`:
 sudo ip netns exec netns0 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:0 -remote 1-ff00:0:112,10.1.1.12:123
 ```
 
+### Querying a SCION-based server with SCION Packet Authenticator Option (SPAO)
+
+```
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:123 -auth spao
+```
+
+### Querying a SCION-based server with Network Time Security (NTS)
+
+```
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
+```
+
+### Querying a SCION-based server with SPAO and NTS
+
+```
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:4460 -auth spao,nts -ntske-insecure-skip-verify
+```
+
+### Querying a SCION-based server via IP
+
+```
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12:0 -remote 0-0,10.1.1.11:4460
+```
+
+### Querying a SCION-based server via IP with NTS
+
+```
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12:0 -remote 0-0,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
+```
+
 ## Synchronizing with a SCION-based server
 
 In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
 cd ~/scion-time
-sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:123
+sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
 ```
 
 And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `1-ff00:0:111,10.1.1.11:123`:
 
 ```
 cd ~/scion-time
-sudo ip netns exec netns1 ./timeservice client -verbose -config testnet/test-ff00_0_111-1.toml -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0
+sudo ip netns exec netns1 ./timeservice client -verbose -config testnet/gen-eh/ASff00_0_112/test-client.toml
 ```
 
 ## Stopping the SCION test network

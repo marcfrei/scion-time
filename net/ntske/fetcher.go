@@ -17,7 +17,7 @@ type Fetcher struct {
 
 func (f *Fetcher) exchangeKeys() error {
 	serverAddr := net.JoinHostPort(f.TLSConfig.ServerName, f.Port)
-	ke, err := Connect(serverAddr, &f.TLSConfig, true /* debug */)
+	ke, err := Connect(serverAddr, &f.TLSConfig, false /* debug */)
 	if err != nil {
 		return err
 	}

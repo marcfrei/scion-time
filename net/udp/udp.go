@@ -2,6 +2,7 @@ package udp
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -24,6 +25,18 @@ type UDPAddr struct {
 	Host *net.UDPAddr
 }
 
+func (a UDPAddr) Network() string {
+	return "scion+udp"
+}
+
+func (a UDPAddr) String() string {
+	if a.Host.IP.To4() == nil {
+		return fmt.Sprintf("%s,[%s]:%d", a.IA, a.Host.IP, a.Host.Port)
+	} else {
+		return fmt.Sprintf("%s,%s:%d", a.IA, a.Host.IP, a.Host.Port)
+	}
+}
+
 func UDPAddrFromSnet(a *snet.UDPAddr) UDPAddr {
 	return UDPAddr{a.IA, snet.CopyUDPAddr(a.Host)}
 }
@@ -38,7 +51,7 @@ func TimestampLen() int {
 	return unix.CmsgSpace(3 * 16)
 }
 
-func SetDSCP (conn *net.UDPConn, dscp uint8) error {
+func SetDSCP(conn *net.UDPConn, dscp uint8) error {
 	// Based on Meta's time libraries at https://github.com/facebook/time
 	if dscp > 63 {
 		panic("invalid argument: dscp must not be greater than 63")
@@ -63,4 +76,3 @@ func SetDSCP (conn *net.UDPConn, dscp uint8) error {
 	}
 	return res.err
 }
-

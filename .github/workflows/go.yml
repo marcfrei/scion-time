@@ -4,8 +4,9 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    env:
+      HAS_CHRONY: True
     steps:
       - uses: actions/checkout@v3     
 
