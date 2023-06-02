@@ -12,6 +12,7 @@ require (
 	github.com/prometheus/client_golang v1.15.1
 	github.com/quic-go/quic-go v0.34.0
 	github.com/scionproto/scion v0.8.0
+	github.com/tklauser/go-sysconf v0.3.11
 	go.uber.org/zap v1.24.0
 	golang.org/x/sys v0.8.0
 )
@@ -25,6 +26,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/quic-go/qtls-go1-19 v0.3.2 // indirect
 	github.com/quic-go/qtls-go1-20 v0.2.2 // indirect
+	github.com/tklauser/numcpus v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
