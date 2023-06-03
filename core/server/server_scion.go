@@ -292,12 +292,18 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 			}
 
 			ntsAuthenticated := false
-			var ntsreq nts.NTSPacket
+			var ntsreq nts.Packet
 			var serverCookie ntske.ServerCookie
 			if len(udpLayer.Payload) > ntp.PacketLen {
-				cookie, err := nts.ExtractCookie(udpLayer.Payload)
+				err = nts.DecodePacket(&ntsreq, udpLayer.Payload)
 				if err != nil {
-					log.Info("failed to extract cookie", zap.Error(err))
+					log.Info("failed to decode NTS packet", zap.Error(err))
+					continue
+				}
+
+				cookie, err := ntsreq.GetFirstCookie()
+				if err != nil {
+					log.Info("failed to get cookie", zap.Error(err))
 					continue
 				}
 
@@ -320,9 +326,9 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					continue
 				}
 
-				err = nts.DecodePacket(&ntsreq, udpLayer.Payload, serverCookie.C2S)
+				err = nts.ProcessRequest(udpLayer.Payload, serverCookie.C2S, &ntsreq)
 				if err != nil {
-					log.Info("failed to decode packet", zap.Error(err))
+					log.Info("failed to process NTS packet", zap.Error(err))
 					continue
 				}
 				ntsAuthenticated = true
@@ -383,7 +389,7 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 					continue
 				}
 
-				ntsresp := nts.NewResponsePacket(udpLayer.Payload, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
+				ntsresp := nts.NewResponsePacket(cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 				nts.EncodePacket(&udpLayer.Payload, &ntsresp)
 			}
 

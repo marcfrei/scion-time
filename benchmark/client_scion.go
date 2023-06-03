@@ -2,191 +2,112 @@ package benchmark
 
 import (
 	"context"
-	"log"
+	"crypto/tls"
 	"net"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
+	"go.uber.org/zap"
 
-	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/snet"
+	"github.com/scionproto/scion/pkg/snet/path"
 
-	"example.com/scion-time/core/timebase"
-
-	"example.com/scion-time/net/ntp"
+	"example.com/scion-time/core/client"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
 
-func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr) {
-	ctx := context.Background()
-
-	dc, err := daemon.NewService(daemonAddr).Connect(ctx)
+func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string) daemon.Connector {
+	if daemonAddr == "" {
+		return nil
+	}
+	s := &daemon.Service{
+		Address: daemonAddr,
+	}
+	c, err := s.Connect(ctx)
 	if err != nil {
-		log.Fatalf("Failed to create SCION daemon connector: %v", err)
+		log.Fatal("failed to create demon connector", zap.Error(err))
 	}
+	return c
+}
 
-	ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-	if err != nil {
-		log.Fatalf("Failed to lookup paths: %v:", err)
-	}
-	if len(ps) == 0 {
-		log.Fatalf("No paths to %v available", remoteAddr.IA)
-	}
-
-	log.Printf("Available paths to %v:", remoteAddr.IA)
-	for _, p := range ps {
-		log.Printf("\t%v", p)
-	}
-
-	sp := ps[0]
-
-	log.Printf("Selected path to %v:", remoteAddr.IA)
-	log.Printf("\t%v", sp)
-
-	nextHop := sp.UnderlayNextHop()
-	if nextHop == nil && remoteAddr.IA.Equal(localAddr.IA) {
-		nextHop = &net.UDPAddr{
-			IP:   remoteAddr.Host.IP,
-			Port: scion.EndhostPort,
-			Zone: remoteAddr.Host.Zone,
-		}
-	}
-
+func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *zap.Logger) {
 	// const numClientGoroutine = 8
 	// const numRequestPerClient = 10000
 	const numClientGoroutine = 1
-	const numRequestPerClient = 10000 * 100
+	const numRequestPerClient = 20_000
 	var mu sync.Mutex
 	sg := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(numClientGoroutine)
+
 	for i := numClientGoroutine; i > 0; i-- {
 		go func() {
+			var err error
 			hg := hdrhistogram.New(1, 50000, 5)
+			ctx := context.Background()
 
-			conn, err := net.DialUDP("udp", localAddr.Host, nextHop)
-			if err != nil {
-				log.Printf("Failed to dial UDP connection: %v", err)
-				return
+			dc := newDaemonConnector(ctx, log, daemonAddr)
+
+			var ps []snet.Path
+			if remoteAddr.IA.Equal(localAddr.IA) {
+				ps = []snet.Path{path.Path{
+					Src:           remoteAddr.IA,
+					Dst:           remoteAddr.IA,
+					DataplanePath: path.Empty{},
+				}}
+			} else {
+				ps, err = dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
+				if err != nil {
+					log.Fatal("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+				}
+				if len(ps) == 0 {
+					log.Fatal("no paths available", zap.Stringer("to", remoteAddr.IA))
+				}
 			}
-			defer conn.Close()
-			_ = udp.EnableRxTimestamps(conn)
+			log.Debug("available paths", zap.Stringer("to", remoteAddr.IA), zap.Array("via", scion.PathArrayMarshaler{Paths: ps}))
+
+			laddr := udp.UDPAddrFromSnet(localAddr)
+			raddr := udp.UDPAddrFromSnet(remoteAddr)
+			c := &client.SCIONClient{
+				InterleavedMode: true,
+				Histo:           hg,
+			}
+
+			if contains(authModes, "spao") {
+				c.Auth.Enabled = true
+				c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
+			}
+
+			if contains(authModes, "nts") {
+				ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
+				if err != nil {
+					log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
+				}
+				c.Auth.NTSEnabled = true
+				c.Auth.NTSKEFetcher.TLSConfig = tls.Config{
+					InsecureSkipVerify: true,
+					ServerName:         ntskeHost,
+					MinVersion:         tls.VersionTLS13,
+				}
+				c.Auth.NTSKEFetcher.Port = ntskePort
+				c.Auth.NTSKEFetcher.Log = log
+			}
 
 			defer wg.Done()
 			<-sg
+			ntpcs := []*client.SCIONClient{c}
 			for j := numRequestPerClient; j > 0; j-- {
-				ntpreq := ntp.Packet{}
-				buf := make([]byte, ntp.PacketLen)
-
-				cTxTime := timebase.Now()
-
-				ntpreq.SetVersion(ntp.VersionMax)
-				ntpreq.SetMode(ntp.ModeClient)
-				ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime)
-				ntp.EncodePacket(&buf, &ntpreq)
-
-				pkt := &snet.Packet{
-					PacketInfo: snet.PacketInfo{
-						Source: snet.SCIONAddress{
-							IA:   localAddr.IA,
-							Host: addr.HostFromIP(localAddr.Host.IP),
-						},
-						Destination: snet.SCIONAddress{
-							IA:   remoteAddr.IA,
-							Host: addr.HostFromIP(remoteAddr.Host.IP),
-						},
-						Path: sp.Dataplane(),
-						Payload: snet.UDPPayload{
-							SrcPort: uint16(localAddr.Host.Port),
-							DstPort: uint16(remoteAddr.Host.Port),
-							Payload: buf,
-						},
-					},
-				}
-
-				err = pkt.Serialize()
+				_, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, ps)
 				if err != nil {
-					log.Printf("Failed to serialize packet: %v", err)
-					return
-				}
-
-				_, err = conn.Write(pkt.Bytes)
-				if err != nil {
-					log.Printf("Failed to write packet: %v", err)
-					return
-				}
-
-				pkt.Prepare()
-				oob := make([]byte, udp.TimestampLen())
-
-				n, oobn, flags, _, err := conn.ReadMsgUDPAddrPort(pkt.Bytes, oob)
-				if err != nil {
-					log.Printf("Failed to read packet: %v", err)
-					return
-				}
-				if flags != 0 {
-					log.Printf("Failed to read packet, flags: %v", flags)
-					return
-				}
-
-				oob = oob[:oobn]
-				cRxTime, err := udp.TimestampFromOOBData(oob)
-				if err != nil {
-					cRxTime = timebase.Now()
-					log.Printf("Failed to read packet timestamp")
-				}
-				pkt.Bytes = pkt.Bytes[:n]
-
-				err = pkt.Decode()
-				if err != nil {
-					log.Printf("Failed to decode packet: %v", err)
-					return
-				}
-
-				udppkt, ok := pkt.Payload.(snet.UDPPayload)
-				if !ok {
-					log.Printf("Failed to read packet payload: not a UDP packet")
-					return
-				}
-
-				var ntpresp ntp.Packet
-				err = ntp.DecodePacket(&ntpresp, udppkt.Payload)
-				if err != nil {
-					log.Printf("Failed to decode packet payload: %v", err)
-					return
-				}
-
-				if ntpresp.OriginTime != ntp.Time64FromTime(cTxTime) {
-					log.Printf("Unrelated packet received")
-					return
-				}
-
-				err = ntp.ValidateResponseMetadata(&ntpresp)
-				if err != nil {
-					log.Printf("Unexpected packet received: %v", err)
-					return
-				}
-
-				sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime)
-				sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime)
-
-				err = ntp.ValidateResponseTimestamps(cTxTime, sRxTime, sTxTime, cRxTime)
-				if err != nil {
-					log.Printf("Unexpected packet received: %v", err)
-					return
-				}
-
-				_ = ntp.ClockOffset(cTxTime, sRxTime, sTxTime, cRxTime)
-				roundTripDelay := ntp.RoundTripDelay(cTxTime, sRxTime, sTxTime, cRxTime)
-
-				err = hg.RecordValue(roundTripDelay.Microseconds())
-				if err != nil {
-					log.Printf("Failed to record histogram value: %v", err)
-					return
+					log.Info("failed to measure clock offset",
+						zap.Stringer("remoteIA", raddr.IA),
+						zap.Stringer("remoteHost", raddr.Host),
+						zap.Error(err),
+					)
 				}
 			}
 			mu.Lock()
@@ -197,5 +118,5 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr) {
 	t0 := time.Now()
 	close(sg)
 	wg.Wait()
-	log.Print(time.Since(t0))
+	log.Info(time.Since(t0).String())
 }

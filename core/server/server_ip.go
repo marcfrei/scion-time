@@ -94,12 +94,18 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 		}
 
 		var authenticated bool
-		var ntsreq nts.NTSPacket
+		var ntsreq nts.Packet
 		var serverCookie ntske.ServerCookie
 		if len(buf) > ntp.PacketLen {
-			cookie, err := nts.ExtractCookie(buf)
+			err = nts.DecodePacket(&ntsreq, buf)
 			if err != nil {
-				log.Info("failed to extract cookie", zap.Error(err))
+				log.Info("failed to decode NTS packet", zap.Error(err))
+				continue
+			}
+
+			cookie, err := ntsreq.GetFirstCookie()
+			if err != nil {
+				log.Info("failed to get cookie", zap.Error(err))
 				continue
 			}
 
@@ -122,9 +128,9 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			err = nts.DecodePacket(&ntsreq, buf, serverCookie.C2S)
+			err = nts.ProcessRequest(buf, serverCookie.C2S, &ntsreq)
 			if err != nil {
-				log.Info("failed to decode packet", zap.Error(err))
+				log.Info("failed to process NTS packet", zap.Error(err))
 				continue
 			}
 			authenticated = true
@@ -171,7 +177,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 				continue
 			}
 
-			ntsresp := nts.NewResponsePacket(buf, cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
+			ntsresp := nts.NewResponsePacket(cookies, serverCookie.S2C, ntsreq.UniqueID.ID)
 			nts.EncodePacket(&buf, &ntsresp)
 		}
 

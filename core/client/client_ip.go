@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -28,7 +29,8 @@ type IPClient struct {
 		Enabled      bool
 		NTSKEFetcher ntske.Fetcher
 	}
-	prev struct {
+	Histo *hdrhistogram.Histogram
+	prev  struct {
 		reference string
 		cTxTime   ntp.Time64
 		cRxTime   ntp.Time64
@@ -149,9 +151,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	ntp.EncodePacket(&buf, &ntpreq)
 
 	var requestID []byte
-	var ntsreq nts.NTSPacket
+	var ntsreq nts.Packet
 	if c.Auth.Enabled {
-		ntsreq, requestID = nts.NewPacket(buf, ntskeData)
+		ntsreq, requestID = nts.NewRequestPacket(ntskeData)
 		nts.EncodePacket(&buf, &ntsreq)
 	}
 
@@ -226,19 +228,19 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		}
 
 		authenticated := false
-		var ntsresp nts.NTSPacket
+		var ntsresp nts.Packet
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf, ntskeData.S2cKey)
+			err = nts.DecodePacket(&ntsresp, buf)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					log.Info("failed to decode and authenticate NTS packet", zap.Error(err))
+					log.Info("failed to decode NTS packet", zap.Error(err))
 					numRetries++
 					continue
 				}
 				return offset, weight, err
 			}
 
-			err = nts.ProcessResponse(&c.Auth.NTSKEFetcher, &ntsresp, requestID)
+			err = nts.ProcessResponse(buf, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					log.Info("failed to process NTS packet", zap.Error(err))
@@ -322,6 +324,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 		// offset, weight = off, 1000.0
 
 		offset, weight = filter(log, reference, t0, t1, t2, t3)
+
+		if c.Histo != nil {
+			c.Histo.RecordValue(rtd.Microseconds())
+		}
 
 		break
 	}
