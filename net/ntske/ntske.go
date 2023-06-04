@@ -26,7 +26,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -313,25 +312,23 @@ func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 			var nextProto uint16
 			err := binary.Read(reader, binary.BigEndian, &nextProto)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
 
 		case RecAead:
 			var aead uint16
 			err := binary.Read(reader, binary.BigEndian, &aead)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
-
 			data.Algo = aead
 
 		case RecCookie:
 			cookie := make([]byte, msg.BodyLen)
 			_, err := reader.Read(cookie)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
-
 			data.Cookie = append(data.Cookie, cookie)
 
 		case RecServer:
@@ -339,17 +336,23 @@ func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 
 			err := binary.Read(reader, binary.BigEndian, &address)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
 			data.Server = string(address)
-			// log.Debug("NTSKE", zap.String("negotiated NTP server", data.Server))
 
 		case RecPort:
 			err := binary.Read(reader, binary.BigEndian, &data.Port)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
-			// log.Debug("NTSKE", zap.Uint16("negotiated port", data.Port))
+
+		case RecError:
+			var code uint16
+			err := binary.Read(reader, binary.BigEndian, &code)
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("ntske received error message with code %v ", code)
 
 		default:
 			if critical {
@@ -360,7 +363,7 @@ func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 			unknownMsg := make([]byte, msg.BodyLen)
 			err := binary.Read(reader, binary.BigEndian, &unknownMsg)
 			if err != nil {
-				return errors.New("buffer overrun")
+				return err
 			}
 		}
 	}
