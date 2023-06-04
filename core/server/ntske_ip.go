@@ -12,7 +12,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-func sendErrorMessage(log *zap.Logger, conn *tls.Conn, code int) {
+func sendNtskeTcpErrorMessage(log *zap.Logger, conn *tls.Conn, code int) {
 	var msg ntske.ExchangeMsg
 	msg.AddRecord(ntske.Error{
 		Code: uint16(code),
@@ -26,12 +26,12 @@ func sendErrorMessage(log *zap.Logger, conn *tls.Conn, code int) {
 
 	n, err := conn.Write(buf.Bytes())
 	if err != nil || n != buf.Len() {
-		log.Info("failed to write response", zap.Error(err))
+		log.Info("failed to write error message", zap.Error(err))
 		return
 	}
 }
 
-func handleKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provider *ntske.Provider) {
+func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provider *ntske.Provider) {
 	defer conn.Close()
 
 	var err error
@@ -40,30 +40,30 @@ func handleKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provider 
 	err = ntske.Read(log, reader, &data)
 	if err != nil {
 		log.Info("failed to read key exchange", zap.Error(err))
-		sendErrorMessage(log, conn, 1)
+		sendNtskeTcpErrorMessage(log, conn, 1)
 		return
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState(), &data)
 	if err != nil {
 		log.Info("failed to export keys", zap.Error(err))
-		sendErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, 2)
 		return
 	}
 
 	localIP := conn.LocalAddr().(*net.TCPAddr).IP
 
-	msg, err := createMessage(log, localIP, localPort, &data, provider)
+	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, 2)
 		return
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
 		log.Info("failed to build packet", zap.Error(err))
-		sendErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, 2)
 		return
 	}
 
@@ -82,7 +82,7 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provi
 			log.Info("failed to accept client", zap.Error(err))
 			continue
 		}
-		go handleKeyExchange(log, conn, localPort, provider)
+		go handleTCPKeyExchange(log, conn, localPort, provider)
 	}
 }
 

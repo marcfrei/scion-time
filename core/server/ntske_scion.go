@@ -15,7 +15,26 @@ import (
 	"example.com/scion-time/net/udp"
 )
 
-func handleSCIONKeyExchange(log *zap.Logger, conn quic.Connection, localPort int, provider *ntske.Provider) error {
+func sendNtskeQuicErrorMessage(log *zap.Logger, stream quic.Stream, code int) {
+	var msg ntske.ExchangeMsg
+	msg.AddRecord(ntske.Error{
+		Code: uint16(code),
+	})
+
+	buf, err := msg.Pack()
+	if err != nil {
+		log.Info("failed to build packet", zap.Error(err))
+		return
+	}
+
+	n, err := stream.Write(buf.Bytes())
+	if err != nil || n != buf.Len() {
+		log.Info("failed to write error message", zap.Error(err))
+		return
+	}
+}
+
+func handleQUICKeyExchange(log *zap.Logger, conn quic.Connection, localPort int, provider *ntske.Provider) error {
 	stream, err := conn.AcceptStream(context.Background())
 	if err != nil {
 		return err
@@ -26,24 +45,28 @@ func handleSCIONKeyExchange(log *zap.Logger, conn quic.Connection, localPort int
 	var data ntske.Data
 	err = ntske.Read(log, reader, &data)
 	if err != nil {
+		sendNtskeQuicErrorMessage(log, stream, 1)
 		return errors.New("failed to read key exchange")
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState().TLS.ConnectionState, &data)
 	if err != nil {
+		sendNtskeQuicErrorMessage(log, stream, 2)
 		return errors.New("failed to export keys")
 	}
 
 	localIP := conn.LocalAddr().(udp.UDPAddr).Host.IP
 
-	msg, err := createMessage(log, localIP, localPort, &data, provider)
+	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
+		sendNtskeQuicErrorMessage(log, stream, 2)
 		return err
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
+		sendNtskeQuicErrorMessage(log, stream, 2)
 		return errors.New("failed to build packet")
 	}
 
@@ -67,7 +90,7 @@ func runSCIONNTSKEServer(ctx context.Context, log *zap.Logger, listener quic.Lis
 		}
 
 		go func() {
-			err := handleSCIONKeyExchange(log, conn, localPort, provider)
+			err := handleQUICKeyExchange(log, conn, localPort, provider)
 			var errApplication *quic.ApplicationError
 			if err != nil && !(errors.As(err, &errApplication) && errApplication.ErrorCode == 0) {
 				log.Info("failed to handle connection",

@@ -11,7 +11,7 @@ import (
 
 const defaultNtskePort int = 4460
 
-func createMessage(log *zap.Logger, localIP net.IP, localPort int, data *ntske.Data, provider *ntske.Provider) (ntske.ExchangeMsg, error) {
+func newNtskeMessage(log *zap.Logger, localIP net.IP, localPort int, data *ntske.Data, provider *ntske.Provider) (ntske.ExchangeMsg, error) {
 	var msg ntske.ExchangeMsg
 	msg.AddRecord(ntske.NextProto{
 		NextProto: ntske.NTPv4,
