@@ -35,7 +35,6 @@ func NewQUICListener(ctx context.Context, listener quic.Listener) (quic.Connecti
 
 func ConnectQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr string, config *tls.Config) (*scion.QUICConnection, Data, error) {
 	config.NextProtos = []string{alpn}
-
 	ctx := context.Background()
 
 	dc := newDaemonConnector(log, ctx, daemonAddr)

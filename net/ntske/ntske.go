@@ -24,6 +24,7 @@ package ntske
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -256,6 +257,28 @@ type Algorithm struct {
 
 func (a Algorithm) pack(buf *bytes.Buffer) error {
 	return packsimple(RecAead, true, a.Algo, buf)
+}
+
+// ExportKeys exports two extra sessions keys from the already
+// established NTS-KE connection for use with NTS.
+func ExportKeys(cs tls.ConnectionState, data *Data) error {
+	label := "EXPORTER-network-time-security"
+	s2cContext := []byte{0x00, 0x00, 0x00, 0x0f, 0x01}
+	c2sContext := []byte{0x00, 0x00, 0x00, 0x0f, 0x00}
+	len := 32
+
+	var err error
+	data.S2cKey, err = cs.ExportKeyingMaterial(label, s2cContext, len)
+	if err != nil {
+		return err
+	}
+
+	data.C2sKey, err = cs.ExportKeyingMaterial(label, c2sContext, len)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {

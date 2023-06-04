@@ -98,25 +98,3 @@ func ExchangeTCP(log *zap.Logger, conn *tls.Conn, data *Data) error {
 
 	return nil
 }
-
-// ExportKeys exports two extra sessions keys from the already
-// established NTS-KE connection for use with NTS.
-func ExportKeys(cs tls.ConnectionState, data *Data) error {
-	label := "EXPORTER-network-time-security"
-	s2cContext := []byte{0x00, 0x00, 0x00, 0x0f, 0x01}
-	c2sContext := []byte{0x00, 0x00, 0x00, 0x0f, 0x00}
-	len := 32
-
-	var err error
-	data.S2cKey, err = cs.ExportKeyingMaterial(label, s2cContext, len)
-	if err != nil {
-		return err
-	}
-
-	data.C2sKey, err = cs.ExportKeyingMaterial(label, c2sContext, len)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
