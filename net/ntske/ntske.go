@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -59,7 +60,21 @@ const (
 	DEFAULT_NTP_PORT   = 123
 )
 
+const (
+	UnrecognizedCriticalErrorCode = 0
+	BadRequestErrorCode           = 1
+	InternalServerErrorCode       = 2
+)
+
 const alpn = "ntske/1"
+
+var (
+	errServerNoNTSKE            = errors.New("server not speaking ntske/1")
+	errReadInternalServer       = errors.New("ntske received internal server error message")
+	errReadBadRequest           = errors.New("ntske received bad request error message")
+	errReadUnrecognisedCritical = errors.New("ntske received unrecognised critical error message")
+	errReadUnknown              = errors.New("ntske received unknown error message")
+)
 
 // RecordHdr is the header on all records send in NTS-KE. The first
 // bit of the Type is the critical bit.
@@ -352,7 +367,14 @@ func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 			if err != nil {
 				return err
 			}
-			return fmt.Errorf("ntske received error message with code %v ", code)
+			if code == 0 {
+				return errReadUnrecognisedCritical
+			} else if code == 1 {
+				return errReadBadRequest
+			} else if code == 2 {
+				return errReadInternalServer
+			}
+			return errReadUnknown
 
 		default:
 			if critical {

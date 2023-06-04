@@ -45,14 +45,14 @@ func handleQUICKeyExchange(log *zap.Logger, conn quic.Connection, localPort int,
 	var data ntske.Data
 	err = ntske.Read(log, reader, &data)
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, 1)
-		return errors.New("failed to read key exchange")
+		sendNtskeQuicErrorMessage(log, stream, ntske.BadRequestErrorCode)
+		return err
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState().TLS.ConnectionState, &data)
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, 2)
-		return errors.New("failed to export keys")
+		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
+		return err
 	}
 
 	localIP := conn.LocalAddr().(udp.UDPAddr).Host.IP
@@ -60,14 +60,14 @@ func handleQUICKeyExchange(log *zap.Logger, conn quic.Connection, localPort int,
 	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendNtskeQuicErrorMessage(log, stream, 2)
+		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
 		return err
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, 2)
-		return errors.New("failed to build packet")
+		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
+		return err
 	}
 
 	_, err = stream.Write(buf.Bytes())

@@ -3,7 +3,7 @@ package ntske
 import (
 	"bufio"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -12,22 +12,18 @@ import (
 	"go.uber.org/zap"
 )
 
+var errConvertTLS = errors.New("could not convert to tls connection")
+
 func NewTCPListener(listener net.Listener) (*tls.Conn, error) {
 	conn, err := listener.Accept()
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't answer`")
+		return nil, err
 	}
 
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
-		return nil, fmt.Errorf("could not convert to tls connection")
+		return nil, errConvertTLS
 	}
-
-	//state := tlsConn.ConnectionState()
-	//if state.NegotiatedProtocol != alpn {
-	//	fmt.Println(state.NegotiatedProtocol)
-	//	return nil, fmt.Errorf("client not speaking ntske/1")
-	//}
 
 	return tlsConn, nil
 }
@@ -53,13 +49,13 @@ func ConnectTCP(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 	var data Data
 	data.Server, _, err = net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
-		return nil, Data{}, fmt.Errorf("unexpected remoteaddr issue: %s", err)
+		return nil, Data{}, err
 	}
 	data.Port = DEFAULT_NTP_PORT
 
 	state := conn.ConnectionState()
 	if state.NegotiatedProtocol != alpn {
-		return nil, Data{}, fmt.Errorf("server not speaking ntske/1")
+		return nil, Data{}, errServerNoNTSKE
 	}
 
 	return conn, data, nil

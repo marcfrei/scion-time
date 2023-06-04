@@ -13,6 +13,11 @@ import (
 	"example.com/scion-time/net/udp"
 )
 
+var (
+	errNoCookies   = errors.New("unexpected NTS-KE meta data: no cookies")
+	errUnknownAEAD = errors.New("unexpected NTS-KE meta data: unknown algorithm")
+)
+
 type Fetcher struct {
 	Log       *zap.Logger
 	TLSConfig tls.Config
@@ -65,10 +70,10 @@ func (f *Fetcher) exchangeKeys() error {
 		}
 
 		if len(f.data.Cookie) == 0 {
-			return errors.New("unexpected NTS-KE meta data: no cookies")
+			return errNoCookies
 		}
 		if f.data.Algo != AES_SIV_CMAC_256 {
-			return errors.New("unexpected NTS-KE meta data: unknown algorithm")
+			return errUnknownAEAD
 		}
 
 		err = ExportKeys(conn.ConnectionState(), &f.data)

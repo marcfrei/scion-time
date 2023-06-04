@@ -40,14 +40,14 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	err = ntske.Read(log, reader, &data)
 	if err != nil {
 		log.Info("failed to read key exchange", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, 1)
+		sendNtskeTcpErrorMessage(log, conn, ntske.BadRequestErrorCode)
 		return
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState(), &data)
 	if err != nil {
 		log.Info("failed to export keys", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
 		return
 	}
 
@@ -56,14 +56,14 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
 		return
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
 		log.Info("failed to build packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, 2)
+		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
 		return
 	}
 

@@ -55,11 +55,6 @@ func ConnectQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr 
 		return nil, Data{}, err
 	}
 
-	//state := conn.ConnectionState().TLS.ConnectionState
-	//if state.NegotiatedProtocol != alpn {
-	//	return nil, Data{}, fmt.Errorf("server not speaking ntske/1")
-	//}
-
 	return conn, Data{}, nil
 }
 
