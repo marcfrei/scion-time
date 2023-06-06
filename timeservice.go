@@ -213,10 +213,10 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	}
 	c.Auth.NTSKEFetcher.Port = ntskePort
 	c.Auth.NTSKEFetcher.Log = log
-	c.Auth.NTSKEFetcher.SCIONQuic.Enabled = true
-	c.Auth.NTSKEFetcher.SCIONQuic.DaemonAddr = daemonAddr
-	c.Auth.NTSKEFetcher.SCIONQuic.LocalAddr = localAddr
-	c.Auth.NTSKEFetcher.SCIONQuic.RemoteAddr = remoteAddr
+	c.Auth.NTSKEFetcher.QUIC.Enabled = true
+	c.Auth.NTSKEFetcher.QUIC.DaemonAddr = daemonAddr
+	c.Auth.NTSKEFetcher.QUIC.LocalAddr = localAddr
+	c.Auth.NTSKEFetcher.QUIC.RemoteAddr = remoteAddr
 }
 
 func newNTPReferenceClockSCION(daemonAddr string, localAddr, remoteAddr udp.UDPAddr,

@@ -3,44 +3,42 @@ package ntske
 import (
 	"crypto/tls"
 	"errors"
-	"log"
 	"net"
 
-	"go.uber.org/zap"
-
 	"github.com/quic-go/quic-go"
+	"go.uber.org/zap"
 
 	"example.com/scion-time/net/udp"
 )
 
 var (
 	errNoCookies   = errors.New("unexpected NTS-KE meta data: no cookies")
-	errUnknownAEAD = errors.New("unexpected NTS-KE meta data: unknown algorithm")
+	errUnknownAlgo = errors.New("unexpected NTS-KE meta data: unknown algorithm")
 )
 
 type Fetcher struct {
 	Log       *zap.Logger
 	TLSConfig tls.Config
 	Port      string
-	SCIONQuic struct {
+	QUIC      struct {
 		Enabled    bool
-		RemoteAddr udp.UDPAddr
-		LocalAddr  udp.UDPAddr
 		DaemonAddr string
+		LocalAddr  udp.UDPAddr
+		RemoteAddr udp.UDPAddr
 	}
 	data Data
 }
 
 func (f *Fetcher) exchangeKeys() error {
-	if f.SCIONQuic.Enabled {
-		conn, _, err := dialQUIC(f.Log, f.SCIONQuic.LocalAddr, f.SCIONQuic.RemoteAddr, f.SCIONQuic.DaemonAddr, &f.TLSConfig)
+	if f.QUIC.Enabled {
+		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.DaemonAddr, &f.TLSConfig)
 		if err != nil {
 			return err
 		}
 		defer func() {
 			err := conn.CloseWithError(quic.ApplicationErrorCode(0), "" /* error string */)
 			if err != nil {
-				log.Fatal("failed to close connection", zap.Error(err))
+				f.Log.Info("failed to close connection", zap.Error(err))
 			}
 		}()
 
@@ -53,9 +51,7 @@ func (f *Fetcher) exchangeKeys() error {
 		if err != nil {
 			return err
 		}
-
 	} else {
-
 		var err error
 		var conn *tls.Conn
 		serverAddr := net.JoinHostPort(f.TLSConfig.ServerName, f.Port)
@@ -69,17 +65,17 @@ func (f *Fetcher) exchangeKeys() error {
 			return err
 		}
 
-		if len(f.data.Cookie) == 0 {
-			return errNoCookies
-		}
-		if f.data.Algo != AES_SIV_CMAC_256 {
-			return errUnknownAEAD
-		}
-
 		err = ExportKeys(conn.ConnectionState(), &f.data)
 		if err != nil {
 			return err
 		}
+	}
+
+	if len(f.data.Cookie) == 0 {
+		return errNoCookies
+	}
+	if f.data.Algo != AES_SIV_CMAC_256 {
+		return errUnknownAlgo
 	}
 
 	logData(f.Log, f.data)
