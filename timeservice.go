@@ -199,7 +199,7 @@ func (c *ntpReferenceClockIP) MeasureClockOffset(ctx context.Context, log *zap.L
 	return client.MeasureClockOffsetIP(ctx, log, c.ntpc, c.localAddr, c.remoteAddr)
 }
 
-func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool, remoteAddr, localAddr udp.UDPAddr, daemonAddr string) {
+func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool, daemonAddr string, localAddr, remoteAddr udp.UDPAddr) {
 	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
 		log.Fatal("failed to split NTS-KE host and port", zap.Error(err))
@@ -214,12 +214,12 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Port = ntskePort
 	c.Auth.NTSKEFetcher.Log = log
 	c.Auth.NTSKEFetcher.SCIONQuic.Enabled = true
-	c.Auth.NTSKEFetcher.SCIONQuic.RemoteAddr = remoteAddr
-	c.Auth.NTSKEFetcher.SCIONQuic.LocalAddr = localAddr
 	c.Auth.NTSKEFetcher.SCIONQuic.DaemonAddr = daemonAddr
+	c.Auth.NTSKEFetcher.SCIONQuic.LocalAddr = localAddr
+	c.Auth.NTSKEFetcher.SCIONQuic.RemoteAddr = remoteAddr
 }
 
-func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, daemonAddr string,
+func newNTPReferenceClockSCION(daemonAddr string, localAddr, remoteAddr udp.UDPAddr,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
@@ -230,7 +230,7 @@ func newNTPReferenceClockSCION(localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 			InterleavedMode: true,
 		}
 		if contains(authModes, authModeNTS) {
-			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, remoteAddr, localAddr, daemonAddr)
+			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, daemonAddr, localAddr, remoteAddr)
 		}
 	}
 	return c
@@ -332,9 +332,9 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 		ntskeServer := ntskeServerFromRemoteAddr(s)
 		if !remoteAddr.IA.IsZero() {
 			refClocks = append(refClocks, newNTPReferenceClockSCION(
+				cfg.DaemonAddr,
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
-				cfg.DaemonAddr,
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -361,9 +361,9 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 		}
 		ntskeServer := ntskeServerFromRemoteAddr(s)
 		netClocks = append(netClocks, newNTPReferenceClockSCION(
+			cfg.DaemonAddr,
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
-			cfg.DaemonAddr,
 			cfg.AuthModes,
 			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
@@ -576,7 +576,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 		c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
 	}
 	if contains(authModes, authModeNTS) {
-		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, raddr, laddr, daemonAddr)
+		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, daemonAddr, laddr, raddr)
 	}
 
 	_, err = client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)

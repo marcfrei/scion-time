@@ -95,6 +95,10 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 				}
 				c.Auth.NTSKEFetcher.Port = ntskePort
 				c.Auth.NTSKEFetcher.Log = log
+				c.Auth.NTSKEFetcher.SCIONQuic.Enabled = true
+				c.Auth.NTSKEFetcher.SCIONQuic.DaemonAddr = daemonAddr
+				c.Auth.NTSKEFetcher.SCIONQuic.LocalAddr = laddr
+				c.Auth.NTSKEFetcher.SCIONQuic.RemoteAddr = raddr
 			}
 
 			defer wg.Done()
