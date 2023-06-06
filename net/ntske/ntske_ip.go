@@ -86,7 +86,7 @@ func exchangeDataTLS(log *zap.Logger, conn *tls.Conn, data *Data) error {
 	}
 
 	reader := bufio.NewReader(conn)
-	err = Read(log, reader, data)
+	err = ReadData(log, reader, data)
 	if err != nil {
 		return err
 	}

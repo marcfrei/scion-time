@@ -61,18 +61,18 @@ const (
 )
 
 const (
-	UnrecognizedCriticalErrorCode = 0
-	BadRequestErrorCode           = 1
-	InternalServerErrorCode       = 2
+	ErrorCodeUnrecognizedCritical = 0
+	ErrorCodeBadRequest           = 1
+	ErrorCodeInternalServer       = 2
 )
 
 const alpn = "ntske/1"
 
 var (
-	errServerNoNTSKE            = errors.New("server not speaking ntske/1")
+	errServerNoNTSKE            = errors.New("server does not support ntske/1")
 	errReadInternalServer       = errors.New("ntske received internal server error message")
 	errReadBadRequest           = errors.New("ntske received bad request error message")
-	errReadUnrecognisedCritical = errors.New("ntske received unrecognised critical error message")
+	errReadUnrecognisedCritical = errors.New("ntske received unrecognized critical error message")
 	errReadUnknown              = errors.New("ntske received unknown error message")
 )
 
@@ -295,7 +295,7 @@ func ExportKeys(cs tls.ConnectionState, data *Data) error {
 	return nil
 }
 
-func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
+func ReadData(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 	var msg RecordHdr
 	var critical bool
 
@@ -367,11 +367,11 @@ func Read(log *zap.Logger, reader *bufio.Reader, data *Data) error {
 			if err != nil {
 				return err
 			}
-			if code == 0 {
+			if code == ErrorCodeUnrecognizedCritical {
 				return errReadUnrecognisedCritical
-			} else if code == 1 {
+			} else if code == ErrorCodeBadRequest {
 				return errReadBadRequest
-			} else if code == 2 {
+			} else if code == ErrorCodeInternalServer {
 				return errReadInternalServer
 			}
 			return errReadUnknown

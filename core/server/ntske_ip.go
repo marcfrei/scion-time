@@ -37,17 +37,17 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	var err error
 	var data ntske.Data
 	reader := bufio.NewReader(conn)
-	err = ntske.Read(log, reader, &data)
+	err = ntske.ReadData(log, reader, &data)
 	if err != nil {
 		log.Info("failed to read key exchange", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.BadRequestErrorCode)
+		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeBadRequest)
 		return
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState(), &data)
 	if err != nil {
 		log.Info("failed to export keys", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
+		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
@@ -56,14 +56,14 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
+		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
 		log.Info("failed to build packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.InternalServerErrorCode)
+		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
@@ -87,10 +87,10 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provi
 }
 
 func StartNTSKEServer(ctx context.Context, log *zap.Logger, localIP net.IP, localPort int, config *tls.Config, provider *ntske.Provider) {
-	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNtskePort))
+	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNTSKEPort))
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localIP),
-		zap.Int("port", defaultNtskePort),
+		zap.Int("port", defaultNTSKEPort),
 	)
 
 	listener, err := tls.Listen("tcp", ntskeAddr, config)

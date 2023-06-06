@@ -98,7 +98,7 @@ func exchangeDataQUIC(log *zap.Logger, conn *scion.QUICConnection, data *Data) e
 	quic.SendStream(stream).Close()
 
 	reader := bufio.NewReader(stream)
-	err = Read(log, reader, data)
+	err = ReadData(log, reader, data)
 	if err != nil {
 		return err
 	}

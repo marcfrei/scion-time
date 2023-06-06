@@ -9,7 +9,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-const defaultNtskePort = 4460
+const defaultNTSKEPort = 4460
 
 var errNoCookie = errors.New("failed to add at least one cookie")
 

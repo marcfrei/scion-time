@@ -43,15 +43,15 @@ func handleQUICKeyExchange(log *zap.Logger, conn quic.Connection, localPort int,
 
 	reader := bufio.NewReader(stream)
 	var data ntske.Data
-	err = ntske.Read(log, reader, &data)
+	err = ntske.ReadData(log, reader, &data)
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, ntske.BadRequestErrorCode)
+		sendNtskeQuicErrorMessage(log, stream, ntske.ErrorCodeBadRequest)
 		return err
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState().TLS.ConnectionState, &data)
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
+		sendNtskeQuicErrorMessage(log, stream, ntske.ErrorCodeInternalServer)
 		return err
 	}
 
@@ -60,13 +60,13 @@ func handleQUICKeyExchange(log *zap.Logger, conn quic.Connection, localPort int,
 	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
+		sendNtskeQuicErrorMessage(log, stream, ntske.ErrorCodeInternalServer)
 		return err
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
-		sendNtskeQuicErrorMessage(log, stream, ntske.InternalServerErrorCode)
+		sendNtskeQuicErrorMessage(log, stream, ntske.ErrorCodeInternalServer)
 		return err
 	}
 
@@ -106,10 +106,10 @@ func StartSCIONNTSKEServer(ctx context.Context, log *zap.Logger, localIP net.IP,
 	//ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNtskePort))
 	log.Info("server listening via SCION",
 		zap.Stringer("ip", localIP),
-		zap.Int("port", defaultNtskePort),
+		zap.Int("port", defaultNTSKEPort),
 	)
 
-	localAddr.Host.Port = defaultNtskePort
+	localAddr.Host.Port = defaultNTSKEPort
 
 	listener, err := scion.ListenQUIC(ctx, localAddr, config, nil /* quicCfg */)
 	if err != nil {
