@@ -55,8 +55,8 @@ const (
 )
 
 const (
-	AES_SIV_CMAC_256   = 0x0f
-	
+	AES_SIV_CMAC_256 = 0x0f
+
 	ServerPortIP    = 4460
 	ServerPortSCION = 14460
 )
