@@ -12,7 +12,7 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-func sendNtskeTcpErrorMessage(log *zap.Logger, conn *tls.Conn, code int) {
+func writeNTSKEErrorMsgTLS(log *zap.Logger, conn *tls.Conn, code int) {
 	var msg ntske.ExchangeMsg
 	msg.AddRecord(ntske.Error{
 		Code: uint16(code),
@@ -31,7 +31,7 @@ func sendNtskeTcpErrorMessage(log *zap.Logger, conn *tls.Conn, code int) {
 	}
 }
 
-func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provider *ntske.Provider) {
+func handleKeyExchangeTLS(log *zap.Logger, conn *tls.Conn, localPort int, provider *ntske.Provider) {
 	defer conn.Close()
 
 	var err error
@@ -40,30 +40,30 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	err = ntske.ReadData(log, reader, &data)
 	if err != nil {
 		log.Info("failed to read key exchange", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeBadRequest)
+		writeNTSKEErrorMsgTLS(log, conn, ntske.ErrorCodeBadRequest)
 		return
 	}
 
 	err = ntske.ExportKeys(conn.ConnectionState(), &data)
 	if err != nil {
 		log.Info("failed to export keys", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
+		writeNTSKEErrorMsgTLS(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
 	localIP := conn.LocalAddr().(*net.TCPAddr).IP
 
-	msg, err := newNtskeMessage(log, localIP, localPort, &data, provider)
+	msg, err := newNTSKEMsg(log, localIP, localPort, &data, provider)
 	if err != nil {
 		log.Info("failed to create packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
+		writeNTSKEErrorMsgTLS(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
 	buf, err := msg.Pack()
 	if err != nil {
 		log.Info("failed to build packet", zap.Error(err))
-		sendNtskeTcpErrorMessage(log, conn, ntske.ErrorCodeInternalServer)
+		writeNTSKEErrorMsgTLS(log, conn, ntske.ErrorCodeInternalServer)
 		return
 	}
 
@@ -74,7 +74,7 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 	}
 }
 
-func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provider *ntske.Provider) {
+func runNTSKEServerTLS(log *zap.Logger, listener net.Listener, localPort int, provider *ntske.Provider) {
 	defer listener.Close()
 	for {
 		conn, err := ntske.AcceptTLSConn(listener)
@@ -82,11 +82,11 @@ func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provi
 			log.Info("failed to accept client", zap.Error(err))
 			continue
 		}
-		go handleTCPKeyExchange(log, conn, localPort, provider)
+		go handleKeyExchangeTLS(log, conn, localPort, provider)
 	}
 }
 
-func StartNTSKEServer(ctx context.Context, log *zap.Logger, localIP net.IP, localPort int, config *tls.Config, provider *ntske.Provider) {
+func StartNTSKEServerIP(ctx context.Context, log *zap.Logger, localIP net.IP, localPort int, config *tls.Config, provider *ntske.Provider) {
 	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNTSKEPort))
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localIP),
@@ -95,8 +95,8 @@ func StartNTSKEServer(ctx context.Context, log *zap.Logger, localIP net.IP, loca
 
 	listener, err := tls.Listen("tcp", ntskeAddr, config)
 	if err != nil {
-		log.Error("failed to create TLS listener")
+		log.Fatal("failed to create TLS listener")
 	}
 
-	go runNTSKEServer(log, listener, localPort, provider)
+	go runNTSKEServerTLS(log, listener, localPort, provider)
 }

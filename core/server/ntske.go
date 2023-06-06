@@ -13,7 +13,7 @@ const defaultNTSKEPort = 4460
 
 var errNoCookie = errors.New("failed to add at least one cookie")
 
-func newNtskeMessage(log *zap.Logger, localIP net.IP, localPort int, data *ntske.Data, provider *ntske.Provider) (ntske.ExchangeMsg, error) {
+func newNTSKEMsg(log *zap.Logger, localIP net.IP, localPort int, data *ntske.Data, provider *ntske.Provider) (ntske.ExchangeMsg, error) {
 	var msg ntske.ExchangeMsg
 	msg.AddRecord(ntske.NextProto{
 		NextProto: ntske.NTPv4,
