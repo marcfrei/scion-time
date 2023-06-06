@@ -15,17 +15,6 @@ import (
 	"example.com/scion-time/net/udp"
 )
 
-func newDaemonConnector(log *zap.Logger, ctx context.Context, daemonAddr string) daemon.Connector {
-	s := &daemon.Service{
-		Address: daemonAddr,
-	}
-	c, err := s.Connect(ctx)
-	if err != nil {
-		log.Fatal("failed to create demon connector", zap.Error(err))
-	}
-	return c
-}
-
 func AcceptQUICConn(ctx context.Context, l quic.Listener) (quic.Connection, error) {
 	return l.Accept(ctx)
 }
@@ -34,7 +23,7 @@ func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 	config.NextProtos = []string{alpn}
 	ctx := context.Background()
 
-	dc := newDaemonConnector(log, ctx, daemonAddr)
+	dc := scion.NewDaemonConnector(ctx, log, daemonAddr)
 	ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
 	if err != nil {
 		log.Info("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
@@ -95,7 +84,6 @@ func exchangeDataQUIC(log *zap.Logger, conn *scion.QUICConnection, data *Data) e
 	if err != nil {
 		return err
 	}
-	quic.SendStream(stream).Close()
 
 	reader := bufio.NewReader(stream)
 	err = ReadData(log, reader, data)

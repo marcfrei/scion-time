@@ -242,20 +242,6 @@ func (c *ntpReferenceClockSCION) MeasureClockOffset(ctx context.Context, log *za
 	return client.MeasureClockOffsetSCION(ctx, log, c.ntpcs[:], c.localAddr, c.remoteAddr, paths)
 }
 
-func newDaemonConnector(ctx context.Context, daemonAddr string) daemon.Connector {
-	if daemonAddr == "" {
-		return nil
-	}
-	s := &daemon.Service{
-		Address: daemonAddr,
-	}
-	c, err := s.Connect(ctx)
-	if err != nil {
-		log.Fatal("failed to create demon connector", zap.Error(err))
-	}
-	return c
-}
-
 func loadConfig(configFile string) svcConfig {
 	raw, err := os.ReadFile(configFile)
 	if err != nil {
@@ -377,7 +363,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 		pather := scion.StartPather(ctx, log, daemonAddr, dstIAs)
 		var drkeyFetcher *scion.Fetcher
 		if contains(cfg.AuthModes, authModeSPAO) {
-			drkeyFetcher = scion.NewFetcher(newDaemonConnector(ctx, daemonAddr))
+			drkeyFetcher = scion.NewFetcher(scion.NewDaemonConnector(ctx, log, daemonAddr))
 		}
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
@@ -546,7 +532,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
-	dc := newDaemonConnector(ctx, daemonAddr)
+	dc := scion.NewDaemonConnectorOption(ctx, log, daemonAddr)
 
 	var ps []snet.Path
 	if remoteAddr.IA.Equal(localAddr.IA) {
@@ -620,7 +606,7 @@ func runSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 
 func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
 	ctx := context.Background()
-	dc := newDaemonConnector(ctx, daemonAddr)
+	dc := scion.NewDaemonConnectorOption(ctx, log, daemonAddr)
 
 	if serverMode {
 		hostASMeta := drkey.HostASMeta{
@@ -750,7 +736,7 @@ func runQUICDemoServer(localAddr *snet.UDPAddr) {
 func runQUICDemoClient(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr) {
 	ctx := context.Background()
 
-	dc := newDaemonConnector(ctx, daemonAddr)
+	dc := scion.NewDaemonConnectorOption(ctx, log, daemonAddr)
 	ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
 	if err != nil {
 		log.Fatal("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))

@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/spao"
@@ -471,20 +470,6 @@ func runSCIONServer(ctx context.Context, log *zap.Logger, mtrcs *scionServerMetr
 	}
 }
 
-func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string) daemon.Connector {
-	if daemonAddr == "" {
-		return nil
-	}
-	s := &daemon.Service{
-		Address: daemonAddr,
-	}
-	c, err := s.Connect(ctx)
-	if err != nil {
-		log.Fatal("failed to create demon connector", zap.Error(err))
-	}
-	return c
-}
-
 func StartSCIONServer(ctx context.Context, log *zap.Logger,
 	daemonAddr string, localHost *net.UDPAddr, provider *ntske.Provider) {
 	log.Info("server listening via SCION",
@@ -502,7 +487,7 @@ func StartSCIONServer(ctx context.Context, log *zap.Logger,
 	mtrcs := newSCIONServerMetrics()
 
 	if scionServerNumGoroutine == 1 {
-		fetcher := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
+		fetcher := scion.NewFetcher(scion.NewDaemonConnectorOption(ctx, log, daemonAddr))
 		conn, err := net.ListenUDP("udp", localHost)
 		if err != nil {
 			log.Fatal("failed to listen for packets", zap.Error(err))
@@ -510,7 +495,7 @@ func StartSCIONServer(ctx context.Context, log *zap.Logger,
 		go runSCIONServer(ctx, log, mtrcs, conn, localHost.Zone, localHostPort, fetcher, provider)
 	} else {
 		for i := scionServerNumGoroutine; i > 0; i-- {
-			fetcher := scion.NewFetcher(newDaemonConnector(ctx, log, daemonAddr))
+			fetcher := scion.NewFetcher(scion.NewDaemonConnectorOption(ctx, log, daemonAddr))
 			conn, err := reuseport.ListenPacket("udp",
 				net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHost.Port)))
 			if err != nil {

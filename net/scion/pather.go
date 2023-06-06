@@ -62,20 +62,9 @@ func update(ctx context.Context, p *Pather, dc daemon.Connector, dstIAs []addr.I
 	p.mu.Unlock()
 }
 
-func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string) daemon.Connector {
-	s := &daemon.Service{
-		Address: daemonAddr,
-	}
-	c, err := s.Connect(ctx)
-	if err != nil {
-		log.Fatal("failed to create demon connector", zap.Error(err))
-	}
-	return c
-}
-
 func StartPather(ctx context.Context, log *zap.Logger, daemonAddr string, dstIAs []addr.IA) *Pather {
 	p := &Pather{log: log}
-	dc := newDaemonConnector(ctx, log, daemonAddr)
+	dc := NewDaemonConnector(ctx, log, daemonAddr)
 	update(ctx, p, dc, dstIAs)
 	go func(ctx context.Context, p *Pather, dc daemon.Connector, dstIAs []addr.IA) {
 		ticker := time.NewTicker(pathRefreshPeriod)
