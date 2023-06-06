@@ -36,7 +36,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 			hg := hdrhistogram.New(1, 50000, 5)
 			ctx := context.Background()
 
-			dc := scion.NewDaemonConnector(ctx, log, daemonAddr)
+			dc := scion.NewDaemonConnectorOption(ctx, log, daemonAddr)
 
 			var ps []snet.Path
 			if remoteAddr.IA.Equal(localAddr.IA) {
