@@ -77,7 +77,7 @@ func handleTCPKeyExchange(log *zap.Logger, conn *tls.Conn, localPort int, provid
 func runNTSKEServer(log *zap.Logger, listener net.Listener, localPort int, provider *ntske.Provider) {
 	defer listener.Close()
 	for {
-		conn, err := ntske.NewTCPListener(listener)
+		conn, err := ntske.AcceptTLSConn(listener)
 		if err != nil {
 			log.Info("failed to accept client", zap.Error(err))
 			continue

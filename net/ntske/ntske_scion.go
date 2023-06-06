@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"net"
 
 	"github.com/quic-go/quic-go"
 	"go.uber.org/zap"
@@ -25,25 +26,23 @@ func newDaemonConnector(log *zap.Logger, ctx context.Context, daemonAddr string)
 	return c
 }
 
-func NewQUICListener(ctx context.Context, listener quic.Listener) (quic.Connection, error) {
-	conn, err := listener.Accept(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
+func AcceptQUICConn(ctx context.Context, l quic.Listener) (quic.Connection, error) {
+	return l.Accept(ctx)
 }
 
-func ConnectQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr string, config *tls.Config) (*scion.QUICConnection, Data, error) {
+func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr string, config *tls.Config) (*scion.QUICConnection, Data, error) {
 	config.NextProtos = []string{alpn}
 	ctx := context.Background()
 
 	dc := newDaemonConnector(log, ctx, daemonAddr)
 	ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
 	if err != nil {
-		log.Fatal("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+		log.Info("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+		return nil, Data{}, err
 	}
 	if len(ps) == 0 {
-		log.Fatal("no paths available", zap.Stringer("to", remoteAddr.IA))
+		log.Info("no paths available", zap.Stringer("to", remoteAddr.IA))
+		return nil, Data{}, err
 	}
 	log.Debug("available paths", zap.Stringer("to", remoteAddr.IA), zap.Array("via", scion.PathArrayMarshaler{Paths: ps}))
 	sp := ps[0]
@@ -52,22 +51,31 @@ func ConnectQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr 
 	conn, err := scion.DialQUIC(ctx, localAddr, remoteAddr, sp,
 		"" /* host*/, config, nil /* quicCfg */)
 	if err != nil {
+		_ = conn.Close()
 		return nil, Data{}, err
 	}
 
-	return conn, Data{}, nil
+	var data Data
+	data.Server, _, err = net.SplitHostPort(remoteAddr.Host.String())
+	if err != nil {
+		_ = conn.Close()
+		return nil, Data{}, err
+	}
+	data.Port = DEFAULT_NTP_PORT
+
+	return conn, data, nil
 }
 
-func ExchangeQUIC(log *zap.Logger, conn *scion.QUICConnection, data *Data) error {
+func exchangeDataQUIC(log *zap.Logger, conn *scion.QUICConnection, data *Data) error {
 	stream, err := conn.OpenStream()
 	if err != nil {
 		return err
 	}
-	defer quic.SendStream(stream).Close()
+	defer stream.Close()
 
 	var msg ExchangeMsg
-	var nextproto NextProto
 
+	var nextproto NextProto
 	nextproto.NextProto = NTPv4
 	msg.AddRecord(nextproto)
 
@@ -88,12 +96,12 @@ func ExchangeQUIC(log *zap.Logger, conn *scion.QUICConnection, data *Data) error
 		return err
 	}
 	quic.SendStream(stream).Close()
-	reader := bufio.NewReader(stream)
 
-	// Wait for response
+	reader := bufio.NewReader(stream)
 	err = Read(log, reader, data)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }

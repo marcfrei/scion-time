@@ -33,7 +33,7 @@ type Fetcher struct {
 
 func (f *Fetcher) exchangeKeys() error {
 	if f.SCIONQuic.Enabled {
-		conn, _, err := ConnectQUIC(f.Log, f.SCIONQuic.LocalAddr, f.SCIONQuic.RemoteAddr, f.SCIONQuic.DaemonAddr, &f.TLSConfig)
+		conn, _, err := dialQUIC(f.Log, f.SCIONQuic.LocalAddr, f.SCIONQuic.RemoteAddr, f.SCIONQuic.DaemonAddr, &f.TLSConfig)
 		if err != nil {
 			return err
 		}
@@ -44,7 +44,7 @@ func (f *Fetcher) exchangeKeys() error {
 			}
 		}()
 
-		err = ExchangeQUIC(f.Log, conn, &f.data)
+		err = exchangeDataQUIC(f.Log, conn, &f.data)
 		if err != nil {
 			return err
 		}
@@ -59,12 +59,12 @@ func (f *Fetcher) exchangeKeys() error {
 		var err error
 		var conn *tls.Conn
 		serverAddr := net.JoinHostPort(f.TLSConfig.ServerName, f.Port)
-		conn, f.data, err = ConnectTCP(serverAddr, &f.TLSConfig)
+		conn, f.data, err = dialTLS(serverAddr, &f.TLSConfig)
 		if err != nil {
 			return err
 		}
 
-		err = ExchangeTCP(f.Log, conn, &f.data)
+		err = exchangeDataTLS(f.Log, conn, &f.data)
 		if err != nil {
 			return err
 		}

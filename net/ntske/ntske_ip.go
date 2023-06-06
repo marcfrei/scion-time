@@ -3,7 +3,6 @@ package ntske
 import (
 	"bufio"
 	"crypto/tls"
-	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -12,23 +11,21 @@ import (
 	"go.uber.org/zap"
 )
 
-var errConvertTLS = errors.New("could not convert to tls connection")
-
-func NewTCPListener(listener net.Listener) (*tls.Conn, error) {
-	conn, err := listener.Accept()
+func AcceptTLSConn(l net.Listener) (*tls.Conn, error) {
+	conn, err := l.Accept()
 	if err != nil {
 		return nil, err
 	}
 
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
-		return nil, errConvertTLS
+		panic("invalid listener type: TLS listener expected")
 	}
 
 	return tlsConn, nil
 }
 
-func ConnectTCP(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
+func dialTLS(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 	config.NextProtos = []string{alpn}
 
 	_, _, err := net.SplitHostPort(hostport)
@@ -43,30 +40,31 @@ func ConnectTCP(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 		Timeout: time.Second * 5,
 	}, "tcp", hostport, config)
 	if err != nil {
+		_ = conn.Close()
 		return nil, Data{}, err
 	}
 
 	var data Data
 	data.Server, _, err = net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
+		_ = conn.Close()
 		return nil, Data{}, err
 	}
 	data.Port = DEFAULT_NTP_PORT
 
 	state := conn.ConnectionState()
 	if state.NegotiatedProtocol != alpn {
+		_ = conn.Close()
 		return nil, Data{}, errServerNoNTSKE
 	}
 
 	return conn, data, nil
 }
 
-func ExchangeTCP(log *zap.Logger, conn *tls.Conn, data *Data) error {
-	reader := bufio.NewReader(conn)
-
+func exchangeDataTLS(log *zap.Logger, conn *tls.Conn, data *Data) error {
 	var msg ExchangeMsg
-	var nextproto NextProto
 
+	var nextproto NextProto
 	nextproto.NextProto = NTPv4
 	msg.AddRecord(nextproto)
 
@@ -87,6 +85,7 @@ func ExchangeTCP(log *zap.Logger, conn *tls.Conn, data *Data) error {
 		return err
 	}
 
+	reader := bufio.NewReader(conn)
 	err = Read(log, reader, data)
 	if err != nil {
 		return err
