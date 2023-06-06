@@ -106,11 +106,11 @@ func runNTSKEServerQUIC(ctx context.Context, log *zap.Logger, listener quic.List
 func StartNTSKEServerSCION(ctx context.Context, log *zap.Logger, localAddr udp.UDPAddr, config *tls.Config, provider *ntske.Provider) {
 	log.Info("server listening via SCION",
 		zap.Stringer("ip", localAddr.Host.IP),
-		zap.Int("port", defaultNTSKEPort),
+		zap.Int("port", ntske.ServerPortSCION),
 	)
 
 	localPort := localAddr.Host.Port
-	localAddr.Host.Port = defaultNTSKEPort
+	localAddr.Host.Port = ntske.ServerPortSCION
 
 	listener, err := scion.ListenQUIC(ctx, localAddr, config, nil /* quicCfg */)
 	if err != nil {

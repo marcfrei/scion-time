@@ -11,6 +11,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/daemon"
 
+	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
@@ -49,7 +50,7 @@ func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 		_ = conn.Close()
 		return nil, Data{}, err
 	}
-	data.Port = DEFAULT_NTP_PORT
+	data.Port = ntp.ServerPortSCION
 
 	return conn, data, nil
 }

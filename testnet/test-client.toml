@@ -1,2 +1,2 @@
-local_address = "0-0,0.0.0.0:0"
+local_address = "0-0,0.0.0.0"
 ntp_reference_clocks = ["0-0,time.facebook.com:123"]
