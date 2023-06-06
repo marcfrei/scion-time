@@ -40,7 +40,6 @@ func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 	conn, err := scion.DialQUIC(ctx, localAddr, remoteAddr, sp,
 		"" /* host*/, config, nil /* quicCfg */)
 	if err != nil {
-		_ = conn.Close()
 		return nil, Data{}, err
 	}
 
