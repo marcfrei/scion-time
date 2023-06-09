@@ -20,20 +20,6 @@ import (
 	"example.com/scion-time/net/udp"
 )
 
-func newDaemonConnector(ctx context.Context, log *zap.Logger, daemonAddr string) daemon.Connector {
-	if daemonAddr == "" {
-		return nil
-	}
-	s := &daemon.Service{
-		Address: daemonAddr,
-	}
-	c, err := s.Connect(ctx)
-	if err != nil {
-		log.Fatal("failed to create demon connector", zap.Error(err))
-	}
-	return c
-}
-
 func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *zap.Logger) {
 	// const numClientGoroutine = 8
 	// const numRequestPerClient = 10000
@@ -50,7 +36,7 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 			hg := hdrhistogram.New(1, 50000, 5)
 			ctx := context.Background()
 
-			dc := newDaemonConnector(ctx, log, daemonAddr)
+			dc := scion.NewDaemonConnector(ctx, daemonAddr)
 
 			var ps []snet.Path
 			if remoteAddr.IA.Equal(localAddr.IA) {
@@ -95,6 +81,10 @@ func RunSCIONBenchmark(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, a
 				}
 				c.Auth.NTSKEFetcher.Port = ntskePort
 				c.Auth.NTSKEFetcher.Log = log
+				c.Auth.NTSKEFetcher.QUIC.Enabled = true
+				c.Auth.NTSKEFetcher.QUIC.DaemonAddr = daemonAddr
+				c.Auth.NTSKEFetcher.QUIC.LocalAddr = laddr
+				c.Auth.NTSKEFetcher.QUIC.RemoteAddr = raddr
 			}
 
 			defer wg.Done()

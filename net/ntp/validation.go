@@ -51,8 +51,5 @@ func ValidateRequest(req *Packet, srcPort uint16) error {
 	if vn == 1 && mode != ModeReserved0 || vn != 1 && mode != ModeClient {
 		return errUnexpectedRequest
 	}
-	if vn == 1 && srcPort == ServerPort {
-		return errUnexpectedRequest
-	}
 	return nil
 }

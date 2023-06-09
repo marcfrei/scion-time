@@ -1,4 +1,4 @@
-local_address = "0-0,10.1.1.12:0"
+local_address = "0-0,10.1.1.12"
 
 ntp_reference_clocks = ["0-0,10.1.1.11:4460"]
 

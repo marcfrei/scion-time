@@ -42,7 +42,7 @@ sudo ~/scion-time/timeservice server -verbose -config testnet/test-server.toml
 In an additional session:
 
 ```
-~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0:0 -remote 0-0,127.0.0.1:10123
+~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0 -remote 0-0,127.0.0.1:123
 ```
 
 ## Querying an IP-based server with Network Time Security (NTS)
@@ -50,7 +50,7 @@ In an additional session:
 In an additional session:
 
 ```
-~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0:0 -remote 0-0,127.0.0.1:4460 -auth nts -ntske-insecure-skip-verify
+~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0 -remote 0-0,127.0.0.1:4460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ## Installing prerequisites for a SCION test environment
@@ -129,14 +129,14 @@ rm -rf logs
 
 ## Running the servers
 
-In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
+In session no. 1, run server at `1-ff00:0:111,10.1.1.11:10123`:
 
 ```
 cd ~/scion-time
 sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
 ```
 
-In session no. 2, run server at `1-ff00:0:112,10.1.1.12:123`:
+In session no. 2, run server at `1-ff00:0:112,10.1.1.12:10123`:
 
 ```
 cd ~/scion-time
@@ -145,58 +145,58 @@ sudo ip netns exec netns1 ./timeservice server -verbose -config testnet/gen-eh/A
 
 ## Querying SCION-based servers
 
-In an additional session, query server at `1-ff00:0:111,10.1.1.11:123` from `1-ff00:0:112,10.1.1.12`:
+In an additional session, query server at `1-ff00:0:111,10.1.1.11:10123` from `1-ff00:0:112,10.1.1.12`:
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:123
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:10123
 ```
 
-Or query server at `1-ff00:0:112,10.1.1.12:123` from `1-ff00:0:111,10.1.1.11`:
+Or query server at `1-ff00:0:112,10.1.1.12:10123` from `1-ff00:0:111,10.1.1.11`:
 
 ```
-sudo ip netns exec netns0 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11:0 -remote 1-ff00:0:112,10.1.1.12:123
+sudo ip netns exec netns0 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11 -remote 1-ff00:0:112,10.1.1.12:10123
 ```
 
 ### Querying a SCION-based server with SCION Packet Authenticator Option (SPAO)
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:123 -auth spao
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:10123 -auth spao
 ```
 
 ### Querying a SCION-based server with Network Time Security (NTS)
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:14460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ### Querying a SCION-based server with SPAO and NTS
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12:0 -remote 1-ff00:0:111,10.1.1.11:4460 -auth spao,nts -ntske-insecure-skip-verify
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:14460 -auth spao,nts -ntske-insecure-skip-verify
 ```
 
 ### Querying a SCION-based server via IP
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12:0 -remote 0-0,10.1.1.11:4460
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12 -remote 0-0,10.1.1.11:123
 ```
 
 ### Querying a SCION-based server via IP with NTS
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12:0 -remote 0-0,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
+sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12 -remote 0-0,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ## Synchronizing with a SCION-based server
 
-In session no. 1, run server at `1-ff00:0:111,10.1.1.11:123`:
+In session no. 1, run server at `1-ff00:0:111,10.1.1.11:10123`:
 
 ```
 cd ~/scion-time
 sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
 ```
 
-And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `1-ff00:0:111,10.1.1.11:123`:
+And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `1-ff00:0:111,10.1.1.11:10123`:
 
 ```
 cd ~/scion-time

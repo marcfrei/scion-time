@@ -5,42 +5,80 @@ import (
 	"errors"
 	"net"
 
+	"github.com/quic-go/quic-go"
 	"go.uber.org/zap"
+
+	"example.com/scion-time/net/udp"
+)
+
+var (
+	errNoCookies   = errors.New("unexpected NTS-KE meta data: no cookies")
+	errUnknownAlgo = errors.New("unexpected NTS-KE meta data: unknown algorithm")
 )
 
 type Fetcher struct {
 	Log       *zap.Logger
 	TLSConfig tls.Config
 	Port      string
-	data      Data
+	QUIC      struct {
+		Enabled    bool
+		DaemonAddr string
+		LocalAddr  udp.UDPAddr
+		RemoteAddr udp.UDPAddr
+	}
+	data Data
 }
 
 func (f *Fetcher) exchangeKeys() error {
-	serverAddr := net.JoinHostPort(f.TLSConfig.ServerName, f.Port)
-	ke, err := Connect(serverAddr, &f.TLSConfig, false /* debug */)
-	if err != nil {
-		return err
+	if f.QUIC.Enabled {
+		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.DaemonAddr, &f.TLSConfig)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err := conn.CloseWithError(quic.ApplicationErrorCode(0), "" /* error string */)
+			if err != nil {
+				f.Log.Info("failed to close connection", zap.Error(err))
+			}
+		}()
+
+		err = exchangeDataQUIC(f.Log, conn, &f.data)
+		if err != nil {
+			return err
+		}
+
+		err = ExportKeys(conn.ConnectionState().TLS.ConnectionState, &f.data)
+		if err != nil {
+			return err
+		}
+	} else {
+		var err error
+		var conn *tls.Conn
+		serverAddr := net.JoinHostPort(f.TLSConfig.ServerName, f.Port)
+		conn, f.data, err = dialTLS(serverAddr, &f.TLSConfig)
+		if err != nil {
+			return err
+		}
+
+		err = exchangeDataTLS(f.Log, conn, &f.data)
+		if err != nil {
+			return err
+		}
+
+		err = ExportKeys(conn.ConnectionState(), &f.data)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = ke.Exchange()
-	if err != nil {
-		return err
+	if len(f.data.Cookie) == 0 {
+		return errNoCookies
+	}
+	if f.data.Algo != AES_SIV_CMAC_256 {
+		return errUnknownAlgo
 	}
 
-	if len(ke.Meta.Cookie) == 0 {
-		return errors.New("unexpected NTS-KE meta data: no cookies")
-	}
-	if ke.Meta.Algo != AES_SIV_CMAC_256 {
-		return errors.New("unexpected NTS-KE meta data: unknown algorithm")
-	}
-
-	err = ke.ExportKeys()
-	if err != nil {
-		return err
-	}
-
-	logData(f.Log, ke.Meta)
-	f.data = ke.Meta
+	logData(f.Log, f.data)
 	return nil
 }
 
