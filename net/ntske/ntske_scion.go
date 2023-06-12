@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/scionproto/scion/pkg/daemon"
+	"github.com/scionproto/scion/pkg/snet"
+	"github.com/scionproto/scion/pkg/snet/path"
 
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/scion"
@@ -25,15 +27,24 @@ func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 	ctx := context.Background()
 
 	dc := scion.NewDaemonConnector(ctx, daemonAddr)
-	ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-	if err != nil {
-		log.Info("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
-		return nil, Data{}, err
+
+	var ps []snet.Path
+	if remoteAddr.IA.Equal(localAddr.IA) {
+		ps = []snet.Path{path.Path{
+			Src:           remoteAddr.IA,
+			Dst:           remoteAddr.IA,
+			DataplanePath: path.Empty{},
+		}}
+	} else {
+		ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
+		if err != nil {
+			log.Fatal("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+		}
+		if len(ps) == 0 {
+			log.Fatal("no paths available", zap.Stringer("to", remoteAddr.IA))
+		}
 	}
-	if len(ps) == 0 {
-		log.Info("no paths available", zap.Stringer("to", remoteAddr.IA))
-		return nil, Data{}, err
-	}
+
 	log.Debug("available paths", zap.Stringer("to", remoteAddr.IA), zap.Array("via", scion.PathArrayMarshaler{Paths: ps}))
 	sp := ps[0]
 	log.Debug("selected path", zap.Stringer("to", remoteAddr.IA), zap.Object("via", scion.PathMarshaler{Path: sp}))

@@ -712,7 +712,7 @@ func main() {
 
 	serverFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	serverFlags.StringVar(&configFile, "config", "", "Config file")
-	serverFlags.BoolVar(&profileCPU, "profileCPU", false, "Enable profiling")
+	serverFlags.BoolVar(&profileCPU, "profile-cpu", false, "Enable profiling")
 
 	relayFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	relayFlags.StringVar(&configFile, "config", "", "Config file")
