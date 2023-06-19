@@ -10,16 +10,21 @@ import (
 )
 
 type theilSen struct {
-	log       *zap.Logger
-	clk       timebase.LocalClock
-	pts       []point
-	startTime time.Time
+	log *zap.Logger
+	clk timebase.LocalClock
+	pts []timePoint
 }
 
-const MeasurementBufferSize = 32
+// If the buffer size is too large, the system is likely to oscillate heavily.
+const MeasurementBufferSize = 4
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, pts: make([]point, 0), startTime: clk.Now()}
+	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0)}
+}
+
+type timePoint struct {
+	x time.Time
+	y time.Time
 }
 
 type point struct {
@@ -47,7 +52,7 @@ func median(ds []float64) float64 {
 
 func slope(inputs []point) float64 {
 	if len(inputs) == 1 {
-		return float64((inputs)[0].y) / float64((inputs)[0].x)
+		return 1.0
 	}
 
 	var medians []float64
@@ -86,15 +91,25 @@ func (l *theilSen) AddSample(offset time.Duration) {
 	if len(l.pts) == MeasurementBufferSize {
 		l.pts = l.pts[1:]
 	}
-	l.pts = append(l.pts, point{x: now.Sub(l.startTime).Nanoseconds(), y: offset.Nanoseconds() + (now.Sub(l.startTime).Nanoseconds())})
+	l.pts = append(l.pts, timePoint{x: now, y: now.Add(offset)})
+}
+
+func getRegressionPts(pts []timePoint) []point {
+	startTime := pts[0].x
+	var regressionPts []point
+	for _, pt := range pts {
+		regressionPts = append(regressionPts, point{x: pt.x.Sub(startTime).Nanoseconds(), y: pt.y.Sub(startTime).Nanoseconds()})
+	}
+	return regressionPts
 }
 
 func (l *theilSen) GetOffsetNs() float64 {
 	now := l.clk.Now()
-	slope := slope(l.pts)
-	intercept := intercept(slope, l.pts)
-	predictedTime := prediction(slope, intercept, float64(now.Sub(l.startTime).Nanoseconds()))
-	predictedOffset := predictedTime - float64(now.Sub(l.startTime).Nanoseconds())
+	regressionPts := getRegressionPts(l.pts)
+	slope := slope(regressionPts)
+	intercept := intercept(slope, regressionPts)
+	predictedTime := prediction(slope, intercept, float64(now.Sub(l.pts[0].x).Nanoseconds()))
+	predictedOffset := predictedTime - float64(now.Sub(l.pts[0].x).Nanoseconds())
 
 	l.log.Debug("Theil-Sen estimate",
 		zap.Int("# of data points", len(l.pts)),
