@@ -26,6 +26,7 @@ const (
 	netClkCutoff   = time.Microsecond
 	netClkTimeout  = 5 * time.Second
 	netClkInterval = 60 * time.Second
+	maxCorrPPBFreq = 500000
 )
 
 type localReferenceClock struct{}
@@ -93,6 +94,7 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	})
 	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
+	baseFreq := 0.0
 	for {
 		corrGauge.Set(0)
 		corr := measureOffsetToRefClocks(log, refClkTimeout)
@@ -103,19 +105,23 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 
 			theilSen.AddSample(corr)
 			offset := theilSen.GetOffsetNs()
-			frequencyPPB := offset / float64(refClkInterval.Nanoseconds()) * 1e9
+			// factor taken from PLL
+			baseFreq += float64(corr.Nanoseconds()) * 0.0055 * 0.33
+			frequencyPPB := clampCorrection(offset/float64(refClkInterval.Nanoseconds())*1e9 + baseFreq)
+
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Float64("offset", offset),
-				zap.Float64("freqPPB", frequencyPPB),
+				zap.Float64("freq (PPB)", frequencyPPB),
 			)
 
 			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
-			pllFreq := int64(math.Floor((startFreq + (correction / interval)) * 65536 * 1e6))
+			pllFreq := (startFreq + (correction / interval)) * 1e9
+
 			log.Debug("Prediction from PLL: ",
 				zap.Float64("correction", correction),
 				zap.Float64("interval", interval),
 				zap.Float64("startFreq", startFreq),
-				zap.Int64("finalFreq", pllFreq),
+				zap.Float64("freq (PPB)", pllFreq),
 			)
 
 			switch algo {
@@ -141,6 +147,16 @@ func measureOffsetToNetClocks(log *zap.Logger, timeout time.Duration) time.Durat
 	return timemath.FaultTolerantMidpoint(netClkOffsets)
 }
 
+func clampCorrection(correction float64) float64 {
+	if correction > maxCorrPPBFreq {
+		correction = maxCorrPPBFreq
+	} else if correction < -maxCorrPPBFreq {
+		correction = -maxCorrPPBFreq
+	}
+
+	return correction
+}
+
 func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	if netClkImpact <= 1.0 {
 		panic("invalid network clock impact factor")
@@ -164,6 +180,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	})
 	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
+	baseFreq := 0.0
 	for {
 		corrGauge.Set(0)
 		corr := measureOffsetToNetClocks(log, netClkTimeout)
@@ -171,21 +188,25 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			if float64(timemath.Abs(corr)) > maxCorr {
 				corr = time.Duration(float64(timemath.Sign(corr)) * maxCorr)
 			}
+
 			theilSen.AddSample(corr)
 			offset := theilSen.GetOffsetNs()
-			frequencyPPB := offset / float64(netClkInterval.Nanoseconds()) * 1e9
+			baseFreq += float64(corr.Nanoseconds()) * 0.0055 * 0.33
+			frequencyPPB := clampCorrection(offset/float64(netClkInterval.Nanoseconds())*1e9 + baseFreq)
+
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Float64("offset", offset),
-				zap.Float64("freqPPB", frequencyPPB),
+				zap.Float64("freq (PPB)", frequencyPPB),
 			)
 
 			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
-			pllFreq := int64(math.Floor((startFreq + (correction / interval)) * 65536 * 1e6))
+			pllFreq := (startFreq + (correction / interval)) * 1e9
+
 			log.Debug("Prediction from PLL: ",
 				zap.Float64("correction", correction),
 				zap.Float64("interval", interval),
 				zap.Float64("startFreq", startFreq),
-				zap.Int64("finalFreq", pllFreq),
+				zap.Float64("freq (PPB)", pllFreq),
 			)
 
 			switch algo {
