@@ -19,6 +19,8 @@ import (
 	"example.com/scion-time/base/timemath"
 )
 
+const maxCorrPPBFreq = 500000
+
 type adjustment struct {
 	clock     *SystemClock
 	duration  time.Duration
@@ -171,6 +173,16 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 	}(c.Log, c.adjustment)
 }
 
+func clampedFrequency(correction float64) float64 {
+	if correction > maxCorrPPBFreq {
+		correction = maxCorrPPBFreq
+	} else if correction < -maxCorrPPBFreq {
+		correction = -maxCorrPPBFreq
+	}
+
+	return correction
+}
+
 func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -183,8 +195,9 @@ func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
 	// mirror kernel definition (jiffies.h, USER_TICK_USEC)
 	realtimeNominalTick := (1_000_000 + realtimeHz/2) / realtimeHz
 
-	tickDelta := math.Round(frequencyPPB / 1_000 / float64(realtimeHz))
-	frequency := frequencyPPB - 1_000*float64(realtimeHz)*tickDelta
+	clampedFrequency := clampedFrequency(frequencyPPB)
+	tickDelta := math.Round(clampedFrequency / 1_000 / float64(realtimeHz))
+	frequency := clampedFrequency - 1_000*float64(realtimeHz)*tickDelta
 
 	tx := unix.Timex{
 		Modes: unix.ADJ_FREQUENCY | unix.ADJ_TICK,

@@ -26,7 +26,6 @@ const (
 	netClkCutoff   = time.Microsecond
 	netClkTimeout  = 5 * time.Second
 	netClkInterval = 60 * time.Second
-	maxCorrPPBFreq = 500000
 )
 
 type localReferenceClock struct{}
@@ -147,16 +146,6 @@ func measureOffsetToNetClocks(log *zap.Logger, timeout time.Duration) time.Durat
 	return timemath.FaultTolerantMidpoint(netClkOffsets)
 }
 
-func clampCorrection(correction float64) float64 {
-	if correction > maxCorrPPBFreq {
-		correction = maxCorrPPBFreq
-	} else if correction < -maxCorrPPBFreq {
-		correction = -maxCorrPPBFreq
-	}
-
-	return correction
-}
-
 func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	if netClkImpact <= 1.0 {
 		panic("invalid network clock impact factor")
@@ -192,7 +181,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			theilSen.AddSample(corr)
 			offset := theilSen.GetOffsetNs()
 			baseFreq += float64(corr.Nanoseconds()) * 0.0055 * 0.33
-			frequencyPPB := clampCorrection(offset/float64(netClkInterval.Nanoseconds())*1e9 + baseFreq)
+			frequencyPPB := offset/float64(netClkInterval.Nanoseconds())*1e9 + baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Float64("offset", offset),
