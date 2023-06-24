@@ -206,6 +206,7 @@ func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
 		Tick:   realtimeNominalTick + int64(tickDelta),
 		Status: unix.STA_PLL,
 	}
+	c.Log.Debug("AdjustWithTick freq adjust", zap.Float64("tx.Freq", float64(tx.Freq)))
 
 	_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
 	if err != nil {
