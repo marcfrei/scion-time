@@ -169,7 +169,6 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	})
 	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
-	baseFreq := 0.0
 	for {
 		corrGauge.Set(0)
 		corr := measureOffsetToNetClocks(log, netClkTimeout)
@@ -180,8 +179,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 
 			theilSen.AddSample(corr)
 			offset := theilSen.GetOffsetNs()
-			baseFreq += float64(corr.Nanoseconds()) * 0.0055 * 0.33
-			frequencyPPB := offset/float64(netClkInterval.Nanoseconds())*1e9 + baseFreq
+			frequencyPPB := offset/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Float64("offset", offset),

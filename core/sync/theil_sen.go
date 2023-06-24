@@ -10,16 +10,17 @@ import (
 )
 
 type theilSen struct {
-	log *zap.Logger
-	clk timebase.LocalClock
-	pts []timePoint
+	log      *zap.Logger
+	clk      timebase.LocalClock
+	pts      []timePoint
+	baseFreq float64
 }
 
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const MeasurementBufferSize = 4
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0)}
+	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0), baseFreq: 0.0}
 }
 
 type timePoint struct {
@@ -86,6 +87,7 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 }
 
 func (l *theilSen) AddSample(offset time.Duration) {
+	l.baseFreq += float64(offset.Nanoseconds()) * 0.0055 * 0.33
 	now := l.clk.Now()
 
 	if len(l.pts) == MeasurementBufferSize {
