@@ -19,6 +19,8 @@ type theilSen struct {
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const MeasurementBufferSize = 4
 
+const BaseFreqGainFactor = 1 / (0.0055 * 0.33)
+
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
 	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0), baseFreq: 0.0}
 }
@@ -87,7 +89,7 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 }
 
 func (ts *theilSen) AddSample(offset time.Duration) {
-	ts.baseFreq += float64(offset.Nanoseconds()) * 0.0055 * 0.33
+	ts.baseFreq += float64(offset.Nanoseconds()) / BaseFreqGainFactor
 	now := ts.clk.Now()
 
 	// If buffer full, discard oldest sample
@@ -97,7 +99,7 @@ func (ts *theilSen) AddSample(offset time.Duration) {
 	ts.pts = append(ts.pts, timePoint{x: now, y: now.Add(offset)})
 }
 
-func getRegressionPts(pts []timePoint) []point {
+func regressionPts(pts []timePoint) []point {
 	startTime := pts[0].x
 	var regressionPts []point
 	for _, pt := range pts {
@@ -108,7 +110,7 @@ func getRegressionPts(pts []timePoint) []point {
 
 func (ts *theilSen) OffsetNs() float64 {
 	now := ts.clk.Now()
-	regressionPts := getRegressionPts(ts.pts)
+	regressionPts := regressionPts(ts.pts)
 	slope := slope(regressionPts)
 	intercept := intercept(slope, regressionPts)
 	predictedTime := prediction(slope, intercept, float64(now.Sub(ts.pts[0].x).Nanoseconds()))
