@@ -53,7 +53,7 @@ func median(ds []float64) float64 {
 
 func slope(inputs []point) float64 {
 	if len(inputs) == 1 {
-		return 1.0
+		return float64(inputs[0].y) / float64(inputs[0].x)
 	}
 
 	var medians []float64
@@ -61,7 +61,7 @@ func slope(inputs []point) float64 {
 		for _, pointB := range (inputs)[idxA+1:] {
 			// Like in the original paper by Sen (1968), ignore pairs with the same x coordinate
 			if pointA.x != pointB.x {
-				medians = append(medians, (float64(pointA.y-pointB.y))/(float64(pointA.x-pointB.x)))
+				medians = append(medians, float64(pointA.y-pointB.y)/float64(pointA.x-pointB.x))
 			}
 		}
 	}
@@ -86,14 +86,15 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 	return slope*x + intercept
 }
 
-func (l *theilSen) AddSample(offset time.Duration) {
-	l.baseFreq += float64(offset.Nanoseconds()) * 0.0055 * 0.33
-	now := l.clk.Now()
+func (ts *theilSen) AddSample(offset time.Duration) {
+	ts.baseFreq += float64(offset.Nanoseconds()) * 0.0055 * 0.33
+	now := ts.clk.Now()
 
-	if len(l.pts) == MeasurementBufferSize {
-		l.pts = l.pts[1:]
+	// If buffer full, discard oldest sample
+	if len(ts.pts) == MeasurementBufferSize {
+		ts.pts = ts.pts[1:]
 	}
-	l.pts = append(l.pts, timePoint{x: now, y: now.Add(offset)})
+	ts.pts = append(ts.pts, timePoint{x: now, y: now.Add(offset)})
 }
 
 func getRegressionPts(pts []timePoint) []point {
@@ -105,16 +106,16 @@ func getRegressionPts(pts []timePoint) []point {
 	return regressionPts
 }
 
-func (l *theilSen) GetOffsetNs() float64 {
-	now := l.clk.Now()
-	regressionPts := getRegressionPts(l.pts)
+func (ts *theilSen) OffsetNs() float64 {
+	now := ts.clk.Now()
+	regressionPts := getRegressionPts(ts.pts)
 	slope := slope(regressionPts)
 	intercept := intercept(slope, regressionPts)
-	predictedTime := prediction(slope, intercept, float64(now.Sub(l.pts[0].x).Nanoseconds()))
-	predictedOffset := predictedTime - float64(now.Sub(l.pts[0].x).Nanoseconds())
+	predictedTime := prediction(slope, intercept, float64(now.Sub(ts.pts[0].x).Nanoseconds()))
+	predictedOffset := predictedTime - float64(now.Sub(ts.pts[0].x).Nanoseconds())
 
-	l.log.Debug("Theil-Sen estimate",
-		zap.Int("# of data points", len(l.pts)),
+	ts.log.Debug("Theil-Sen estimate",
+		zap.Int("# of data points", len(ts.pts)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
 		zap.Float64("predicted offset (ns)", predictedOffset),

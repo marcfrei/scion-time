@@ -102,22 +102,22 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			}
 
 			theilSen.AddSample(corr)
-			offset := theilSen.GetOffsetNs()
-			frequencyPPB := offset/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			offsetNs := theilSen.OffsetNs()
+			frequencyPPB := offsetNs/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
-				zap.Float64("offset", offset),
+				zap.Float64("offset", offsetNs),
 				zap.Float64("freq (PPB)", frequencyPPB),
 			)
 
 			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
-			pllFreq := (startFreq + (correction / interval)) * 1e9
+			pllFreqPPB := (startFreq + (correction / interval)) * 1e9
 
 			log.Debug("Prediction from PLL: ",
 				zap.Float64("correction", correction),
 				zap.Float64("interval", interval),
 				zap.Float64("startFreq", startFreq),
-				zap.Float64("freq (PPB)", pllFreq),
+				zap.Float64("freq (PPB)", pllFreqPPB),
 			)
 
 			switch algo {
@@ -175,7 +175,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			}
 
 			theilSen.AddSample(corr)
-			offset := theilSen.GetOffsetNs()
+			offset := theilSen.OffsetNs()
 			frequencyPPB := offset/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
