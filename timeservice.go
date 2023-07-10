@@ -395,8 +395,10 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 func clockAlgo(cfg svcConfig) int {
 	var algo int
 	switch cfg.ClockAlgo {
-	case "", "pll": algo = sync.ClockAlgoPLL
-	case "ts":      algo = sync.ClockAlgoTS
+	case "", "pll":
+		algo = sync.ClockAlgoPLL
+	case "ts":
+		algo = sync.ClockAlgoTS
 	default:
 		log.Fatal("unexpected clock steering algorithm")
 	}
@@ -492,7 +494,7 @@ func runClient(configFile string) {
 	localAddr.Host.Port = 0
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
-	clkAlgo := clockAlgo(cfg)	
+	clkAlgo := clockAlgo(cfg)
 
 	lclk := &clock.SystemClock{Log: log}
 	timebase.RegisterClock(lclk)
