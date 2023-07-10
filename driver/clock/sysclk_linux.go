@@ -195,14 +195,14 @@ func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
 	// mirror kernel definition (jiffies.h, USER_TICK_USEC)
 	realtimeNominalTick := (1_000_000 + realtimeHz/2) / realtimeHz
 
-	clampedFrequency := clampedFrequency(frequencyPPB)
-	tickDelta := math.Round(clampedFrequency / 1_000.0 / float64(realtimeHz))
-	frequency := clampedFrequency - 1_000*float64(realtimeHz)*tickDelta
+	tickDelta := math.Round(frequencyPPB / 1_000.0 / float64(realtimeHz))
+	frequency := frequencyPPB - 1_000*float64(realtimeHz)*tickDelta
+	clampedFrequency := clampedFrequency(frequency)
 
 	tx := unix.Timex{
 		Modes: unix.ADJ_FREQUENCY | unix.ADJ_TICK,
 		// The Kernel API expects freq in PPM with a 16-bit fractional part. Convert PPB to that format.
-		Freq: int64(math.Floor(frequency * 65.536)),
+		Freq: int64(math.Floor(clampedFrequency * 65.536)),
 		Tick: realtimeNominalTick + int64(tickDelta),
 	}
 	c.Log.Debug("AdjustWithTick freq adjust",
