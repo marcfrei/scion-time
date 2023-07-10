@@ -196,17 +196,19 @@ func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
 	realtimeNominalTick := (1_000_000 + realtimeHz/2) / realtimeHz
 
 	clampedFrequency := clampedFrequency(frequencyPPB)
-	tickDelta := math.Round(clampedFrequency / 1_000 / float64(realtimeHz))
+	tickDelta := math.Round(clampedFrequency / 1_000.0 / float64(realtimeHz))
 	frequency := clampedFrequency - 1_000*float64(realtimeHz)*tickDelta
 
 	tx := unix.Timex{
 		Modes: unix.ADJ_FREQUENCY | unix.ADJ_TICK,
 		// The Kernel API expects freq in PPM with a 16-bit fractional part. Convert PPB to that format.
-		Freq:   int64(math.Floor(frequency * 65.536)),
-		Tick:   realtimeNominalTick + int64(tickDelta),
-		Status: unix.STA_PLL,
+		Freq: int64(math.Floor(frequency * 65.536)),
+		Tick: realtimeNominalTick + int64(tickDelta),
 	}
-	c.Log.Debug("AdjustWithTick freq adjust", zap.Float64("tx.Freq", float64(tx.Freq)))
+	c.Log.Debug("AdjustWithTick freq adjust",
+		zap.Int64("tx.Freq", tx.Freq),
+		zap.Int64("tx.Tick", tx.Tick),
+	)
 
 	_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
 	if err != nil {
