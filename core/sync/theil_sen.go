@@ -19,7 +19,7 @@ type theilSen struct {
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const MeasurementBufferSize = 4
 
-const BaseFreqGainFactor = 1 / (0.0055 * 0.33)
+const BaseFreqGainFactor = 1 / (0.005)
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
 	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0), baseFreq: 0.0}
