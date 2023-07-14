@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -102,32 +101,32 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			}
 
 			theilSen.AddSample(corr)
-			offsetNs := theilSen.OffsetNs()
-			frequencyPPB := offsetNs/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			offset, valid := theilSen.Offset()
+			frequencyPPB := float64(offset.Nanoseconds())/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
-				zap.Float64("offset", offsetNs),
+				zap.Duration("offset", offset),
 				zap.Float64("freq (PPB)", frequencyPPB),
 			)
 
-			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
-			pllFreqPPB := (startFreq + (correction / interval)) * 1e9
+			correction, interval, baseFreq := pll.Do(corr, 1000.0 /* weight */)
+			pllFreq := (baseFreq + (correction / interval)) * 1e9
 
 			log.Debug("Prediction from PLL: ",
 				zap.Float64("correction", correction),
 				zap.Float64("interval", interval),
-				zap.Float64("startFreq", startFreq),
-				zap.Float64("freq (PPB)", pllFreqPPB),
+				zap.Float64("baseFreq", baseFreq),
+				zap.Float64("freq (PPB)", pllFreq),
 			)
 
 			switch algo {
 			case ClockAlgoPLL:
 				if interval > 0.0 {
-					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
+					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), baseFreq)
 				}
 			case ClockAlgoTS:
-				if math.Abs(frequencyPPB) > 0 {
-					lclk.AdjustWithTick(frequencyPPB)
+				if frequencyPPB != 0.0 && valid {
+					lclk.AdjustTick(frequencyPPB)
 				}
 			}
 			corrGauge.Set(float64(corr))
@@ -175,32 +174,32 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			}
 
 			theilSen.AddSample(corr)
-			offset := theilSen.OffsetNs()
-			frequencyPPB := offset/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			offset, valid := theilSen.Offset()
+			frequencyPPB := float64(offset)/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
-				zap.Float64("offset", offset),
+				zap.Duration("offset", offset),
 				zap.Float64("freq (PPB)", frequencyPPB),
 			)
 
-			correction, interval, startFreq := pll.AddSampleAndGetData(corr, 1000.0 /* weight */)
-			pllFreq := (startFreq + (correction / interval)) * 1e9
+			correction, interval, baseFreq := pll.Do(corr, 1000.0 /* weight */)
+			pllFreq := (baseFreq + (correction / interval)) * 1e9
 
 			log.Debug("Prediction from PLL: ",
 				zap.Float64("correction", correction),
 				zap.Float64("interval", interval),
-				zap.Float64("startFreq", startFreq),
+				zap.Float64("baseFreq", baseFreq),
 				zap.Float64("freq (PPB)", pllFreq),
 			)
 
 			switch algo {
 			case ClockAlgoPLL:
 				if interval > 0.0 {
-					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), startFreq)
+					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), baseFreq)
 				}
 			case ClockAlgoTS:
-				if math.Abs(frequencyPPB) > 0 {
-					lclk.AdjustWithTick(frequencyPPB)
+				if frequencyPPB != 0.0 && valid {
+					lclk.AdjustTick(frequencyPPB)
 				}
 			}
 			corrGauge.Set(float64(corr))

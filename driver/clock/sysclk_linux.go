@@ -19,7 +19,7 @@ import (
 	"example.com/scion-time/base/timemath"
 )
 
-const maxCorrPPBFreq = 500000
+const maxCorrFreqPPB = 500000
 
 type adjustment struct {
 	clock     *SystemClock
@@ -173,41 +173,41 @@ func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) 
 	}(c.Log, c.adjustment)
 }
 
-func clampedFrequency(correction float64) float64 {
-	if correction > maxCorrPPBFreq {
-		correction = maxCorrPPBFreq
-	} else if correction < -maxCorrPPBFreq {
-		correction = -maxCorrPPBFreq
+func clampedCorrFreq(corrFreq float64) float64 {
+	if corrFreq > maxCorrFreqPPB {
+		corrFreq = maxCorrFreqPPB
+	} else if corrFreq < -maxCorrFreqPPB {
+		corrFreq = -maxCorrFreqPPB
 	}
 
-	return correction
+	return corrFreq
 }
 
-func (c *SystemClock) AdjustWithTick(frequencyPPB float64) {
+func (c *SystemClock) AdjustTick(freqPPB float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	realtimeHz, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
+	ticksPerSecond, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
 	if err != nil {
-		c.Log.Fatal("sysconf(_SC_CLK_TCK) failed", zap.Error(err))
+		c.Log.Fatal("sysconf.Sysconf failed", zap.Error(err))
 	}
 
 	// mirror kernel definition (jiffies.h, USER_TICK_USEC)
-	realtimeNominalTick := (1_000_000 + realtimeHz/2) / realtimeHz
+	tickDeltaNominal := (1_000_000 + ticksPerSecond/2) / ticksPerSecond
 
-	tickDelta := math.Round(frequencyPPB / 1_000.0 / float64(realtimeHz))
-	frequency := frequencyPPB - 1_000*float64(realtimeHz)*tickDelta
-	clampedFrequency := clampedFrequency(frequency)
+	tickDelta := math.Round(freqPPB / 1_000.0 / float64(ticksPerSecond))
+	frequency := freqPPB - 1_000*float64(ticksPerSecond)*tickDelta
+	corrFreq := clampedCorrFreq(frequency)
 
 	tx := unix.Timex{
 		Modes: unix.ADJ_FREQUENCY | unix.ADJ_TICK,
 		// The Kernel API expects freq in PPM with a 16-bit fractional part. Convert PPB to that format.
-		Freq: int64(math.Floor(clampedFrequency * 65.536)),
-		Tick: realtimeNominalTick + int64(tickDelta),
+		Freq: int64(math.Floor(corrFreq * 65.536)),
+		Tick: tickDeltaNominal + int64(tickDelta),
 	}
-	c.Log.Debug("AdjustWithTick freq adjust",
-		zap.Int64("tx.Freq", tx.Freq),
-		zap.Int64("tx.Tick", tx.Tick),
+	c.Log.Debug("AdjustTick",
+		zap.Int64("freq", tx.Freq),
+		zap.Int64("tick", tx.Tick),
 	)
 
 	_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)

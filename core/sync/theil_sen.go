@@ -12,20 +12,20 @@ import (
 type theilSen struct {
 	log      *zap.Logger
 	clk      timebase.LocalClock
-	pts      []timePoint
+	samples  []sample
 	baseFreq float64
 }
 
 // If the buffer size is too large, the system is likely to oscillate heavily.
-const MeasurementBufferSize = 4
+const maxSamples = 4
 
-const BaseFreqGainFactor = 1 / (0.005)
+const baseFreqGainFactor = 0.005
 
 func newTheilSen(log *zap.Logger, clk timebase.LocalClock) *theilSen {
-	return &theilSen{log: log, clk: clk, pts: make([]timePoint, 0), baseFreq: 0.0}
+	return &theilSen{log: log, clk: clk, samples: make([]sample, 0), baseFreq: 0.0}
 }
 
-type timePoint struct {
+type sample struct {
 	x time.Time
 	y time.Time
 }
@@ -35,41 +35,41 @@ type point struct {
 	y int64
 }
 
-func median(ds []float64) float64 {
-	n := len(ds)
+func median(v []float64) float64 {
+	n := len(v)
 	if n == 0 {
-		panic("unexpected number of slopes")
+		panic("unexpected number of values")
 	}
 
-	sort.Float64s(ds)
+	sort.Float64s(v)
 
 	var m float64
 	i := n / 2
 	if n%2 != 0 {
-		m = ds[i]
+		m = v[i]
 	} else {
-		m = ds[i-1] + (ds[i]-ds[i-1])/2
+		m = v[i-1] + (v[i]-v[i-1])/2
 	}
 	return m
 }
 
-func slope(inputs []point) float64 {
-	if len(inputs) == 1 {
-		return float64(inputs[0].y) / float64(inputs[0].x)
+func slope(pts []point) float64 {
+	if len(pts) == 1 {
+		return float64(pts[0].y) / float64(pts[0].x)
 	}
 
 	var medians []float64
-	for idxA, pointA := range inputs {
-		for _, pointB := range (inputs)[idxA+1:] {
+	for i, a := range pts {
+		for _, b := range (pts)[i+1:] {
 			// Like in the original paper by Sen (1968), ignore pairs with the same x coordinate
-			if pointA.x != pointB.x {
-				medians = append(medians, float64(pointA.y-pointB.y)/float64(pointA.x-pointB.x))
+			if a.x != b.x {
+				medians = append(medians, float64(a.y-b.y)/float64(a.x-b.x))
 			}
 		}
 	}
 
 	if len(medians) == 0 {
-		panic("invalid inputs: all inputs have the same x coordinate")
+		panic("unexpected input: all inputs have the same x coordinate")
 	}
 
 	return median(medians)
@@ -89,39 +89,42 @@ func prediction(slope float64, intercept float64, x float64) float64 {
 }
 
 func (ts *theilSen) AddSample(offset time.Duration) {
-	ts.baseFreq += float64(offset.Nanoseconds()) / BaseFreqGainFactor
+	ts.baseFreq += float64(offset.Nanoseconds()) * baseFreqGainFactor
 	now := ts.clk.Now()
 
-	// If buffer full, discard oldest sample
-	if len(ts.pts) == MeasurementBufferSize {
-		ts.pts = ts.pts[1:]
+	if len(ts.samples) == maxSamples {
+		ts.samples = ts.samples[1:]
 	}
-	ts.pts = append(ts.pts, timePoint{x: now, y: now.Add(offset)})
+	ts.samples = append(ts.samples, sample{x: now, y: now.Add(offset)})
 }
 
-func regressionPts(pts []timePoint) []point {
-	startTime := pts[0].x
+func regressionPts(samples []sample) []point {
+	startTime := samples[0].x
 	var regressionPts []point
-	for _, pt := range pts {
+	for _, pt := range samples {
 		regressionPts = append(regressionPts, point{x: pt.x.Sub(startTime).Nanoseconds(), y: pt.y.Sub(startTime).Nanoseconds()})
 	}
 	return regressionPts
 }
 
-func (ts *theilSen) OffsetNs() float64 {
+func (ts *theilSen) Offset() (time.Duration, bool) {
+	if len(ts.samples) == 0 {
+		return time.Duration(0), false
+	}
+
 	now := ts.clk.Now()
-	regressionPts := regressionPts(ts.pts)
+	regressionPts := regressionPts(ts.samples)
 	slope := slope(regressionPts)
 	intercept := intercept(slope, regressionPts)
-	predictedTime := prediction(slope, intercept, float64(now.Sub(ts.pts[0].x).Nanoseconds()))
-	predictedOffset := predictedTime - float64(now.Sub(ts.pts[0].x).Nanoseconds())
+	predictedTime := prediction(slope, intercept, float64(now.Sub(ts.samples[0].x).Nanoseconds()))
+	predictedOffset := predictedTime - float64(now.Sub(ts.samples[0].x).Nanoseconds())
 
 	ts.log.Debug("Theil-Sen estimate",
-		zap.Int("# of data points", len(ts.pts)),
+		zap.Int("# of samples", len(ts.samples)),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
 		zap.Float64("predicted offset (ns)", predictedOffset),
 	)
 
-	return predictedOffset
+	return time.Duration(predictedOffset) * time.Nanosecond, true
 }
