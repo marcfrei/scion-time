@@ -55,7 +55,7 @@ func median(v []float64) float64 {
 
 func slope(pts []point) float64 {
 	if len(pts) == 1 {
-		return float64(pts[0].y) / float64(pts[0].x)
+		return 1.0
 	}
 
 	var medians []float64
@@ -126,5 +126,5 @@ func (ts *theilSen) Offset() (time.Duration, bool) {
 		zap.Float64("predicted offset (ns)", predictedOffset),
 	)
 
-	return time.Duration(predictedOffset) * time.Nanosecond, true
+	return time.Duration(predictedOffset * float64(time.Nanosecond)), true
 }
