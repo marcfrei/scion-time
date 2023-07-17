@@ -53,6 +53,15 @@ func median(v []float64) float64 {
 	return m
 }
 
+func regressionPts(samples []sample) []point {
+	startTime := samples[0].x
+	var regressionPts []point
+	for _, s := range samples {
+		regressionPts = append(regressionPts, point{x: s.x.Sub(startTime).Nanoseconds(), y: s.y.Sub(startTime).Nanoseconds()})
+	}
+	return regressionPts
+}
+
 func slope(pts []point) float64 {
 	if len(pts) == 1 {
 		return 1.0
@@ -75,10 +84,10 @@ func slope(pts []point) float64 {
 	return median(medians)
 }
 
-func intercept(slope float64, inputs []point) float64 {
+func intercept(slope float64, pts []point) float64 {
 	var medians []float64
-	for _, point := range inputs {
-		medians = append(medians, float64(point.y)-slope*float64(point.x))
+	for _, pt := range pts {
+		medians = append(medians, float64(pt.y)-slope*float64(pt.x))
 	}
 
 	return median(medians)
@@ -96,15 +105,6 @@ func (ts *theilSen) AddSample(offset time.Duration) {
 		ts.samples = ts.samples[1:]
 	}
 	ts.samples = append(ts.samples, sample{x: now, y: now.Add(offset)})
-}
-
-func regressionPts(samples []sample) []point {
-	startTime := samples[0].x
-	var regressionPts []point
-	for _, pt := range samples {
-		regressionPts = append(regressionPts, point{x: pt.x.Sub(startTime).Nanoseconds(), y: pt.y.Sub(startTime).Nanoseconds()})
-	}
-	return regressionPts
 }
 
 func (ts *theilSen) Offset() (time.Duration, bool) {

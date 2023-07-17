@@ -102,11 +102,11 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 
 			theilSen.AddSample(corr)
 			offset, valid := theilSen.Offset()
-			frequencyPPB := float64(offset.Nanoseconds())/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			tsFreq := float64(offset.Nanoseconds())/float64(refClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Duration("offset", offset),
-				zap.Float64("freq (PPB)", frequencyPPB),
+				zap.Float64("freq (PPB)", tsFreq),
 			)
 
 			correction, interval, baseFreq := pll.Do(corr, 1000.0 /* weight */)
@@ -125,8 +125,8 @@ func RunLocalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), baseFreq)
 				}
 			case ClockAlgoTS:
-				if frequencyPPB != 0.0 && valid {
-					lclk.AdjustTick(frequencyPPB)
+				if tsFreq != 0.0 && valid {
+					lclk.AdjustTick(tsFreq)
 				}
 			}
 			corrGauge.Set(float64(corr))
@@ -175,11 +175,11 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 
 			theilSen.AddSample(corr)
 			offset, valid := theilSen.Offset()
-			frequencyPPB := float64(offset)/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			tsFreq := float64(offset.Nanoseconds())/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
 				zap.Duration("offset", offset),
-				zap.Float64("freq (PPB)", frequencyPPB),
+				zap.Float64("freq (PPB)", tsFreq),
 			)
 
 			correction, interval, baseFreq := pll.Do(corr, 1000.0 /* weight */)
@@ -198,8 +198,8 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), baseFreq)
 				}
 			case ClockAlgoTS:
-				if frequencyPPB != 0.0 && valid {
-					lclk.AdjustTick(frequencyPPB)
+				if tsFreq != 0.0 && valid {
+					lclk.AdjustTick(tsFreq)
 				}
 			}
 			corrGauge.Set(float64(corr))
