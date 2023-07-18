@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"math"
 	"sort"
 	"time"
 
@@ -18,6 +19,7 @@ type theilSen struct {
 
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const maxSamples = 4
+const maxAllowedBias = 1000.0
 
 const baseFreqGainFactor = 0.005
 
@@ -107,6 +109,28 @@ func (ts *theilSen) AddSample(offset time.Duration) {
 	ts.samples = append(ts.samples, sample{x: now, y: now.Add(offset)})
 }
 
+func runIterations(pts []point) (float64, float64, int) {
+	n := len(pts)
+
+	for i := 0; i < n; i++ {
+		slope := slope(pts[i:])
+		intercept := intercept(slope, pts[i:])
+
+		bias := 0.0
+		for j := i; j < n; j++ {
+			bias += math.Abs(prediction(slope, intercept, float64(pts[j].x)) - float64(pts[j].y))
+		}
+		bias /= float64(n - i)
+
+		if math.Abs(bias) < maxAllowedBias {
+			return slope, intercept, i
+		}
+	}
+
+	defaultSlope := slope(pts)
+	return defaultSlope, intercept(defaultSlope, pts), 0
+}
+
 func (ts *theilSen) Offset() (time.Duration, bool) {
 	if len(ts.samples) == 0 {
 		return time.Duration(0), false
@@ -114,13 +138,16 @@ func (ts *theilSen) Offset() (time.Duration, bool) {
 
 	now := ts.clk.Now()
 	regressionPts := regressionPts(ts.samples)
-	slope := slope(regressionPts)
-	intercept := intercept(slope, regressionPts)
+	slope, intercept, bestStart := runIterations(regressionPts)
+
 	predictedTime := prediction(slope, intercept, float64(now.Sub(ts.samples[0].x).Nanoseconds()))
 	predictedOffset := predictedTime - float64(now.Sub(ts.samples[0].x).Nanoseconds())
 
+	ts.samples = ts.samples[bestStart:]
+
 	ts.log.Debug("Theil-Sen estimate",
 		zap.Int("# of samples", len(ts.samples)),
+		zap.Int("best start", bestStart),
 		zap.Float64("slope", slope),
 		zap.Float64("intercept", intercept),
 		zap.Float64("predicted offset (ns)", predictedOffset),
