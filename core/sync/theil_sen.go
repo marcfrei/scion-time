@@ -20,6 +20,7 @@ type theilSen struct {
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const maxSamples = 4
 const maxAllowedBias = 1000.0
+const dropEnabled = true
 
 const baseFreqGainFactor = 0.005
 
@@ -110,6 +111,11 @@ func (ts *theilSen) AddSample(offset time.Duration) {
 }
 
 func runIterations(pts []point) (float64, float64, int) {
+	if !dropEnabled {
+		slope := slope(pts)
+		return slope, intercept(slope, pts), 0
+	}
+
 	n := len(pts)
 
 	for i := 0; i < n; i++ {
