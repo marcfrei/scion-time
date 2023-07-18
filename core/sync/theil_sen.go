@@ -19,7 +19,7 @@ type theilSen struct {
 
 // If the buffer size is too large, the system is likely to oscillate heavily.
 const maxSamples = 4
-const maxAllowedBias = 1000.0
+const maxAllowedErr = 1000.0
 const dropEnabled = true
 
 const baseFreqGainFactor = 0.005
@@ -122,13 +122,13 @@ func runIterations(pts []point) (float64, float64, int) {
 		slope := slope(pts[i:])
 		intercept := intercept(slope, pts[i:])
 
-		bias := 0.0
+		err := 0.0
 		for j := i; j < n; j++ {
-			bias += math.Abs(prediction(slope, intercept, float64(pts[j].x)) - float64(pts[j].y))
+			err += math.Abs(prediction(slope, intercept, float64(pts[j].x)) - float64(pts[j].y))
 		}
-		bias /= float64(n - i)
+		err /= float64(n - i)
 
-		if math.Abs(bias) < maxAllowedBias {
+		if math.Abs(err) < maxAllowedErr {
 			return slope, intercept, i
 		}
 	}
