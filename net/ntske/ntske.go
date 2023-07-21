@@ -55,9 +55,10 @@ const (
 )
 
 const (
-	AES_SIV_CMAC_256   = 0x0f
-	DEFAULT_NTSKE_PORT = 4460
-	DEFAULT_NTP_PORT   = 123
+	AES_SIV_CMAC_256 = 0x0f
+
+	ServerPortIP    = 4460
+	ServerPortSCION = 14460
 )
 
 const (

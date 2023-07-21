@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"example.com/scion-time/net/ntp"
 )
 
 func AcceptTLSConn(l net.Listener) (*tls.Conn, error) {
@@ -33,14 +35,13 @@ func dialTLS(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 		if !strings.Contains(err.Error(), "missing port in address") {
 			return nil, Data{}, err
 		}
-		hostport = net.JoinHostPort(hostport, strconv.Itoa(DEFAULT_NTSKE_PORT))
+		hostport = net.JoinHostPort(hostport, strconv.Itoa(ServerPortIP))
 	}
 
 	conn, err := tls.DialWithDialer(&net.Dialer{
 		Timeout: time.Second * 5,
 	}, "tcp", hostport, config)
 	if err != nil {
-		_ = conn.Close()
 		return nil, Data{}, err
 	}
 
@@ -50,7 +51,7 @@ func dialTLS(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 		_ = conn.Close()
 		return nil, Data{}, err
 	}
-	data.Port = DEFAULT_NTP_PORT
+	data.Port = ntp.ServerPortIP
 
 	state := conn.ConnectionState()
 	if state.NegotiatedProtocol != alpn {

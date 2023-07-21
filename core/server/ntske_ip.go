@@ -87,10 +87,10 @@ func runNTSKEServerTLS(log *zap.Logger, listener net.Listener, localPort int, pr
 }
 
 func StartNTSKEServerIP(ctx context.Context, log *zap.Logger, localIP net.IP, localPort int, config *tls.Config, provider *ntske.Provider) {
-	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(defaultNTSKEPort))
+	ntskeAddr := net.JoinHostPort(localIP.String(), strconv.Itoa(ntske.ServerPortIP))
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localIP),
-		zap.Int("port", defaultNTSKEPort),
+		zap.Int("port", ntske.ServerPortIP),
 	)
 
 	listener, err := tls.Listen("tcp", ntskeAddr, config)

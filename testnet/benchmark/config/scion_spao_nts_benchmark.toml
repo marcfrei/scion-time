@@ -1,4 +1,4 @@
-local_address = "1-ff00:0:111,0.0.0.0:0"
+local_address = "1-ff00:0:111,0.0.0.0"
 remote_address = "1-ff00:0:111,10.1.1.11:14460"
 
 auth_modes = ["nts", "spao"]

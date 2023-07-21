@@ -9,7 +9,8 @@ import (
 const (
 	nanosecondsPerSecond int64 = 1e9
 
-	ServerPort = 123
+	ServerPortIP    = 123
+	ServerPortSCION = 10123
 
 	PacketLen = 48
 

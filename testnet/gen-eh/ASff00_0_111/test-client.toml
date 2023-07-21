@@ -1,4 +1,4 @@
-local_address = "1-ff00:0:111,10.1.1.11:0"
+local_address = "1-ff00:0:111,10.1.1.11"
 daemon_address = "10.1.1.11:30255"
 
-ntp_reference_clocks = ["1-ff00:0:112,10.1.1.12:123"]
+ntp_reference_clocks = ["1-ff00:0:112,10.1.1.12:10123"]

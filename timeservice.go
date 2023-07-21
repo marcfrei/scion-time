@@ -38,6 +38,7 @@ import (
 	"example.com/scion-time/driver/clock"
 	"example.com/scion-time/driver/mbg"
 
+	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
@@ -400,6 +401,8 @@ func runServer(configFile string) {
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
 	daemonAddr := daemonAddress(cfg)
+
+	localAddr.Host.Port = 0
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
@@ -418,9 +421,12 @@ func runServer(configFile string) {
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
+	localAddr.Host.Port = ntp.ServerPortIP
 	server.StartNTSKEServerIP(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
-	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
+
+	localAddr.Host.Port = ntp.ServerPortSCION
+	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
 
 	runMonitor(log)
@@ -432,6 +438,8 @@ func runRelay(configFile string) {
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
 	daemonAddr := daemonAddress(cfg)
+
+	localAddr.Host.Port = 0
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
@@ -450,9 +458,12 @@ func runRelay(configFile string) {
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
+	localAddr.Host.Port = ntp.ServerPortIP
 	server.StartNTSKEServerIP(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
-	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
 	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
+
+	localAddr.Host.Port = ntp.ServerPortSCION
+	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
 
 	runMonitor(log)
@@ -463,6 +474,8 @@ func runClient(configFile string) {
 
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
+
+	localAddr.Host.Port = 0
 	refClocks, netClocks := createClocks(cfg, localAddr)
 	sync.RegisterClocks(refClocks, netClocks)
 
@@ -576,6 +589,8 @@ func runBenchmark(configFile string) {
 	localAddr := localAddress(cfg)
 	daemonAddr := daemonAddress(cfg)
 	remoteAddr := remoteAddress(cfg)
+
+	localAddr.Host.Port = 0
 	ntskeServer := ntskeServerFromRemoteAddr(cfg.RemoteAddr)
 
 	if !remoteAddr.IA.IsZero() {
@@ -682,7 +697,7 @@ func main() {
 
 	serverFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	serverFlags.StringVar(&configFile, "config", "", "Config file")
-	serverFlags.BoolVar(&profileCPU, "profileCPU", false, "Enable profiling")
+	serverFlags.BoolVar(&profileCPU, "profile-cpu", false, "Enable profiling")
 
 	relayFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	relayFlags.StringVar(&configFile, "config", "", "Config file")

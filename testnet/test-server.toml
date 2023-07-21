@@ -1,4 +1,4 @@
-local_address = "0-0,0.0.0.0:10123"
+local_address = "0-0,0.0.0.0"
 ntp_reference_clocks = ["0-0,time.facebook.com:123"]
 
 ntske_cert_file = "./testnet/gen/tls.crt"

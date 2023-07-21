@@ -9,8 +9,6 @@ import (
 	"example.com/scion-time/net/ntske"
 )
 
-const defaultNTSKEPort = 4460
-
 var errNoCookie = errors.New("failed to add at least one cookie")
 
 func newNTSKEMsg(log *zap.Logger, localIP net.IP, localPort int, data *ntske.Data, provider *ntske.Provider) (ntske.ExchangeMsg, error) {
