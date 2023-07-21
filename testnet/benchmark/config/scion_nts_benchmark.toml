@@ -1,5 +1,5 @@
 local_address = "1-ff00:0:111,0.0.0.0:0"
-remote_address = "1-ff00:0:111,10.1.1.11:4460"
+remote_address = "1-ff00:0:111,10.1.1.11:14460"
 
 auth_modes = ["nts"]
 ntske_insecure_skip_verify = true
