@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 
 	"github.com/quic-go/quic-go"
@@ -38,10 +39,12 @@ func dialQUIC(log *zap.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr str
 	} else {
 		ps, err := dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
 		if err != nil {
-			log.Fatal("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+			log.Error("failed to lookup paths", zap.Stringer("to", remoteAddr.IA), zap.Error(err))
+			return nil, Data{}, err
 		}
 		if len(ps) == 0 {
-			log.Fatal("no paths available", zap.Stringer("to", remoteAddr.IA))
+			log.Error("no paths available", zap.Stringer("to", remoteAddr.IA))
+			return nil, Data{}, errors.New("no paths available")
 		}
 	}
 
