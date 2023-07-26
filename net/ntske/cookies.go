@@ -121,6 +121,8 @@ func (c *EncryptedServerCookie) Decode(b []byte) error {
 	return nil
 }
 
+// Note: NTS cookies are right now encrypted using AES_SIV_CMAC. This however is not mandatory for NTS.
+// In case that the encryption seems to be a major bottleneck the encryption mode could be changed.
 func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerCookie, error) {
 	bits := make([]byte, 16)
 	_, err := rand.Read(bits)
