@@ -16,6 +16,7 @@ var (
 	errUnknownAlgo = errors.New("unexpected NTS-KE meta data: unknown algorithm")
 )
 
+// Fetcher is a client side NTS Cookie fetcher. It can be used for both TCP/TLS and SCION QUIC connections.
 type Fetcher struct {
 	Log       *zap.Logger
 	TLSConfig tls.Config
@@ -29,6 +30,7 @@ type Fetcher struct {
 	data Data
 }
 
+// Performs a NTSKE with a NTSKE Server
 func (f *Fetcher) exchangeKeys() error {
 	if f.QUIC.Enabled {
 		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.DaemonAddr, &f.TLSConfig)
@@ -82,6 +84,7 @@ func (f *Fetcher) exchangeKeys() error {
 	return nil
 }
 
+// Returns either cached Data or requests new Data by performing a NTSKE.
 func (f *Fetcher) FetchData() (Data, error) {
 	if len(f.data.Cookie) == 0 {
 		err := f.exchangeKeys()
@@ -94,6 +97,7 @@ func (f *Fetcher) FetchData() (Data, error) {
 	return data, nil
 }
 
+// Stores a new cookie and appends it to the cached Data.
 func (f *Fetcher) StoreCookie(cookie []byte) {
 	f.data.Cookie = append(f.data.Cookie, cookie)
 }

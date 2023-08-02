@@ -77,8 +77,7 @@ var (
 	errReadUnknown              = errors.New("ntske received unknown error message")
 )
 
-// RecordHdr is the header on all records send in NTS-KE. The first
-// bit of the Type is the critical bit.
+// RecordHdr is the header on all records send in NTS-KE.
 type RecordHdr struct {
 	Type    uint16 // First bit is Critical bit
 	BodyLen uint16
@@ -158,7 +157,7 @@ func (m ExchangeMsg) Pack() (buf *bytes.Buffer, err error) {
 	return buf, nil
 }
 
-// AddRecord adda new record type to a Key Exchange message.
+// AddRecord adds new record type to a Key Exchange message.
 func (m *ExchangeMsg) AddRecord(rec Record) {
 	m.Record = append(m.Record, rec)
 }

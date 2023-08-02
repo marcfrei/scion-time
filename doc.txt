@@ -1,0 +1,228 @@
+CONSTANTS
+
+const (
+        RecEom       uint16 = 0
+        RecNextproto uint16 = 1
+        RecError     uint16 = 2
+        RecWarning   uint16 = 3
+        RecAead      uint16 = 4
+        RecCookie    uint16 = 5
+        RecServer    uint16 = 6
+        RecPort      uint16 = 7
+)
+    NTS-KE record types
+
+const (
+        AES_SIV_CMAC_256 = 0x0f
+
+        ServerPortIP    = 4460
+        ServerPortSCION = 14460
+)
+const (
+        ErrorCodeUnrecognizedCritical = 0
+        ErrorCodeBadRequest           = 1
+        ErrorCodeInternalServer       = 2
+)
+const NTPv4 uint16 = 0
+
+FUNCTIONS
+
+func AcceptQUICConn(ctx context.Context, l quic.Listener) (quic.Connection, error)
+    Accepts an incoming QUIC connection from the quic.Listener.
+
+func AcceptTLSConn(l net.Listener) (*tls.Conn, error)
+    Accepts an incoming TLS connection from the net.Listener.
+
+func ExportKeys(cs tls.ConnectionState, data *Data) error
+    ExportKeys exports two extra sessions keys from the already established
+    NTS-KE connection for use with NTS.
+
+func ReadData(log *zap.Logger, reader *bufio.Reader, data *Data) error
+
+TYPES
+
+type Algorithm struct {
+        RecordHdr
+        Algo []uint16
+}
+    Algorithm is the record type for a list of AEAD algorithm we can use.
+
+type Cookie struct {
+        RecordHdr
+        Cookie []byte
+}
+    Cookie is an NTS cookie to be used when querying time over NTS.
+
+type CookieArrayMarshaler struct {
+        Cookies [][]byte
+}
+
+func (m CookieArrayMarshaler) MarshalLogArray(enc zapcore.ArrayEncoder) error
+
+type Data struct {
+        C2sKey []byte
+        S2cKey []byte
+        Server string
+        Port   uint16
+        Cookie [][]byte
+        Algo   uint16
+}
+    Data is negotiated data from the Key Exchange
+
+type EncryptedServerCookie struct {
+        ID         uint16
+        Nonce      []byte
+        Ciphertext []byte
+}
+    EncryptedServerCookie is the representation of an encrypted NTS cookie.
+
+func (c *EncryptedServerCookie) Decode(b []byte) error
+    Decodes am EncryptedServerCookie from a byte slice or returns an error if it
+    can not decode.
+
+func (c *EncryptedServerCookie) Decrypt(key []byte) (ServerCookie, error)
+    Decrypts the EncryptedServerCookie using the provided key and returns a
+    ServerCookie.
+
+func (c *EncryptedServerCookie) Encode() []byte
+    Encodes the EncryptedServerCookie to a byte slice.
+
+type End struct {
+        RecordHdr
+}
+    End is the End of Message record.
+
+type Error struct {
+        RecordHdr
+        Code uint16
+}
+    Error is the record type to send errors to the other end. Put error code in
+    Code.
+
+type ExchangeMsg struct {
+        Record []Record
+}
+    ExchangeMsg is a representation of a series of records to be sent to the
+    peer.
+
+func (m *ExchangeMsg) AddRecord(rec Record)
+    AddRecord adds new record type to a Key Exchange message.
+
+func (m ExchangeMsg) Pack() (buf *bytes.Buffer, err error)
+    Pack allocates a buffer and packs all records into wire format in that
+    buffer.
+
+type Fetcher struct {
+        Log       *zap.Logger
+        TLSConfig tls.Config
+        Port      string
+        QUIC      struct {
+                Enabled    bool
+                DaemonAddr string
+                LocalAddr  udp.UDPAddr
+                RemoteAddr udp.UDPAddr
+        }
+        // Has unexported fields.
+}
+    Fetcher is a client side NTS Cookie fetcher. It can be used for both TCP/TLS
+    and SCION QUIC connections.
+
+func (f *Fetcher) FetchData() (Data, error)
+    Returns either cached Data or requests new Data by performing a NTSKE.
+
+func (f *Fetcher) StoreCookie(cookie []byte)
+    Stores a new cookie and appends it to the cached Data.
+
+type Key struct {
+        ID       int
+        Value    []byte
+        Validity struct {
+                NotBefore time.Time
+                NotAfter  time.Time
+        }
+}
+    Key is the key shared between NTP and NTSKE server with a validity time
+    period.
+
+func (k *Key) IsValidAt(t time.Time) bool
+
+type NextProto struct {
+        RecordHdr
+        NextProto uint16
+}
+    NextProto record. Tells the other side we want to speak NTP, probably.
+    Set to 0.
+
+type Port struct {
+        RecordHdr
+        Port     uint16
+        Critical bool
+}
+    Port is the NTP Port record, telling the client to use this port for the
+    next protocol query. Critical bit is optional. Set Critical to true if you
+    want it set.
+
+type Provider struct {
+        // Has unexported fields.
+}
+    Provider is a thread safe provider for keys shared between NTP and NTSKE
+    servers.
+
+func NewProvider() *Provider
+    Creates and returns a new provider.
+
+func (p *Provider) Current() Key
+    Current() returns the newest Key or creates a new one if no one is valid.
+
+func (p *Provider) Get(id int) (Key, bool)
+    Get() returns the Key with ID id and true if it exists and is still valid or
+    false otherwise.
+
+type Record interface {
+        // Has unexported methods.
+}
+    Record is the interface all record types must implement. pack() packs the
+    record into wire format.
+
+type RecordHdr struct {
+        Type    uint16 // First bit is Critical bit
+        BodyLen uint16
+}
+    RecordHdr is the header on all records send in NTS-KE.
+
+func (h RecordHdr) Header() RecordHdr
+
+type Server struct {
+        RecordHdr
+        Addr     []byte
+        Critical bool
+}
+    Server is the NTP Server record, telling the client to use a certain server
+    for the next protocol query. Critical bit is optional. Set Critical to true
+    if you want it set.
+
+type ServerCookie struct {
+        Algo uint16
+        S2C  []byte
+        C2S  []byte
+}
+    ServerCookie is the representation of a plaintext NTS cookie.
+
+func (c *ServerCookie) Decode(b []byte) error
+    Decodes a ServerCookie from a byte slice or returns an error if it can not
+    decode.
+
+func (c *ServerCookie) Encode() []byte
+    Encodes the ServerCookie to a byte slice with following format for each
+    field. uint16 | uint16 | []byte type | length | value
+
+func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerCookie, error)
+    Encrypts the ServerCookie using the provided key with a fresh nonce and
+    returns an EncryptedServerCookie.
+
+type Warning struct {
+        RecordHdr
+        Code uint16
+}
+    Warning is the record type to send warnings to the other end. Put warning
+    code in Code.
