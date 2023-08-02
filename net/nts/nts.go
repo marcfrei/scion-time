@@ -59,6 +59,7 @@ var (
 	errUnexpectedResponseID = errors.New("unexpected response ID")
 )
 
+// A Packet contains the NTP extension fiels for a NTS secured NTP request.
 type Packet struct {
 	UniqueID           UniqueIdentifier
 	Cookies            []Cookie
@@ -66,6 +67,7 @@ type Packet struct {
 	Auth               Authenticator
 }
 
+// NewRequestPacket returns a new Packet initialized with a new UniqueID and a Cookie from ntskeData.
 func NewRequestPacket(ntskeData ntske.Data) (pkt Packet, uniqueid []byte) {
 	id, err := newID()
 	if err != nil {
@@ -95,6 +97,9 @@ func NewRequestPacket(ntskeData ntske.Data) (pkt Packet, uniqueid []byte) {
 	return pkt, id
 }
 
+// EncodePacket encodes Packet to a byte slice. It is expected that
+// the first 48 bytes of the slice already contain a NTP packet.
+// NTS authentication is added here.
 func EncodePacket(b *[]byte, pkt *Packet) {
 	if len(*b) != ntpPacketLen {
 		panic("unexpected NTP header")
@@ -132,6 +137,9 @@ func EncodePacket(b *[]byte, pkt *Packet) {
 	*b = (*b)[:pos]
 }
 
+// DecodePacket decodes a byte slice to Packet. Authentication is not
+// checkt here, but an error is thrown if it does not contain an
+// Autheticator or UniqueID extension field.
 func DecodePacket(pkt *Packet, b []byte) (err error) {
 	pos := ntpPacketLen
 	foundUniqueID := false
@@ -195,6 +203,7 @@ func DecodePacket(pkt *Packet, b []byte) (err error) {
 	return nil
 }
 
+// GetFirstCookie returns the first cookie byte slice a packet contains.
 func (pkt *Packet) GetFirstCookie() ([]byte, error) {
 	var cookie []byte
 	if pkt.Cookies == nil || len(pkt.Cookies) < 1 {
@@ -204,6 +213,7 @@ func (pkt *Packet) GetFirstCookie() ([]byte, error) {
 	return cookie, nil
 }
 
+// authenticate checks the authentication of a Packet using the provided key.
 func (pkt *Packet) authenticate(b []byte, key []byte) error {
 	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
 	if err != nil {
@@ -236,6 +246,8 @@ func (pkt *Packet) authenticate(b []byte, key []byte) error {
 	return nil
 }
 
+// ProcessResponse handles the response from a server. It checks that the UniqueID matches
+// the one from the request and checks the authentication. Additionally it stores the cookies.
 func ProcessResponse(b []byte, key []byte, ntskeFetcher *ntske.Fetcher, pkt *Packet, reqID []byte) error {
 	if !bytes.Equal(reqID, pkt.UniqueID.ID) {
 		return errUnexpectedResponseID
@@ -252,6 +264,8 @@ func ProcessResponse(b []byte, key []byte, ntskeFetcher *ntske.Fetcher, pkt *Pac
 	return nil
 }
 
+// NewResponsePacket creates and returns a new Packet that should be used by
+// a server for a response to a request.
 func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt Packet) {
 	var uid UniqueIdentifier
 	uid.ID = uniqueid
@@ -278,6 +292,8 @@ func NewResponsePacket(cookies [][]byte, key []byte, uniqueid []byte) (pkt Packe
 	return pkt
 }
 
+// ProcessResponse handles the request from a client.
+// It checks the authentication.
 func ProcessRequest(b []byte, key []byte, pkt *Packet) error {
 	err := pkt.authenticate(b, key)
 	if err != nil {
@@ -302,6 +318,8 @@ func (h *extHdr) unpack(buf []byte, pos int) {
 	h.Length = binary.BigEndian.Uint16(buf[pos+2:])
 }
 
+// A UniqueIdentifier is the NTS extension that contains a
+// nonce to uniquely identify a request.
 type UniqueIdentifier struct {
 	extHdr
 	ID []byte
@@ -348,6 +366,9 @@ func newID() ([]byte, error) {
 	return id, nil
 }
 
+// A Cookie is the NTS extension field for a NTS cookie.
+// It contains a byte slice that only the server can decode
+// to access the shared keys.
 type Cookie struct {
 	extHdr
 	Cookie []byte
@@ -381,6 +402,9 @@ func (c *Cookie) unpack(buf []byte, pos int) error {
 	return nil
 }
 
+// A CookiePlaceholder is the NTS extension field for a NTS cookie placeholder.
+// It contains a byte slice the same length as for a Cookie. The content however
+// is will be ignored and should be 0.
 type CookiePlaceholder struct {
 	extHdr
 	Cookie []byte
@@ -410,6 +434,10 @@ func (c *CookiePlaceholder) unpack(buf []byte, pos int) error {
 	return nil
 }
 
+// An Authenticator is the NTS extension field for a NTS authenticator.
+// It contains a nonce and authenticates the Packet using the Key.
+// Additionally it can encrypt the contents of PlainText.
+// pos is the position of the Authenticator in the NTP packet byte slice.
 type Authenticator struct {
 	extHdr
 	Nonce      []byte

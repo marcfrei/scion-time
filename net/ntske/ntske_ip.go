@@ -13,7 +13,7 @@ import (
 	"example.com/scion-time/net/ntp"
 )
 
-// Accepts an incoming TLS connection from the net.Listener.
+// AcceptTLSConn accepts an incoming TLS connection from the net.Listener.
 func AcceptTLSConn(l net.Listener) (*tls.Conn, error) {
 	conn, err := l.Accept()
 	if err != nil {
@@ -28,7 +28,7 @@ func AcceptTLSConn(l net.Listener) (*tls.Conn, error) {
 	return tlsConn, nil
 }
 
-// Starts a new TLS connection to hostport using the tls config. 
+// dialTLS starts a new TLS connection to hostport using the tls config. 
 // Returns the connection as well as the default server address to the NTP server using the Data struct.
 func dialTLS(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 	config.NextProtos = []string{alpn}
@@ -65,7 +65,7 @@ func dialTLS(hostport string, config *tls.Config) (*tls.Conn, Data, error) {
 	return conn, data, nil
 }
 
-// Creates server NTSKE message and sends it over the tls connection.
+// exchangeDataTLS creates server NTSKE message and sends it over the tls connection.
 func exchangeDataTLS(log *zap.Logger, conn *tls.Conn, data *Data) error {
 	var msg ExchangeMsg
 

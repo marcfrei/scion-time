@@ -32,7 +32,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Data is negotiated data from the Key Exchange
+// Data is the negotiated data from the NTS Key Exchange
 type Data struct {
 	C2sKey []byte
 	S2cKey []byte
