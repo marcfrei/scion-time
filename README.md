@@ -1,3 +1,7 @@
+> [!NOTE]
+> This branch contains the implementation of an alternative sample offset interpolation algorithm, based on the Theil-Sen estimator.
+> You can find more information on the algorithm in THEIL-SEN-README.md.
+
 # Secure and Dependable Clock Synchronization on Next-Generation Networks
 
 Secure and dependable clock synchronization is an essential prerequisite for many industries with applications in finance, telecommunication, electric power production and distribution, or environmental monitoring.
