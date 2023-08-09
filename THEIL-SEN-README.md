@@ -2,10 +2,7 @@
 
 This branch contains the implementation of an alternative sample offset interpolation algorithm, based on the [Theil-Sen estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator).
 Currently, the standard sample offset interpolation algorithm (also called a clock discipline algorithm) in `scion-time` is a Phase-Locked Loop (PLL), taken from [Ntimed](https://github.com/bsdphk/Ntimed/blob/master/pll_std.c#L50).
-The algorithm is hard to fully understand and contains various magic constants.
-Thus, the decision was made to investigate other alternatives.
-
-Theil-Sen was chosen as a first target. 
+Various alternative estimator algorithms were investigated (Kalman Filters, Least Absolute Deviations), with Theil-Sen being chosen as a first target.
 It offers simplicity and is well-studied from a mathematical standpoint.
 
 ## Implementation
