@@ -1,6 +1,8 @@
 > [!NOTE]
-> This branch contains the implementation of an alternative sample offset interpolation algorithm, based on the Theil-Sen estimator.
-> You can find more information on the algorithm in THEIL-SEN-README.md.
+> This branch contains the implementation of two alternative sample offset interpolation algorithms, based on 
+> a) the Theil-Sen estimator
+> b) Least Absolute Deviations
+> You can find more information on the algorithms in THEIL-SEN-README.md and LAD-README.md.
 
 # Secure and Dependable Clock Synchronization on Next-Generation Networks
 
