@@ -399,6 +399,8 @@ func clockAlgo(cfg svcConfig) int {
 		algo = sync.ClockAlgoPLL
 	case "ts":
 		algo = sync.ClockAlgoTS
+	case "lad":
+		algo = sync.ClockAlgoLAD
 	default:
 		log.Fatal("unexpected clock steering algorithm")
 	}

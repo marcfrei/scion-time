@@ -165,6 +165,7 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 	})
 	theilSen := newTheilSen(log, lclk)
 	pll := newPLL(log, lclk)
+	lad := newLAD(log, lclk)
 	for {
 		corrGauge.Set(0)
 		corr := measureOffsetToNetClocks(log, netClkTimeout)
@@ -174,12 +175,21 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 			}
 
 			theilSen.AddSample(corr)
-			offset, valid := theilSen.Offset()
-			tsFreq := float64(offset.Nanoseconds())/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
+			tsOffset, tsValid := theilSen.Offset()
+			tsFreq := float64(tsOffset.Nanoseconds())/float64(netClkInterval.Nanoseconds())*1e9 + theilSen.baseFreq
 
 			log.Debug("Prediction from Theil-Sen: ",
-				zap.Duration("offset", offset),
+				zap.Duration("offset", tsOffset),
 				zap.Float64("freq (PPB)", tsFreq),
+			)
+
+			lad.AddSample(corr)
+			ladOffset, ladValid := lad.Offset()
+			ladFreq := float64(ladOffset.Nanoseconds()) / float64(netClkInterval.Nanoseconds()) * 1e9
+
+			log.Debug("Prediction from LAD: ",
+				zap.Duration("offset", ladOffset),
+				zap.Float64("freq (PPB)", ladFreq),
 			)
 
 			correction, interval, baseFreq := pll.Do(corr, 1000.0 /* weight */)
@@ -198,8 +208,12 @@ func RunGlobalClockSync(log *zap.Logger, lclk timebase.LocalClock, algo int) {
 					lclk.Adjust(timemath.Duration(correction), timemath.Duration(interval), baseFreq)
 				}
 			case ClockAlgoTS:
-				if tsFreq != 0.0 && valid {
+				if tsFreq != 0.0 && tsValid {
 					lclk.AdjustTick(tsFreq)
+				}
+			case ClockAlgoLAD:
+				if ladFreq != 0.0 && ladValid {
+					lclk.AdjustTick(ladFreq)
 				}
 			}
 			corrGauge.Set(float64(corr))
