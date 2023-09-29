@@ -14,7 +14,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/config"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -24,6 +23,7 @@ import (
 )
 
 type IPClient struct {
+	DSCP            uint8
 	InterleavedMode bool
 	Auth            struct {
 		Enabled      bool
@@ -103,7 +103,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, log *zap.Logger, mt
 	if err != nil {
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
-	err = udp.SetDSCP(conn, config.DSCP)
+	err = udp.SetDSCP(conn, c.DSCP)
 	if err != nil {
 		log.Info("failed to set DSCP", zap.Error(err))
 	}

@@ -67,6 +67,7 @@ type svcConfig struct {
 	NTSKEServerName         string   `toml:"ntske_server_name,omitempty"`
 	AuthModes               []string `toml:"auth_modes,omitempty"`
 	NTSKEInsecureSkipVerify bool     `toml:"ntske_insecure_skip_verify,omitempty"`
+	DSCP                    uint8    `toml:"dscp,omitempty"` // Must be in range [0, 63]
 }
 
 type mbgReferenceClock struct {
@@ -176,13 +177,14 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr,
+func newNTPReferenceClockIP(localAddr, remoteAddr *net.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 	}
 	c.ntpc = &client.IPClient{
+		DSCP:            dscp,
 		InterleavedMode: true,
 	}
 	if contains(authModes, authModeNTS) {
@@ -216,7 +218,7 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.QUIC.RemoteAddr = remoteAddr
 }
 
-func newNTPReferenceClockSCION(daemonAddr string, localAddr, remoteAddr udp.UDPAddr,
+func newNTPReferenceClockSCION(daemonAddr string, localAddr, remoteAddr udp.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		localAddr:  localAddr,
@@ -224,6 +226,7 @@ func newNTPReferenceClockSCION(daemonAddr string, localAddr, remoteAddr udp.UDPA
 	}
 	for i := 0; i != len(c.ntpcs); i++ {
 		c.ntpcs[i] = &client.SCIONClient{
+			DSCP:            dscp,
 			InterleavedMode: true,
 		}
 		if contains(authModes, authModeNTS) {
@@ -280,6 +283,13 @@ func daemonAddress(cfg svcConfig) string {
 	return cfg.DaemonAddr
 }
 
+func dscp(cfg svcConfig) uint8 {
+	if cfg.DSCP > 63 {
+		log.Fatal("invalid differentiated services codepoint value specified in config")
+	}
+	return cfg.DSCP
+}
+
 func tlsConfig(cfg svcConfig) *tls.Config {
 	if cfg.NTSKEServerName == "" || cfg.NTSKECertFile == "" || cfg.NTSKEKeyFile == "" {
 		log.Fatal("missing parameters in configuration for NTSKE server")
@@ -318,6 +328,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 				cfg.DaemonAddr,
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
+				dscp(cfg),
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -327,6 +338,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			refClocks = append(refClocks, newNTPReferenceClockIP(
 				localAddr.Host,
 				remoteAddr.Host,
+				dscp(cfg),
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -347,6 +359,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			cfg.DaemonAddr,
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
+			dscp(cfg),
 			cfg.AuthModes,
 			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
@@ -418,16 +431,17 @@ func runServer(configFile string) {
 		go sync.RunGlobalClockSync(log, lclk)
 	}
 
+	dscp := dscp(cfg)
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
 	localAddr.Host.Port = ntp.ServerPortIP
 	server.StartNTSKEServerIP(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	localAddr.Host.Port = ntp.ServerPortSCION
 	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
-	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
+	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	runMonitor(log)
 }
@@ -455,16 +469,17 @@ func runRelay(configFile string) {
 		log.Fatal("unexpected configuration", zap.Int("number of peers", len(netClocks)))
 	}
 
+	dscp := dscp(cfg)
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
 
 	localAddr.Host.Port = ntp.ServerPortIP
 	server.StartNTSKEServerIP(ctx, log, copyIP(localAddr.Host.IP), localAddr.Host.Port, tlsConfig, provider)
-	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), provider)
+	server.StartIPServer(ctx, log, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	localAddr.Host.Port = ntp.ServerPortSCION
 	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
-	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), provider)
+	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	runMonitor(log)
 }
@@ -506,7 +521,7 @@ func runClient(configFile string) {
 	runMonitor(log)
 }
 
-func runIPTool(localAddr, remoteAddr *snet.UDPAddr,
+func runIPTool(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
@@ -517,6 +532,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr,
 	laddr := localAddr.Host
 	raddr := remoteAddr.Host
 	c := &client.IPClient{
+		DSCP:            dscp,
 		InterleavedMode: true,
 	}
 	if contains(authModes, authModeNTS) {
@@ -530,7 +546,7 @@ func runIPTool(localAddr, remoteAddr *snet.UDPAddr,
 }
 
 func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr,
-	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
+	dscp uint8, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
 	var err error
 	ctx := context.Background()
 
@@ -564,6 +580,7 @@ func runSCIONTool(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	laddr := udp.UDPAddrFromSnet(localAddr)
 	raddr := udp.UDPAddrFromSnet(remoteAddr)
 	c := &client.SCIONClient{
+		DSCP:            dscp,
 		InterleavedMode: true,
 	}
 	if contains(authModes, authModeSPAO) {
@@ -683,6 +700,7 @@ func main() {
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
 		drkeyClientAddr         snet.UDPAddr
+		dscp                    uint
 		authModesStr            string
 		ntskeInsecureSkipVerify bool
 		profileCPU              bool
@@ -710,6 +728,7 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
+	toolFlags.UintVar(&dscp, "dscp", 0, "Differentiated services codepoint, must be in range [0, 63]")
 	toolFlags.StringVar(&authModesStr, "auth", "", "Authentication modes")
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 
@@ -770,6 +789,9 @@ func main() {
 		if err != nil {
 			exitWithUsage()
 		}
+		if dscp > 63 {
+			exitWithUsage()
+		}
 		authModes := strings.Split(authModesStr, ",")
 		for i := range authModes {
 			authModes[i] = strings.TrimSpace(authModes[i])
@@ -783,7 +805,8 @@ func main() {
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
-			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, authModes, ntskeServer, ntskeInsecureSkipVerify)
+			runSCIONTool(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, uint8(dscp),
+				authModes, ntskeServer, ntskeInsecureSkipVerify)
 		} else {
 			if daemonAddr != "" {
 				exitWithUsage()
@@ -793,7 +816,8 @@ func main() {
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
-			runIPTool(&localAddr, &remoteAddr, authModes, ntskeServer, ntskeInsecureSkipVerify)
+			runIPTool(&localAddr, &remoteAddr, uint8(dscp),
+				authModes, ntskeServer, ntskeInsecureSkipVerify)
 		}
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])

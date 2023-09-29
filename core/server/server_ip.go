@@ -14,7 +14,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/config"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -50,13 +49,14 @@ func newIPServerMetrics() *ipServerMetrics {
 	}
 }
 
-func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, iface string, provider *ntske.Provider) {
+func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics,
+	conn *net.UDPConn, iface string, dscp uint8, provider *ntske.Provider) {
 	defer conn.Close()
 	err := udp.EnableTimestamping(conn, iface)
 	if err != nil {
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
-	err = udp.SetDSCP(conn, config.DSCP)
+	err = udp.SetDSCP(conn, dscp)
 	if err != nil {
 		log.Info("failed to set DSCP", zap.Error(err))
 	}
@@ -204,7 +204,7 @@ func runIPServer(log *zap.Logger, mtrcs *ipServerMetrics, conn *net.UDPConn, ifa
 }
 
 func StartIPServer(ctx context.Context, log *zap.Logger,
-	localHost *net.UDPAddr, provider *ntske.Provider) {
+	localHost *net.UDPAddr, dscp uint8, provider *ntske.Provider) {
 	log.Info("server listening via IP",
 		zap.Stringer("ip", localHost.IP),
 		zap.Int("port", localHost.Port),
@@ -217,7 +217,7 @@ func StartIPServer(ctx context.Context, log *zap.Logger,
 		if err != nil {
 			log.Fatal("failed to listen for packets", zap.Error(err))
 		}
-		go runIPServer(log, mtrcs, conn, localHost.Zone, provider)
+		go runIPServer(log, mtrcs, conn, localHost.Zone, dscp, provider)
 	} else {
 		for i := ipServerNumGoroutine; i > 0; i-- {
 			conn, err := reuseport.ListenPacket("udp",
@@ -225,7 +225,7 @@ func StartIPServer(ctx context.Context, log *zap.Logger,
 			if err != nil {
 				log.Fatal("failed to listen for packets", zap.Error(err))
 			}
-			go runIPServer(log, mtrcs, conn.(*net.UDPConn), localHost.Zone, provider)
+			go runIPServer(log, mtrcs, conn.(*net.UDPConn), localHost.Zone, dscp, provider)
 		}
 	}
 }

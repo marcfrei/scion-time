@@ -22,7 +22,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/config"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -33,6 +32,7 @@ import (
 )
 
 type SCIONClient struct {
+	DSCP            uint8
 	InterleavedMode bool
 	Auth            struct {
 		Enabled      bool
@@ -130,7 +130,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	if err != nil {
 		log.Error("failed to enable timestamping", zap.Error(err))
 	}
-	err = udp.SetDSCP(conn, config.DSCP)
+	err = udp.SetDSCP(conn, c.DSCP)
 	if err != nil {
 		log.Info("failed to set DSCP", zap.Error(err))
 	}
@@ -193,7 +193,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, log *zap.Logg
 	}
 
 	var scionLayer slayers.SCION
-	scionLayer.TrafficClass = config.DSCP << 2
+	scionLayer.TrafficClass = c.DSCP << 2
 	scionLayer.SrcIA = localAddr.IA
 	srcAddrIP, ok := netip.AddrFromSlice(localAddr.Host.IP)
 	if !ok {
