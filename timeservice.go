@@ -67,7 +67,7 @@ type svcConfig struct {
 	NTSKEServerName         string   `toml:"ntske_server_name,omitempty"`
 	AuthModes               []string `toml:"auth_modes,omitempty"`
 	NTSKEInsecureSkipVerify bool     `toml:"ntske_insecure_skip_verify,omitempty"`
-	DSCP                    uint8    `toml:"dscp,omitempty"` // Must be in range [0, 63]
+	DSCP                    uint8    `toml:"dscp,omitempty"` // must be in range [0, 63]
 }
 
 type mbgReferenceClock struct {
@@ -308,6 +308,7 @@ func tlsConfig(cfg svcConfig) *tls.Config {
 
 func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 	refClocks, netClocks []client.ReferenceClock) {
+	dscp := dscp(cfg)
 
 	for _, s := range cfg.MBGReferenceClocks {
 		refClocks = append(refClocks, &mbgReferenceClock{
@@ -328,7 +329,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 				cfg.DaemonAddr,
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
-				dscp(cfg),
+				dscp,
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -338,7 +339,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			refClocks = append(refClocks, newNTPReferenceClockIP(
 				localAddr.Host,
 				remoteAddr.Host,
-				dscp(cfg),
+				dscp,
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -359,7 +360,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr) (
 			cfg.DaemonAddr,
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
-			dscp(cfg),
+			dscp,
 			cfg.AuthModes,
 			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
