@@ -8,7 +8,7 @@ require (
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
 	github.com/mmcloughlin/profile v0.1.1
-	github.com/pelletier/go-toml/v2 v2.2.1
+	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/prometheus/client_golang v1.19.0
 	github.com/quic-go/quic-go v0.43.0
 	github.com/scionproto/scion v0.10.0
