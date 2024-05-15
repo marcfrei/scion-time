@@ -11,7 +11,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/prometheus/client_golang v1.19.1
 	github.com/quic-go/quic-go v0.43.1
-	github.com/scionproto/scion v0.10.0
+	github.com/scionproto/scion v0.11.0
 	golang.org/x/sys v0.20.0
 )
 
@@ -32,7 +32,6 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/onsi/ginkgo/v2 v2.17.3 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
-	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.53.0 // indirect
 	github.com/prometheus/procfs v0.14.0 // indirect
