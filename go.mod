@@ -9,7 +9,7 @@ require (
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
 	github.com/mmcloughlin/profile v0.1.1
 	github.com/pelletier/go-toml/v2 v2.2.2
-	github.com/prometheus/client_golang v1.19.1
+	github.com/prometheus/client_golang v1.20.0
 	github.com/quic-go/quic-go v0.46.0
 	github.com/scionproto/scion v0.11.0
 	golang.org/x/sys v0.24.0
@@ -27,6 +27,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
