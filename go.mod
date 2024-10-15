@@ -10,7 +10,7 @@ require (
 	github.com/mmcloughlin/profile v0.1.1
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.20.5
-	github.com/quic-go/quic-go v0.47.0
+	github.com/quic-go/quic-go v0.48.0
 	github.com/scionproto/scion v0.12.0
 	golang.org/x/sys v0.26.0
 )
