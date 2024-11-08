@@ -12,7 +12,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quic-go/quic-go v0.48.1
 	github.com/scionproto/scion v0.12.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/sys v0.27.0
 )
 
 require (
