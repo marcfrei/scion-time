@@ -23,44 +23,9 @@ In Proceedings of the Symposium on Reliable Distributed Systems (SRDS) 2022.
 \[[pdf](https://netsec.ethz.ch/publications/papers/G-SINC.pdf)\], \[[doi](https://doi.org/10.1109/SRDS55811.2022.00021)\], \[[arXiv](https://arxiv.org/abs/2207.06116)\]
 
 
-## Running a simple IP-based server
-
-Reference platform: Ubuntu 22.04 LTS, Go 1.24.1; see [below](https://github.com/marcfrei/scion-time/edit/main/README.md#installing-prerequisites-for-a-scion-test-environment).
-
-```
-cd ~
-git clone https://github.com/marcfrei/scion-time.git
-
-cd ~/scion-time
-go build timeservice.go timeservicex.go
-
-sudo ~/scion-time/timeservice server -verbose -config testnet/test-server.toml
-```
-
-## Querying an IP-based server
-
-In an additional session:
-
-```
-~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0 -remote 0-0,127.0.0.1:123
-```
-
-## Querying an IP-based server with Network Time Security (NTS)
-
-In an additional session:
-
-```
-~/scion-time/timeservice tool -verbose -local 0-0,0.0.0.0 -remote 0-0,127.0.0.1:4460 -auth nts -ntske-insecure-skip-verify
-```
-
 ## Installing prerequisites for a SCION test environment
 
 Reference platform: Ubuntu 24.04 LTS, Go 1.24.1
-
-```
-sudo apt-get update
-sudo apt-get install -y build-essential python3-plumbum python3-toml supervisor
-```
 
 On x86-64:
 
@@ -93,120 +58,65 @@ go version
 ## Setting up a SCION test environment
 
 ```
-cd ~
-git clone https://github.com/scionproto/scion.git
-
-cd ~/scion
-git checkout v0.12.0
-go build -o ./bin/ ./control/cmd/control
-go build -o ./bin/ ./daemon/cmd/daemon
-go build -o ./bin/ ./dispatcher/cmd/dispatcher
-go build -o ./bin/ ./router/cmd/router
-go build -o ./bin/ ./scion/cmd/scion
-go build -o ./bin/ ./scion-pki/cmd/scion-pki
-
-cd ~
-git clone https://github.com/marcfrei/scion-time.git
-
-cd ~/scion-time
-go build timeservice.go timeservice_t.go
+...
 ```
 
 ## Starting the SCION test network
 
 ```
-export SCION_BIN=~/scion/bin
-cd ~/scion-time/testnet
-
-rm -rf logs
-./scion-topo-gen-crypto.sh
-./testnet-up.sh
-
-./supervisor/supervisor.sh reload && sleep 1
-./supervisor/supervisor.sh start all
+...
 ```
 
-## Running the servers
+## Running the server
 
-In session no. 1, run server at `1-ff00:0:111,10.1.1.11:10123`:
-
-```
-cd ~/scion-time
-sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
-```
-
-In session no. 2, run server at `1-ff00:0:112,10.1.1.12:10123`:
+In session no. 1, run server at `1-ff00:0:133,127.0.0.101:10123`:
 
 ```
-cd ~/scion-time
-sudo ip netns exec netns1 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_112/ts1-ff00_0_112-1.toml
+sudo $SCION_TIME_PATH/bin/timeservice server -verbose -config $SCION_TIME_PATH/testnet/test-server-ip.toml
 ```
 
 ## Querying SCION-based servers
 
-In an additional session, query server at `1-ff00:0:111,10.1.1.11:10123` from `1-ff00:0:112,10.1.1.12`:
+In an additional session, query server at `1-ff00:0:133,127.0.0.101:10123` from `2-ff00:0:222,[fd00:f00d:cafe::7f00:55]`:
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:10123
-```
-
-Or query server at `1-ff00:0:112,10.1.1.12:10123` from `1-ff00:0:111,10.1.1.11`:
-
-```
-sudo ip netns exec netns0 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.11:30255 -local 1-ff00:0:111,10.1.1.11 -remote 1-ff00:0:112,10.1.1.12:10123
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon 127.0.0.108:30255 -local 2-ff00:0:212,127.0.0.109 -remote 1-ff00:0:133,127.0.0.101:10123
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon '[fd00:f00d:cafe::7f00:54]:30255' -local '2-ff00:0:222,[fd00:f00d:cafe::7f00:55]' -remote 1-ff00:0:133,127.0.0.101:10123
 ```
 
 ### Querying a SCION-based server with SCION Packet Authenticator Option (SPAO)
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:10123 -auth spao
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon 127.0.0.108:30255 -local 2-ff00:0:212,127.0.0.108 -remote 1-ff00:0:133,127.0.0.101:10123 -auth spao
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon '[fd00:f00d:cafe::7f00:54]:30255' -local '2-ff00:0:222,[fd00:f00d:cafe::7f00:55]' -remote 1-ff00:0:133,127.0.0.101:10123 -auth spao
 ```
 
 ### Querying a SCION-based server with Network Time Security (NTS)
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:14460 -auth nts -ntske-insecure-skip-verify
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon '[fd00:f00d:cafe::7f00:54]:30255' -local '2-ff00:0:222,[fd00:f00d:cafe::7f00:55]' -remote 1-ff00:0:133,127.0.0.101:14460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ### Querying a SCION-based server with SPAO and NTS
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -daemon 10.1.1.12:30255 -local 1-ff00:0:112,10.1.1.12 -remote 1-ff00:0:111,10.1.1.11:14460 -auth spao,nts -ntske-insecure-skip-verify
+$SCION_TIME_PATH/bin/timeservice tool -verbose -daemon '[fd00:f00d:cafe::7f00:54]:30255' -local '2-ff00:0:222,[fd00:f00d:cafe::7f00:55]' -remote 1-ff00:0:133,127.0.0.101:14460 -auth spao,nts -ntske-insecure-skip-verify
 ```
 
 ### Querying a SCION-based server via IP
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12 -remote 0-0,10.1.1.11:123
+$SCION_TIME_PATH/bin/timeservice tool -verbose -local 0-0,127.0.0.109 -remote 0-0,127.0.0.101:123
 ```
 
 ### Querying a SCION-based server via IP with NTS
 
 ```
-sudo ip netns exec netns1 ~/scion-time/timeservice tool -verbose -local 0-0,10.1.1.12 -remote 0-0,10.1.1.11:4460 -auth nts -ntske-insecure-skip-verify
-```
-
-## Synchronizing with a SCION-based server
-
-In session no. 1, run server at `1-ff00:0:111,10.1.1.11:10123`:
-
-```
-cd ~/scion-time
-sudo ip netns exec netns0 ./timeservice server -verbose -config testnet/gen-eh/ASff00_0_111/ts1-ff00_0_111-1.toml
-```
-
-And in session no. 2, synchronize node `1-ff00:0:112,10.1.1.12` with server at `1-ff00:0:111,10.1.1.11:10123`:
-
-```
-cd ~/scion-time
-sudo ip netns exec netns1 ./timeservice client -verbose -config testnet/gen-eh/ASff00_0_112/test-client.toml
+$SCION_TIME_PATH/bin/timeservice tool -verbose -local 0-0,127.0.0.109 -remote 0-0,127.0.0.101:4460 -auth nts -ntske-insecure-skip-verify
 ```
 
 ## Stopping the SCION test network
 
 ```
-export SCION_BIN=~/scion/bin
-cd ~/scion-time/testnet
-
-./supervisor/supervisor.sh stop all
+...
 ```

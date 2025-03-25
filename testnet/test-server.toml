@@ -1,6 +1,0 @@
-local_address = "0-0,0.0.0.0"
-ntp_reference_clocks = ["0-0,time.facebook.com:123"]
-
-ntske_cert_file = "./testnet/gen/tls.crt"
-ntske_key_file = "./testnet/gen/tls.key"
-ntske_server_name = "localhost"

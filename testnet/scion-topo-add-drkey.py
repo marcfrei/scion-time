@@ -24,7 +24,7 @@ def main():
 			"drkey_level2_db": {
 				"connection": "gen-cache/sd%s.drkey_level2.db" % isd_as.file_fmt()
 			}
-		}, conf_dir // "sd.toml")
+		}, conf_dir // "sd*.toml")
 
 if __name__ == "__main__":
 	main()

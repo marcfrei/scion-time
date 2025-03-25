@@ -1,0 +1,5 @@
+local_address = "1-ff00:0:133,127.0.0.100"
+
+ntske_cert_file = "topos/default/tls.crt"
+ntske_key_file = "topos/default/tls.key"
+ntske_server_name = "localhost"
