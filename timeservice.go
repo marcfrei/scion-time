@@ -685,9 +685,12 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 
 	laddr := udp.UDPAddrFromSnet(localAddr)
 	raddr := udp.UDPAddrFromSnet(remoteAddr)
-	paddr, err := netip.ParseAddr(publicAddr)
-	if err != nil {
-		logbase.Fatal(slog.Default(), "failed to parse public address")
+	var paddr netip.Addr
+	if publicAddr != "" {
+		paddr, err = netip.ParseAddr(publicAddr)
+		if err != nil {
+			logbase.Fatal(slog.Default(), "failed to parse public address")
+		}
 	}
 	c := &client.SCIONClient{
 		Log:             log,

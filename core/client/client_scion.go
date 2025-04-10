@@ -232,6 +232,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	if !ok {
 		panic(errUnexpectedAddrType)
 	}
+	if publicAddr != (netip.Addr{}) {
+		srcAddrIP = publicAddr
+	}
 	err = scionLayer.SetSrcAddr(addr.HostIP(srcAddrIP.Unmap()))
 	if err != nil {
 		panic(err)
@@ -430,7 +433,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
 			compareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
 		validDst := scionLayer.DstIA == localAddr.IA &&
-			compareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
+			compareIPs(scionLayer.RawDstAddr, srcAddrIP.AsSlice()) == 0
 		if !validSrc || !validDst {
 			err = errUnexpectedPacket
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
