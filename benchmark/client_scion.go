@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"slices"
 	"sync"
@@ -107,7 +108,7 @@ func RunSCIONBenchmark(
 			<-sg
 			ntpcs := []*client.SCIONClient{c}
 			for range numRequestPerClient {
-				_, _, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, ps)
+				_, _, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, netip.Addr{}, ps)
 				if err != nil {
 					log.LogAttrs(ctx, slog.LevelInfo,
 						"failed to measure clock offset",

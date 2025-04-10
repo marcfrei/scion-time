@@ -128,7 +128,7 @@ func (c *SCIONClient) ResetInterleavedMode() {
 }
 
 func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionClientMetrics,
-	localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
+	localAddr, remoteAddr udp.UDPAddr, publicAddr netip.Addr, path snet.Path) (
 	timestamp time.Time, offset time.Duration, err error) {
 	if c.Auth.Enabled && c.Auth.opt == nil {
 		c.Auth.opt = &slayers.EndToEndOption{}
