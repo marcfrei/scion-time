@@ -83,7 +83,7 @@ loop:
 		select {
 		case m := <-msc:
 			if m.Error == nil {
-				if j != len(ms) {
+				if j != n {
 					ms[j] = m
 					j++
 				}
@@ -94,7 +94,7 @@ loop:
 		}
 	}
 	ts := timebase.Now()
-	for j != len(ms) {
+	for j != n {
 		ms[j] = measurements.Measurement{Timestamp: ts}
 		j++
 	}
