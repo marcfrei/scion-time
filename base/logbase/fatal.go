@@ -11,7 +11,7 @@ import (
 func logFatal(ctx context.Context, log *slog.Logger, msg string, attrs ...slog.Attr) {
 	// See https://pkg.go.dev/log/slog#hdr-Wrapping_output_methods
 	var pcs [1]uintptr
-	n := runtime.Callers(3, pcs[:]) // skip [Callers, logFatal, Fatal/FatalContext]
+	n := runtime.Callers(3, pcs[:]) // skip [runtime.Callers, logFatal, Fatal/FatalContext]
 	if n != 1 {
 		panic("unexpected call stack")
 	}
