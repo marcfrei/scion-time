@@ -18,10 +18,11 @@ import (
 )
 
 func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
-	const numClientGoroutine = 10
+	const numClientGoroutine = 100
 	const numRequestPerClient = 10_000
 
 	ctx := context.Background()
+	dlog := slog.New(slog.DiscardHandler)
 
 	var mu sync.Mutex
 	sg := make(chan struct{})
@@ -34,7 +35,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 			hg := hdrhistogram.New(1, 50000, 5)
 
 			c := &client.IPClient{
-				Log: log,
+				Log: dlog,
 				// InterleavedMode: true,
 				Histogram: hg,
 			}
@@ -42,7 +43,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 			if slices.Contains(authModes, "nts") {
 				ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 				if err != nil {
-					logbase.FatalContext(ctx, log, "failed to split NTS-KE host and port",
+					logbase.FatalContext(ctx, dlog, "failed to split NTS-KE host and port",
 						slog.Any("error", err))
 				}
 				c.Auth.Enabled = true
@@ -52,25 +53,27 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 					MinVersion:         tls.VersionTLS13,
 				}
 				c.Auth.NTSKEFetcher.Port = ntskePort
-				c.Auth.NTSKEFetcher.Log = log
+				c.Auth.NTSKEFetcher.Log = dlog
 			}
 
 			defer wg.Done()
 			<-sg
-			for range numRequestPerClient {
+			for range numRequestPerClient + 5 {
 				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-				_, _, err = client.MeasureClockOffsetIP(ctx, log, c, localAddr, remoteAddr)
+				_, _, err = client.MeasureClockOffsetIP(ctx, dlog, c, localAddr, remoteAddr)
 				if err != nil {
-					log.LogAttrs(ctx, slog.LevelInfo,
+					dlog.LogAttrs(ctx, slog.LevelInfo,
 						"failed to measure clock offset",
 						slog.Any("error", err),
 					)
 				}
 				cancel()
 			}
-			mu.Lock()
-			defer mu.Unlock()
-			_, _ = hg.PercentilesPrint(os.Stdout, 1, 1.0)
+			if hg.TotalCount() < numRequestPerClient {
+				mu.Lock()
+				defer mu.Unlock()
+				_, _ = hg.PercentilesPrint(os.Stdout, 1, 1.0)
+			}
 		}()
 	}
 	t0 := time.Now()
