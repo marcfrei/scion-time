@@ -14,9 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const (
@@ -47,15 +48,16 @@ func compressData(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func uploadData(sess *session.Session, bucket, key string, data []byte) error {
+func uploadData(cfg aws.Config, bucket, key string, data []byte) error {
 	data, err := compressData(data)
 	if err != nil {
 		return err
 	}
-	uploader := s3manager.NewUploader(sess)
+	client := s3.NewFromConfig(cfg)
+	uploader := manager.NewUploader(client)
 	ctx, cancel := context.WithTimeout(context.Background(), uploadTimeout)
 	defer cancel()
-	_, err = uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+	_, err = uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(bucket),
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(data),
@@ -80,14 +82,14 @@ func queueUpload(ch chan uploadRequest, bucket, key string, data []byte) {
 	}
 }
 
-func startUploader(sess *session.Session, wg *sync.WaitGroup, ch chan uploadRequest) {
+func startUploader(cfg aws.Config, wg *sync.WaitGroup, ch chan uploadRequest) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for req := range ch {
 			fmt.Fprintf(os.Stderr, "Uploading %d bytes to S3: %s/%s\n",
 				len(req.data), req.bucket, req.key)
-			err := uploadData(sess, req.bucket, req.key, req.data)
+			err := uploadData(cfg, req.bucket, req.key, req.data)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error uploading to S3: %s\n", err)
 			}
@@ -128,17 +130,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(region),
-	})
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating AWS session: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Error loading AWS config: %s\n", err)
 		os.Exit(1)
 	}
 
 	ch := make(chan uploadRequest, 1) // cap(ch) == 1; only one upload at a time
 	var wg sync.WaitGroup
-	startUploader(sess, &wg, ch)
+	startUploader(cfg, &wg, ch)
 	cleanup := func() {
 		close(ch)
 		wg.Wait()
