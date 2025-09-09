@@ -57,7 +57,7 @@ jobs:
 
       - name: golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
           $(go env GOPATH)/bin/golangci-lint run --disable staticcheck
 
       - name: gosec
