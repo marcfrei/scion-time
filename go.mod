@@ -55,3 +55,5 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.38.2 // indirect
 )
+
+replace github.com/miscreant/miscreant.go => ./vendor.mod/miscreant.go
