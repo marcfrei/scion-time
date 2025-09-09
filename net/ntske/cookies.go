@@ -131,41 +131,46 @@ func (c *ServerCookie) EncryptWithNonce(key []byte, keyid int) (EncryptedServerC
 	// Note: NTS cookies are right now encrypted using AES_SIV_CMAC. This however is not mandatory for NTS.
 	// In case that the encryption seems to be a major bottleneck the encryption mode could be changed.
 
-	bits := make([]byte, 16)
-	_, err := rand.Read(bits)
+	pt := c.Encode()
+
+	nonce := make([]byte, 16)
+	_, err := rand.Read(nonce)
 	if err != nil {
 		return EncryptedServerCookie{}, err
 	}
 
-	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
+	aessiv, err := miscreant.NewAESCMACSIV(key)
 	if err != nil {
 		return EncryptedServerCookie{}, err
 	}
 
-	b := c.Encode()
+	ct, err := aessiv.Seal(nil /* dst */, pt, nonce /* additionalData */)
+	if err != nil {
+		return EncryptedServerCookie{}, err
+	}
 
 	var ecookie EncryptedServerCookie
 	ecookie.ID = uint16(keyid)
-	ecookie.Nonce = bits
-	ecookie.Ciphertext = aessiv.Seal(nil /* dst */, ecookie.Nonce, b, nil /* additionalData */)
+	ecookie.Nonce = nonce
+	ecookie.Ciphertext = ct
 
 	return ecookie, nil
 }
 
 // Decrypt decrypts the EncryptedServerCookie using the provided key and returns a ServerCookie.
 func (c *EncryptedServerCookie) Decrypt(key []byte) (ServerCookie, error) {
-	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
+	aessiv, err := miscreant.NewAESCMACSIV(key)
 	if err != nil {
 		return ServerCookie{}, err
 	}
 
-	b, err := aessiv.Open(nil /* dst */, c.Nonce, c.Ciphertext, nil /* additionalData */)
+	pt, err := aessiv.Open(nil /* dst */, c.Ciphertext, c.Nonce /* additionalData */)
 	if err != nil {
 		return ServerCookie{}, err
 	}
 
 	var cookie ServerCookie
-	err = cookie.Decode(b)
+	err = cookie.Decode(pt)
 	if err != nil {
 		return ServerCookie{}, err
 	}

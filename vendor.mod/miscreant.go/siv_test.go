@@ -115,30 +115,6 @@ func TestAESCMACSIV(t *testing.T) {
 	}
 }
 
-func TestAESPMACSIV(t *testing.T) {
-	for i, v := range loadAESSIVExamples("aes_pmac_siv.tjson") {
-		c, err := NewAESPMACSIV(v.key)
-		if err != nil {
-			t.Errorf("NewAESPMACSIV: %d: %s", i, err)
-		}
-
-		ct, err := c.Seal(nil, v.plaintext, v.ad...)
-		if err != nil {
-			t.Errorf("Seal: %d: %s", i, err)
-		}
-		if !bytes.Equal(v.ciphertext, ct) {
-			t.Errorf("Seal: %d: expected: %x\ngot: %x", i, v.ciphertext, ct)
-		}
-		pt, err := c.Open(nil, ct, v.ad...)
-		if err != nil {
-			t.Errorf("Open: %d: %s", i, err)
-		}
-		if !bytes.Equal(v.plaintext, pt) {
-			t.Errorf("Open: %d: expected: %x\ngot: %x", i, v.plaintext, pt)
-		}
-	}
-}
-
 func TestAESCMACSIVAppend(t *testing.T) {
 	v := loadAESSIVExamples("aes_siv.tjson")[0]
 

@@ -8,17 +8,17 @@ import (
 	"testing"
 )
 
-type dblExample struct {
+type MultiplyByXExample struct {
 	input  []byte
 	output []byte
 }
 
-// Load dbl test vectors from dbl.tjson
+// Load MultiplyByX test vectors from mult_by_x.tjson
 // TODO: switch to a native Go TJSON parser when available
-func loadDblExamples() []dblExample {
+func loadMultiplyByXExamples() []MultiplyByXExample {
 	var examplesJSON map[string]interface{}
 
-	exampleData, err := ioutil.ReadFile("../vectors/dbl.tjson")
+	exampleData, err := ioutil.ReadFile("../vectors/mult_by_x.tjson")
 	if err != nil {
 		panic(err)
 	}
@@ -30,10 +30,10 @@ func loadDblExamples() []dblExample {
 	examplesArray := examplesJSON["examples:A<O>"].([]interface{})
 
 	if examplesArray == nil {
-		panic("no toplevel 'examples:A<O>' key in dbl.tjson")
+		panic("no toplevel 'examples:A<O>' key in mult_by_x.tjson")
 	}
 
-	result := make([]dblExample, len(examplesArray))
+	result := make([]MultiplyByXExample, len(examplesArray))
 
 	for i, exampleJSON := range examplesArray {
 		example := exampleJSON.(map[string]interface{})
@@ -52,20 +52,20 @@ func loadDblExamples() []dblExample {
 			panic(err)
 		}
 
-		result[i] = dblExample{input, output}
+		result[i] = MultiplyByXExample{input, output}
 	}
 
 	return result
 }
 
-func TestDbl(t *testing.T) {
-	for i, tt := range loadDblExamples() {
+func TestMultiplyByX(t *testing.T) {
+	for i, tt := range loadMultiplyByXExamples() {
 		var b Block
 		copy(b[:], tt.input)
-		b.Dbl()
+		b.MultiplyByX()
 
 		if !bytes.Equal(b[:], tt.output) {
-			t.Errorf("test %d: dbl mismatch\n\twant %x\n\thave %x", i, tt.output, b)
+			t.Errorf("test %d: MultiplyByX mismatch\n\twant %x\n\thave %x", i, tt.output, b)
 			continue
 		}
 	}

@@ -9,6 +9,7 @@ package cmac
 
 import (
 	"crypto/cipher"
+	"crypto/subtle"
 	"hash"
 
 	"github.com/miscreant/miscreant.go/block"
@@ -21,7 +22,7 @@ type cmac struct {
 	// k1 and k2 are CMAC subkeys (for finishing the tag)
 	k1, k2 block.Block
 
-	// digest contains the PMAC tag-in-progress
+	// digest contains the CMAC tag-in-progress
 	digest block.Block
 
 	// buffer contains a part of the input message, processed a block-at-a-time
@@ -43,18 +44,18 @@ func New(c cipher.Block) hash.Hash {
 
 	// Subkey generation, p. 7
 	d.k1.Encrypt(c)
-	d.k1.Dbl()
+	d.k1.MultiplyByX()
 
 	copy(d.k2[:], d.k1[:])
-	d.k2.Dbl()
+	d.k2.MultiplyByX()
 
 	return d
 }
 
 // Reset clears the digest state, starting a new digest.
 func (d *cmac) Reset() {
-	d.digest.Clear()
-	d.buf.Clear()
+	clear(d.digest[:])
+	clear(d.buf[:])
 	d.pos = 0
 }
 
@@ -64,20 +65,20 @@ func (d *cmac) Write(p []byte) (nn int, err error) {
 	left := block.Size - d.pos
 
 	if uint(len(p)) > left {
-		xor(d.buf[d.pos:], p[:left])
+		xorBytes(d.buf[d.pos:], p[:left])
 		p = p[left:]
 		d.buf.Encrypt(d.c)
 		d.pos = 0
 	}
 
 	for uint(len(p)) > block.Size {
-		xor(d.buf[:], p[:block.Size])
+		xorBytes(d.buf[:], p[:block.Size])
 		p = p[block.Size:]
 		d.buf.Encrypt(d.c)
 	}
 
 	if len(p) > 0 {
-		xor(d.buf[d.pos:], p)
+		xorBytes(d.buf[d.pos:], p)
 		d.pos += uint(len(p))
 	}
 	return
@@ -93,9 +94,7 @@ func (d *cmac) Sum(in []byte) []byte {
 	if d.pos < uint(len(d.digest)) {
 		k = d.k2
 	}
-	for i := 0; i < len(d.buf); i++ {
-		d.digest[i] = d.buf[i] ^ k[i]
-	}
+	subtle.XORBytes(d.digest[:], d.buf[:], k[:])
 	if d.pos < uint(len(d.digest)) {
 		d.digest[d.pos] ^= 0x80
 	}
@@ -107,8 +106,6 @@ func (d *cmac) Size() int { return len(d.digest) }
 
 func (d *cmac) BlockSize() int { return d.c.BlockSize() }
 
-func xor(a, b []byte) {
-	for i, v := range b {
-		a[i] ^= v
-	}
+func xorBytes(a, b []byte) {
+	subtle.XORBytes(a, a, b)
 }

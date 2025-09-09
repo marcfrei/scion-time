@@ -210,12 +210,12 @@ func (pkt *Packet) FirstCookie() ([]byte, error) {
 }
 
 func (pkt *Packet) authenticate(b []byte, key []byte) error {
-	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", key, 16)
+	aessiv, err := miscreant.NewAESCMACSIV(key)
 	if err != nil {
 		return err
 	}
 
-	decrytedBuf, err := aessiv.Open(nil, pkt.Auth.Nonce, pkt.Auth.CipherText, b[:pkt.Auth.pos])
+	decrytedBuf, err := aessiv.Open(nil, pkt.Auth.CipherText, b[:pkt.Auth.pos], pkt.Auth.Nonce)
 	if err != nil {
 		return err
 	}
@@ -443,22 +443,27 @@ type Authenticator struct {
 }
 
 func (a Authenticator) pack(buf []byte, pos int) (int, error) {
-	aessiv, err := miscreant.NewAEAD("AES-CMAC-SIV", a.Key, 16)
+	nonce := make([]byte, 16)
+	_, err := rand.Read(nonce)
 	if err != nil {
 		return 0, err
 	}
 
-	bits := make([]byte, 16)
-	_, err = rand.Read(bits)
+	aessiv, err := miscreant.NewAESCMACSIV(a.Key)
 	if err != nil {
 		return 0, err
 	}
 
-	a.Nonce = bits
+	cipherText, err := aessiv.Seal(nil, a.PlainText, buf[:pos], nonce)
+	if err != nil {
+		return 0, err
+	}
+
+	a.Nonce = nonce
 	nonceLen := uint16(len(a.Nonce))
 	noncepadlen := (-nonceLen) % 4
 
-	a.CipherText = aessiv.Seal(nil, a.Nonce, a.PlainText, buf[:pos])
+	a.CipherText = cipherText
 	cipherTextLen := uint16(len(a.CipherText))
 	cipherpadlen := (-cipherTextLen) % 4
 

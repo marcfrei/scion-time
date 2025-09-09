@@ -13,7 +13,6 @@ import (
 	"errors"
 	"github.com/miscreant/miscreant.go/block"
 	"github.com/miscreant/miscreant.go/cmac"
-	"github.com/miscreant/miscreant.go/pmac"
 	"hash"
 )
 
@@ -31,8 +30,8 @@ var (
 	ErrTooManyAssociatedDataItems = errors.New("siv: too many associated data items")
 )
 
-// Cipher is an instance of AES-SIV, configured with either AES-CMAC or
-// AES-PMAC as a message authentication code.
+// Cipher is an instance of AES-SIV, configured with AES-CMAC as a message
+// authentication code.
 type Cipher struct {
 	// MAC function used to derive a synthetic IV and authenticate the message
 	h hash.Hash
@@ -65,32 +64,6 @@ func NewAESCMACSIV(key []byte) (c *Cipher, err error) {
 
 	c = new(Cipher)
 	c.h = cmac.New(macBlock)
-	c.b = ctrBlock
-
-	return c, nil
-}
-
-// NewAESPMACSIV returns a new AES-SIV cipher with the given key, which must be
-// twice as long as an AES key, either 32 or 64 bytes to select AES-128
-// (AES-PMAC-SIV-256), or AES-256 (AES-PMAC-SIV-512).
-func NewAESPMACSIV(key []byte) (c *Cipher, err error) {
-	n := len(key)
-	if n != 32 && n != 64 {
-		return nil, ErrKeySize
-	}
-
-	macBlock, err := aes.NewCipher(key[:n/2])
-	if err != nil {
-		return nil, err
-	}
-
-	ctrBlock, err := aes.NewCipher(key[n/2:])
-	if err != nil {
-		return nil, err
-	}
-
-	c = new(Cipher)
-	c.h = pmac.New(macBlock)
 	c.b = ctrBlock
 
 	return c, nil
@@ -163,7 +136,7 @@ func (c *Cipher) s2v(s [][]byte, sn []byte) []byte {
 	h.Reset()
 
 	tmp, d := c.tmp1, c.tmp2
-	tmp.Clear()
+	clear(tmp[:])
 
 	// NOTE(dchest): The standalone S2V returns CMAC(1) if the number of
 	// passed vectors is zero, however in SIV construction this case is
@@ -186,11 +159,11 @@ func (c *Cipher) s2v(s [][]byte, sn []byte) []byte {
 
 		copy(tmp[:], h.Sum(tmp[:0]))
 		h.Reset()
-		d.Dbl()
-		xor(d[:], tmp[:])
+		d.MultiplyByX()
+		xorBytes(d[:], tmp[:])
 	}
 
-	tmp.Clear()
+	clear(tmp[:])
 
 	if len(sn) >= h.BlockSize() {
 		n := len(sn) - len(d)
@@ -202,9 +175,9 @@ func (c *Cipher) s2v(s [][]byte, sn []byte) []byte {
 	} else {
 		copy(tmp[:], sn)
 		tmp[len(sn)] = 0x80
-		d.Dbl()
+		d.MultiplyByX()
 	}
-	xor(tmp[:], d[:])
+	xorBytes(tmp[:], d[:])
 	_, err = h.Write(tmp[:])
 	if err != nil {
 		panic(err)
@@ -213,10 +186,8 @@ func (c *Cipher) s2v(s [][]byte, sn []byte) []byte {
 	return h.Sum(tmp[:0])
 }
 
-func xor(a, b []byte) {
-	for i, v := range b {
-		a[i] ^= v
-	}
+func xorBytes(a, b []byte) {
+	subtle.XORBytes(a, a, b)
 }
 
 func zeroIVBits(iv []byte) {
