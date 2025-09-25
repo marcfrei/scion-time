@@ -32,7 +32,7 @@ cd ~
 git clone https://github.com/marcfrei/scion-time.git
 
 cd ~/scion-time
-go build timeservice.go timeservicex.go
+go build timeservice.go timeservice_t.go
 
 sudo ~/scion-time/timeservice server -verbose -config testnet/test-server.toml
 ```
