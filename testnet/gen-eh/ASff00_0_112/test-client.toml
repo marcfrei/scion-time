@@ -1,6 +1,6 @@
 local_address = "1-ff00:0:112,10.1.1.12"
 scion_daemon_address = "10.1.1.12:30255"
-scion_dispatcher_mode = "internal"
+scion_dispatcher_mode = "external"
 
 ntp_reference_clocks = ["1-ff00:0:111,10.1.1.11:10123"]
 
