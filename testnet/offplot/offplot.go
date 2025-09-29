@@ -18,6 +18,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,23 +53,22 @@ func main() {
 		var ok bool
 		var t time.Time
 		var off float64
-		if len(ts) >= 6 && ts[0] == "GNS181PEX:" {
-			x := ts[1] + "T" + ts[2] + "Z"
+		if i := slices.Index(ts, "GNS181PEX:"); i != -1 && len(ts)-i > 5 {
+			x := ts[i+1] + "T" + ts[i+2] + "Z"
 			t, err = time.Parse(time.RFC3339, x)
-			if err != nil {
-				log.Fatalf("failed to parse timestamp on line: %s, %s", l, err)
+			if err == nil {
+				y := ts[i+5]
+				if len(y) != 0 && y[len(y)-1] == ',' {
+					y = y[:len(y)-1]
+				}
+				off, err = strconv.ParseFloat(y, 64)
+				if err != nil {
+					log.Fatalf("failed to parse offset on line: %s, %s", l, err)
+				}
+				ok = true
+				n++
 			}
-			y := ts[5]
-			if len(y) != 0 && y[len(y)-1] == ',' {
-				y = y[:len(y)-1]
-			}
-			off, err = strconv.ParseFloat(y, 64)
-			if err != nil {
-				log.Fatalf("failed to parse offset on line: %s, %s", l, err)
-			}
-			ok = true
-			n++
-		} else if len(ts) >= 10 &&
+		} else if len(ts) > 4 &&
 			strings.HasPrefix(ts[0], "phc2sys[") &&
 			strings.HasSuffix(ts[0], "]:") {
 			x := ts[0]
@@ -88,7 +88,7 @@ func main() {
 			off = float64(y) / 1e9
 			ok = true
 			n++
-		} else if len(ts) >= 1 {
+		} else if len(ts) > 0 {
 			r := csv.NewReader(strings.NewReader(ts[len(ts)-1]))
 			rs, err := r.ReadAll()
 			if err == nil && len(rs) == 1 && len(rs[0]) == 3 {
