@@ -69,6 +69,7 @@ type svcConfig struct {
 	LocalAddr               string   `toml:"local_address,omitempty"`
 	LocalMetricsAddr        string   `toml:"local_metrics_address,omitempty"`
 	SCIONDaemonAddr         string   `toml:"scion_daemon_address,omitempty"`
+	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
 	SCIONConfigDir          string   `toml:"scion_config_dir,omitempty"`
 	SCIONDataDir            string   `toml:"scion_data_dir,omitempty"`
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
@@ -325,6 +326,17 @@ func remoteAddress(cfg svcConfig) *snet.UDPAddr {
 	return &remoteAddr
 }
 
+func dispatcherMode(cfg svcConfig) string {
+	dispatcherMode := cfg.SCIONDispatcherMode
+	if dispatcherMode == "" {
+		dispatcherMode = dispatcherModeExternal
+	} else if dispatcherMode != dispatcherModeExternal &&
+		dispatcherMode != dispatcherModeInternal {
+		logbase.Fatal(slog.Default(), "invalid dispatcher mode value specified in config")
+	}
+	return dispatcherMode
+}
+
 func dscp(cfg svcConfig) uint8 {
 	if cfg.DSCP > 63 {
 		logbase.Fatal(slog.Default(), "invalid differentiated services codepoint value specified in config")
@@ -576,7 +588,8 @@ func runClient(configFile string) {
 			break
 		}
 	}
-	if scionClocksAvailable {
+	dispatcherMode := dispatcherMode(cfg)
+	if scionClocksAvailable && dispatcherMode == dispatcherModeInternal {
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
