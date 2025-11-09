@@ -239,7 +239,7 @@ func ReadTXTimestamp(conn *net.UDPConn) (time.Time, uint32, error) {
 		id  uint32
 		err error
 	}
-	err = sconn.Read(func(fd uintptr) bool {
+	err = sconn.Control(func(fd uintptr) {
 		pollFds := []unix.PollFd{
 			{Fd: int32(fd), Events: unix.POLLPRI},
 		}
@@ -253,11 +253,11 @@ func ReadTXTimestamp(conn *net.UDPConn) (time.Time, uint32, error) {
 		}
 		if err != nil {
 			res.err = err
-			return true
+			return
 		}
 		if n != len(pollFds) {
 			res.err = errTimestampNotFound
-			return true
+			return
 		}
 		buf := make([]byte, 0)
 		oob := make([]byte, 128)
@@ -272,22 +272,21 @@ func ReadTXTimestamp(conn *net.UDPConn) (time.Time, uint32, error) {
 		}
 		if err != nil {
 			res.err = err
-			return true
+			return
 		}
 		if n != 0 {
 			res.err = errUnexpectedData
-			return true
+			return
 		}
 		if flags != unix.MSG_ERRQUEUE {
 			res.err = errUnexpectedData
-			return true
+			return
 		}
 		if srcAddr != nil {
 			res.err = errUnexpectedData
-			return true
+			return
 		}
 		res.ts, res.id, res.err = timestampFromOOBData(oob[:oobn])
-		return true
 	})
 	if err != nil {
 		return time.Time{}, 0, err
