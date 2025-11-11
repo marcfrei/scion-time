@@ -51,6 +51,8 @@ var (
 	csptpClientsQ = make(csptpClientQueue, 0, csptpClientCap)
 
 	csptpMu sync.Mutex
+
+	csptpClientE, csptpClientG csptpClient
 )
 
 func (q csptpClientQueue) Len() int { return len(q) }
@@ -143,6 +145,8 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				slog.String("from", srcAddr.String()),
 				slog.Any("reqmsg", &reqmsg),
 			)
+
+			eConn, gConn = conn, nil
 		} else if reqmsg.SdoIDMessageType == csptp.MessageTypeFollowUp && localHostPort == csptp.GeneralPortIP {
 			var reqtlv csptp.RequestTLV
 			err = csptp.DecodeRequestTLV(&reqtlv, buf[csptp.MinMessageLength:])
@@ -171,22 +175,56 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				slog.Any("reqmsg", &reqmsg),
 				slog.Any("reqtlv", &reqtlv),
 			)
+
+			eConn, gConn = nil, conn
 		} else {
 			log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected message")
 			continue
 		}
 
 		var (
-			sequenceID       uint16
 			sequenceComplete bool
+			sequenceID       uint16
 			syncSrcPort      uint16
 			followUpSrcPort  uint16
+			rxTime           time.Time
 		)
 
 		csptpMu.Lock()
 		// maintain CSPTP client data structure
 		_ = len(csptpClients)
 		_ = len(csptpClientsQ)
+		var clnt *csptpClient
+		if eConn != nil {
+			clnt = &csptpClientE
+		} else if gConn != nil {
+			clnt = &csptpClientG
+		}
+		if clnt.key != srcAddr.Addr() || clnt.ctxts[0].sequenceID <= reqmsg.SequenceID {
+			clnt.key = srcAddr.Addr()
+			clnt.ctxts[0].conn = conn
+			clnt.ctxts[0].srcPort = srcAddr.Port()
+			clnt.ctxts[0].rxTime = rxt
+			clnt.ctxts[0].sequenceID = reqmsg.SequenceID
+			clnt.ctxts[0].correction = reqmsg.CorrectionField
+			clnt.len = 1
+		}
+		if csptpClientE.key == csptpClientG.key &&
+			csptpClientE.ctxts[0].sequenceID == csptpClientG.ctxts[0].sequenceID {
+
+			sequenceComplete = true
+			sequenceID = csptpClientE.ctxts[0].sequenceID
+
+			eConn = csptpClientE.ctxts[0].conn
+			syncSrcPort = csptpClientE.ctxts[0].srcPort
+			gConn = csptpClientG.ctxts[0].conn
+			followUpSrcPort = csptpClientG.ctxts[0].srcPort
+
+			rxTime = csptpClientE.ctxts[0].rxTime
+
+			csptpClientE.key = netip.Addr{}
+			csptpClientG.key = netip.Addr{}
+		}
 		csptpMu.Unlock()
 
 		if sequenceComplete {
@@ -225,20 +263,20 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				eConn.mu.Unlock()
 				continue
 			}
-			cTxTime0, id, err := udp.ReadTXTimestamp(eConn.c)
+			txTime0, id, err := udp.ReadTXTimestamp(eConn.c)
 			if err != nil {
-				cTxTime0 = timebase.Now()
+				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Any("error", err))
 			} else if id != eConn.txid {
-				cTxTime0 = timebase.Now()
+				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(eConn.txid)))
 				eConn.txid = id + 1
 			} else {
 				eConn.txid++
 			}
-			_ = cTxTime0
+			_ = txTime0
 			eConn.mu.Unlock()
 
 			buf = buf[:cap(buf)]
@@ -259,7 +297,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				SequenceID:         sequenceID,
 				ControlField:       csptp.ControlFollowUp,
 				LogMessageInterval: csptp.LogMessageInterval,
-				Timestamp:          csptp.Timestamp{}, /* TODO */
+				Timestamp:          csptp.TimestampFromTime(txTime0),
 			}
 			resptlv = csptp.ResponseTLV{
 				Type:   csptp.TLVTypeOrganizationExtension,
@@ -272,9 +310,10 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					csptp.OrganizationSubTypeResponse0,
 					csptp.OrganizationSubTypeResponse1,
 					csptp.OrganizationSubTypeResponse2},
-				FlagField:               csptp.TLVFlagServerStateDS,
+				// FlagField:               csptp.TLVFlagServerStateDS,
+				FlagField:               0,
 				Error:                   0,
-				RequestIngressTimestamp: csptp.Timestamp{}, /* TODO */
+				RequestIngressTimestamp: csptp.TimestampFromTime(rxTime),
 				RequestCorrectionField:  0,
 				UTCOffset:               0,
 				ServerStateDS: csptp.ServerStateDS{
@@ -304,20 +343,20 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				gConn.mu.Unlock()
 				continue
 			}
-			cTxTime1, id, err := udp.ReadTXTimestamp(gConn.c)
+			txTime1, id, err := udp.ReadTXTimestamp(gConn.c)
 			if err != nil {
-				cTxTime1 = timebase.Now()
+				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Any("error", err))
 			} else if id != gConn.txid {
-				cTxTime1 = timebase.Now()
+				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(gConn.txid)))
 				gConn.txid = id + 1
 			} else {
 				gConn.txid++
 			}
-			_ = cTxTime1
+			_ = txTime1
 			gConn.mu.Unlock()
 		}
 	}
