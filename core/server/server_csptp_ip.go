@@ -140,6 +140,11 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				continue
 			}
 
+			if reqmsg.FlagField & csptp.FlagTwoStep != csptp.FlagTwoStep {
+				log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync request")
+				continue
+			}
+
 			log.LogAttrs(ctx, slog.LevelDebug, "received request",
 				slog.Time("at", rxt),
 				slog.String("from", srcAddr.String()),

@@ -224,6 +224,15 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 				return time.Time{}, 0, err
 			}
 
+			if msg.FlagField & csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+
 			cRxTime0 = rxt
 			respmsg0, respmsg0Ok = msg, true
 		} else if msg.SdoIDMessageType == csptp.MessageTypeFollowUp {
