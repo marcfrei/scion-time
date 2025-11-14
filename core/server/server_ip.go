@@ -185,7 +185,7 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 			log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 			continue
 		}
-		txt1, id, err := udp.ReadTXTimestamp(conn)
+		txt1, id, err := udp.ReadTXTimestamp(conn, txid)
 		if err != nil {
 			txt1 = txt0
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",

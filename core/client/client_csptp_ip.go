@@ -80,7 +80,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	if n != len(buf) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime0, id, err := udp.ReadTXTimestamp(conn)
+	cTxTime0, id, err := udp.ReadTXTimestamp(conn, 0)
 	if err != nil || id != 0 {
 		cTxTime0 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
@@ -133,7 +133,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	if n != len(buf) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime1, id, err = udp.ReadTXTimestamp(conn)
+	cTxTime1, id, err = udp.ReadTXTimestamp(conn, 0)
 	if err != nil || id != 0 {
 		cTxTime1 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
@@ -224,7 +224,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 				return time.Time{}, 0, err
 			}
 
-			if msg.FlagField & csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
+			if msg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")

@@ -39,12 +39,13 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, errUnexpectedData
 				}
-				sec0 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
-				nsec0 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(8)]))
-				sec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(16)]))
-				nsec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(24)]))
-				sec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(32)]))
-				nsec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(40)]))
+				i := unix.CmsgSpace(0)
+				sec0 := *(*int64)(unsafe.Pointer(&oob[i+0]))
+				nsec0 := *(*int64)(unsafe.Pointer(&oob[i+8]))
+				sec1 := *(*int64)(unsafe.Pointer(&oob[i+16]))
+				nsec1 := *(*int64)(unsafe.Pointer(&oob[i+24]))
+				sec2 := *(*int64)(unsafe.Pointer(&oob[i+32]))
+				nsec2 := *(*int64)(unsafe.Pointer(&oob[i+40]))
 				var ts time.Time
 				if sec2 != 0 || nsec2 != 0 {
 					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
@@ -52,7 +53,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 					}
 					ts = time.Unix(sec2, nsec2).UTC()
 				} else {
-					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
+					if sec1 != 0 || nsec1 != 0 {
 						panic("unexpected timestamping behavior")
 					}
 					ts = time.Unix(sec0, nsec0).UTC()
@@ -66,7 +67,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 				return time.Unix(ts.Unix()).UTC(), nil
 			}
 		}
-		oob = oob[unix.CmsgSpace(int(h.Len))-unix.CmsgSpace(0):]
+		oob = oob[unix.CmsgSpace(int(h.Len)-unix.SizeofCmsghdr):]
 	}
 	return time.Time{}, errTimestampNotFound
 }
@@ -187,19 +188,20 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, 0, errUnexpectedData
 				}
-				sec0 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
-				nsec0 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(8)]))
-				sec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(16)]))
-				nsec1 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(24)]))
-				sec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(32)]))
-				nsec2 := *(*int64)(unsafe.Pointer(&oob[unix.CmsgSpace(40)]))
+				i := unix.CmsgSpace(0)
+				sec0 := *(*int64)(unsafe.Pointer(&oob[i+0]))
+				nsec0 := *(*int64)(unsafe.Pointer(&oob[i+8]))
+				sec1 := *(*int64)(unsafe.Pointer(&oob[i+16]))
+				nsec1 := *(*int64)(unsafe.Pointer(&oob[i+24]))
+				sec2 := *(*int64)(unsafe.Pointer(&oob[i+32]))
+				nsec2 := *(*int64)(unsafe.Pointer(&oob[i+40]))
 				if sec2 != 0 || nsec2 != 0 {
 					if sec0 != 0 || nsec0 != 0 || sec1 != 0 || nsec1 != 0 {
 						panic("unexpected timestamping behavior")
 					}
 					ts = time.Unix(sec2, nsec2).UTC()
 				} else {
-					if sec1 != 0 || nsec1 != 0 || sec2 != 0 || nsec2 != 0 {
+					if sec1 != 0 || nsec1 != 0 {
 						panic("unexpected timestamping behavior")
 					}
 					ts = time.Unix(sec0, nsec0).UTC()
@@ -221,7 +223,7 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 			id = seerr.Data
 			idSet = true
 		}
-		oob = oob[unix.CmsgSpace(int(h.Len))-unix.CmsgSpace(0):]
+		oob = oob[unix.CmsgSpace(int(h.Len)-unix.SizeofCmsghdr):]
 	}
 	if !tsSet || !idSet {
 		return time.Time{}, 0, errTimestampNotFound
@@ -229,7 +231,7 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 	return ts, id, nil
 }
 
-func ReadTXTimestamp(conn *net.UDPConn) (time.Time, uint32, error) {
+func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return time.Time{}, 0, err
@@ -240,53 +242,70 @@ func ReadTXTimestamp(conn *net.UDPConn) (time.Time, uint32, error) {
 		err error
 	}
 	err = sconn.Control(func(fd uintptr) {
-		pollFds := []unix.PollFd{
-			{Fd: int32(fd), Events: unix.POLLPRI},
-		}
-		var n int
-		for {
-			n, err = unix.Poll(pollFds, 1 /* timeout */)
-			if err == unix.EINTR {
+		for range 10 {
+			pollFds := []unix.PollFd{
+				{Fd: int32(fd), Events: unix.POLLPRI},
+			}
+			var timeout, n int
+			for {
+				n, err = unix.Poll(pollFds, timeout)
+				if err == unix.EINTR {
+					continue
+				}
+				break
+			}
+			if err != nil {
+				res.err = err
+				return
+			}
+			if n != len(pollFds) {
+				if timeout != 0 {
+					res.err = errTimestampNotFound
+					return
+				}
+				timeout = 1
 				continue
 			}
-			break
-		}
-		if err != nil {
-			res.err = err
-			return
-		}
-		if n != len(pollFds) {
-			res.err = errTimestampNotFound
-			return
-		}
-		buf := make([]byte, 0)
-		oob := make([]byte, 128)
-		var oobn, flags int
-		var srcAddr unix.Sockaddr
-		for {
-			n, oobn, flags, srcAddr, err = unix.Recvmsg(int(fd), buf, oob, unix.MSG_ERRQUEUE)
-			if err == unix.EINTR {
-				continue
+			buf := make([]byte, 0)
+			oob := make([]byte, 128)
+			var oobn, flags int
+			var srcAddr unix.Sockaddr
+			for {
+				n, oobn, flags, srcAddr, err = unix.Recvmsg(int(fd), buf, oob, unix.MSG_ERRQUEUE)
+				if err == unix.EINTR {
+					continue
+				}
+				break
 			}
-			break
+			if err != nil {
+				res.err = err
+				return
+			}
+			if n != 0 {
+				res.err = errUnexpectedData
+				return
+			}
+			if flags&unix.MSG_ERRQUEUE != unix.MSG_ERRQUEUE {
+				res.err = errUnexpectedData
+				return
+			}
+			if srcAddr != nil {
+				res.err = errUnexpectedData
+				return
+			}
+			rests, resid, err := timestampFromOOBData(oob[:oobn])
+			if err != nil {
+				res.err = err
+				return
+			}
+			if resid >= id {
+				res.ts, res.id = rests, resid
+				return
+			}
+			timeout = 0
 		}
-		if err != nil {
-			res.err = err
-			return
-		}
-		if n != 0 {
-			res.err = errUnexpectedData
-			return
-		}
-		if flags != unix.MSG_ERRQUEUE {
-			res.err = errUnexpectedData
-			return
-		}
-		if srcAddr != nil {
-			res.err = errUnexpectedData
-			return
-		}
-		res.ts, res.id, res.err = timestampFromOOBData(oob[:oobn])
+		res.err = errTimestampNotFound
+		return
 	})
 	if err != nil {
 		return time.Time{}, 0, err

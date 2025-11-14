@@ -44,7 +44,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 			ts := (*unix.Timeval)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
 			return time.Unix(ts.Unix()).UTC(), nil
 		}
-		oob = oob[unix.CmsgSpace(int(h.Len))-unix.CmsgSpace(0):]
+		oob = oob[unix.CmsgSpace(int(h.Len)-unix.SizeofCmsghdr):]
 	}
 	return time.Time{}, errTimestampNotFound
 }

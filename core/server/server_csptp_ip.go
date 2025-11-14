@@ -140,7 +140,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				continue
 			}
 
-			if reqmsg.FlagField & csptp.FlagTwoStep != csptp.FlagTwoStep {
+			if reqmsg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep {
 				log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync request")
 				continue
 			}
@@ -264,11 +264,12 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			n, err = eConn.c.WriteToUDPAddrPort(
 				buf, netip.AddrPortFrom(srcAddr.Addr(), syncSrcPort))
 			if err != nil || n != len(buf) {
-				log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
+				log.LogAttrs(ctx, slog.LevelError, "failed to write packet",
+					slog.Any("error", err))
 				eConn.mu.Unlock()
 				continue
 			}
-			txTime0, id, err := udp.ReadTXTimestamp(eConn.c)
+			txTime0, id, err := udp.ReadTXTimestamp(eConn.c, eConn.txid)
 			if err != nil {
 				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
@@ -281,7 +282,6 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			} else {
 				eConn.txid++
 			}
-			_ = txTime0
 			eConn.mu.Unlock()
 
 			buf = buf[:cap(buf)]
@@ -344,11 +344,12 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			n, err = gConn.c.WriteToUDPAddrPort(
 				buf, netip.AddrPortFrom(srcAddr.Addr(), followUpSrcPort))
 			if err != nil || n != len(buf) {
-				log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
+				log.LogAttrs(ctx, slog.LevelError, "failed to write packet",
+					slog.Any("error", err))
 				gConn.mu.Unlock()
 				continue
 			}
-			txTime1, id, err := udp.ReadTXTimestamp(gConn.c)
+			txTime1, id, err := udp.ReadTXTimestamp(gConn.c, gConn.txid)
 			if err != nil {
 				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",

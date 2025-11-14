@@ -177,7 +177,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	if n != len(buf) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime1, id, err := udp.ReadTXTimestamp(conn)
+	cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
 	if err != nil || id != 0 {
 		cTxTime1 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
