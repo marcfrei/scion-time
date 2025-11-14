@@ -220,6 +220,9 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 			if seerr.Origin != unix.SO_EE_ORIGIN_TIMESTAMPING {
 				return time.Time{}, 0, errUnexpectedData
 			}
+			if seerr.Info != unix.SCM_TSTAMP_SND {
+				return time.Time{}, 0, errUnexpectedData
+			}
 			id = seerr.Data
 			idSet = true
 		}
@@ -305,7 +308,6 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 			timeout = 0
 		}
 		res.err = errTimestampNotFound
-		return
 	})
 	if err != nil {
 		return time.Time{}, 0, err
