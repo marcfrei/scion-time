@@ -13,6 +13,7 @@ import (
 	"github.com/scionproto/scion/pkg/snet"
 
 	"example.com/scion-time/core/timebase"
+	"example.com/scion-time/net/ip"
 	"example.com/scion-time/net/udp"
 )
 
@@ -20,15 +21,6 @@ var (
 	errWrite            = errors.New("failed to write packet")
 	errUnexpectedPacket = errors.New("unexpected packet")
 )
-
-func compareIPs(x, y []byte) int {
-	addrX, okX := netip.AddrFromSlice(x)
-	addrY, okY := netip.AddrFromSlice(y)
-	if !okX || !okY {
-		panic("unexpected IP address byte slice")
-	}
-	return addrX.Unmap().Compare(addrY.Unmap())
-}
 
 func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
 	time.Duration, error) {
@@ -203,7 +195,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		}
 
 		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
-			compareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
+			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
 		if !validSrc {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				numRetries++

@@ -26,6 +26,7 @@ import (
 	"example.com/scion-time/core/measurements"
 	"example.com/scion-time/core/timebase"
 
+	"example.com/scion-time/net/ip"
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
 	"example.com/scion-time/net/ntske"
@@ -94,15 +95,6 @@ func newSCIONClientMetrics() *scionClientMetrics {
 			Help: metrics.SCIONClientRespsAcceptedInterleavedH,
 		}),
 	}
-}
-
-func compareIPs(x, y []byte) int {
-	addrX, okX := netip.AddrFromSlice(x)
-	addrY, okY := netip.AddrFromSlice(y)
-	if !okX || !okY {
-		panic("unexpected IP address byte slice")
-	}
-	return addrX.Unmap().Compare(addrY.Unmap())
 }
 
 func (c *SCIONClient) InInterleavedMode() bool {
@@ -428,9 +420,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			return time.Time{}, 0, err
 		}
 		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
-			compareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
+			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
 		validDst := scionLayer.DstIA == localAddr.IA &&
-			compareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
+			ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
 		if !validSrc || !validDst {
 			err = errUnexpectedPacket
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
