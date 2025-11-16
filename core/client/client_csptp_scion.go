@@ -159,6 +159,9 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	}
 	buffer.PushLayer(scionLayer.LayerType())
 
+	if remoteAddr.IA == localAddr.IA {
+		nextHop = netip.AddrPortFrom(nextHop.Addr(), csptp.EventPortSCION)
+	}
 	n, err = conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 	if err != nil {
 		return time.Time{}, 0, err
@@ -266,6 +269,9 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	}
 	buffer.PushLayer(scionLayer.LayerType())
 
+	if remoteAddr.IA == localAddr.IA {
+		nextHop = netip.AddrPortFrom(nextHop.Addr(), csptp.GeneralPortSCION)
+	}
 	n, err = conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 	if err != nil {
 		return time.Time{}, 0, err
