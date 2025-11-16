@@ -22,6 +22,7 @@ import (
 
 type csptpContextSCION struct {
 	conn       *udpConn
+	buf        []byte
 	lastHop    netip.AddrPort
 	scionLayer slayers.SCION
 	udpLayer   slayers.UDP
@@ -261,6 +262,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 		if clnt.key != clientID || clnt.ctxts[0].sequenceID <= reqmsg.SequenceID {
 			clnt.key = clientID
 			clnt.ctxts[0].conn = conn
+			clnt.ctxts[0].buf = buf
 			clnt.ctxts[0].lastHop = lastHop
 			clnt.ctxts[0].scionLayer = scionLayer
 			clnt.ctxts[0].udpLayer = udpLayer
@@ -268,6 +270,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			clnt.ctxts[0].sequenceID = reqmsg.SequenceID
 			clnt.ctxts[0].correction = reqmsg.CorrectionField
 			clnt.len = 1
+			buf = make([]byte, cap(buf)) 
 		}
 		if csptpSyncClntSCION.key == csptpFollowUpClntSCION.key &&
 			csptpSyncClntSCION.ctxts[0].sequenceID == csptpFollowUpClntSCION.ctxts[0].sequenceID {
