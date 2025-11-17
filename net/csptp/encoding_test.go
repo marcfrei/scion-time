@@ -1,6 +1,6 @@
 package csptp_test
 
-// Based on an Claude AI interaction
+// Based on Claude AI interactions
 
 import (
 	"bytes"
