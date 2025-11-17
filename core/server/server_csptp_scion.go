@@ -270,7 +270,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			clnt.ctxts[0].sequenceID = reqmsg.SequenceID
 			clnt.ctxts[0].correction = reqmsg.CorrectionField
 			clnt.len = 1
-			buf = make([]byte, cap(buf)) 
+			buf = make([]byte, cap(buf))
 		}
 		if csptpSyncClntSCION.key == csptpFollowUpClntSCION.key &&
 			csptpSyncClntSCION.ctxts[0].sequenceID == csptpFollowUpClntSCION.ctxts[0].sequenceID {
