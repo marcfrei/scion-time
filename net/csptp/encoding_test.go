@@ -1379,3 +1379,587 @@ func TestFollowUpResponse1(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestCSPTPRequestTLVTypeRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16,
+		csptp.TLVTypeCSPTPRequest}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPRequestTLV{Type: v}
+		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPRequestTLV
+		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Type != v {
+			t.Fail()
+		}
+		if tlv1.Type != tlv0.Type {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPRequestTLVLengthRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPRequestTLV{Length: v}
+		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPRequestTLV
+		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Length != v {
+			t.Fail()
+		}
+		if tlv1.Length != tlv0.Length {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPRequestTLVRequestFlagsRoundTrip(t *testing.T) {
+	vs := []uint32{0, 1, math.MaxUint32 - 1, math.MaxUint32,
+		csptp.TLVFlagCSPTPStatus, csptp.TLVFlagAltTimescale,
+		csptp.TLVFlagCSPTPStatus | csptp.TLVFlagAltTimescale}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPRequestTLV{RequestFlags: v}
+		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPRequestTLV
+		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.RequestFlags != v {
+			t.Fail()
+		}
+		if tlv1.RequestFlags != tlv0.RequestFlags {
+			t.Fail()
+		}
+	}
+}
+
+func TestCompleteCSPTPRequestTLVRoundTrip(t *testing.T) {
+	tlv0 := csptp.CSPTPRequestTLV{
+		Type:         csptp.TLVTypeCSPTPRequest,
+		RequestFlags: csptp.TLVFlagCSPTPStatus | csptp.TLVFlagAltTimescale,
+	}
+	tlv0.Length = uint16(csptp.EncodedCSPTPRequestTLVLength) - 4
+
+	b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+	var tlv1 csptp.CSPTPRequestTLV
+	err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tlv1 != tlv0 {
+		t.Fail()
+	}
+}
+
+func TestCSPTPRequestTLVInvalidLength(t *testing.T) {
+	var err error
+	var tlv0, tlv1 csptp.CSPTPRequestTLV
+
+	tlv0 = csptp.CSPTPRequestTLV{}
+	b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+	tlv1 = csptp.CSPTPRequestTLV{}
+	err = csptp.DecodeCSPTPRequestTLV(&tlv1, b[:13])
+	if err == nil {
+		t.Error("Expected error for insufficient buffer length")
+	}
+}
+
+func TestCSPTPResponseTLVTypeRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16,
+		csptp.TLVTypeCSPTPResponse}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{Type: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Type != v {
+			t.Fail()
+		}
+		if tlv1.Type != tlv0.Type {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPResponseTLVLengthRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{Length: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Length != v {
+			t.Fail()
+		}
+		if tlv1.Length != tlv0.Length {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPResponseTLVOrganizationIDRoundTrip(t *testing.T) {
+	vs := [][3]uint8{
+		{0, 0, 0},
+		{1, 1, 1},
+		{0xFF, 0xFF, 0xFE},
+		{0xFF, 0xFF, 0xFF},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{OrganizationID: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.OrganizationID != v {
+			t.Fail()
+		}
+		if tlv1.OrganizationID != tlv0.OrganizationID {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPResponseTLVOrganizationSubTypeRoundTrip(t *testing.T) {
+	vs := [][3]uint8{
+		{0, 0, 0},
+		{1, 1, 1},
+		{0xFF, 0xFF, 0xFE},
+		{0xFF, 0xFF, 0xFF},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{OrganizationSubType: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.OrganizationSubType != v {
+			t.Fail()
+		}
+		if tlv1.OrganizationSubType != tlv0.OrganizationSubType {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPResponseTLVReqIngressTimestampRoundTrip(t *testing.T) {
+	vs := []csptp.Timestamp{
+		{
+			Seconds:     [6]uint8{0, 0, 0, 0, 0, 0},
+			Nanoseconds: 0,
+		},
+		{
+			Seconds:     [6]uint8{0, 0, 0, 0, 0, 1},
+			Nanoseconds: 1,
+		},
+		{
+			Seconds:     [6]uint8{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE},
+			Nanoseconds: math.MaxUint32 - 1,
+		},
+		{
+			Seconds:     [6]uint8{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+			Nanoseconds: math.MaxUint32,
+		},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{ReqIngressTimestamp: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.ReqIngressTimestamp != v {
+			t.Fail()
+		}
+		if tlv1.ReqIngressTimestamp != tlv0.ReqIngressTimestamp {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPResponseTLVReqCorrectionFieldRoundTrip(t *testing.T) {
+	vs := []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPResponseTLV{ReqCorrectionField: v}
+		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPResponseTLV
+		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.ReqCorrectionField != v {
+			t.Fail()
+		}
+		if tlv1.ReqCorrectionField != tlv0.ReqCorrectionField {
+			t.Fail()
+		}
+	}
+}
+
+func TestCompleteCSPTPResponseTLVRoundTrip(t *testing.T) {
+	tlv0 := csptp.CSPTPResponseTLV{
+		Type:                csptp.TLVTypeCSPTPResponse,
+		OrganizationID:      [3]uint8{0xAA, 0xBB, 0xCC},
+		OrganizationSubType: [3]uint8{0xDD, 0xEE, 0xFF},
+		ReqIngressTimestamp: csptp.Timestamp{
+			Seconds:     [6]uint8{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+			Nanoseconds: 0x77777777,
+		},
+		ReqCorrectionField: 0x123456789ABCDEF,
+	}
+	tlv0.Length = uint16(csptp.EncodedCSPTPResponseTLVLength) - 4
+
+	b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+	csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+	var tlv1 csptp.CSPTPResponseTLV
+	err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tlv1 != tlv0 {
+		t.Fail()
+	}
+}
+
+func TestCSPTPResponseTLVInvalidLength(t *testing.T) {
+	var err error
+	var tlv0, tlv1 csptp.CSPTPResponseTLV
+
+	tlv0 = csptp.CSPTPResponseTLV{}
+	b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+	csptp.EncodeCSPTPResponseTLV(b, &tlv0)
+	tlv1 = csptp.CSPTPResponseTLV{}
+	err = csptp.DecodeCSPTPResponseTLV(&tlv1, b[:27])
+	if err == nil {
+		t.Error("Expected error for insufficient buffer length")
+	}
+}
+
+func TestCSPTPStatusTLVTypeRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16,
+		csptp.TLVTypeCSPTPStatus}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{
+			Type: v,
+			ParentAddress: csptp.PortAddress{
+				NetworkProtocol: 1,
+				AddressLength:   4,
+				Address:         []byte{192, 168, 1, 1},
+			},
+		}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Type != v {
+			t.Fail()
+		}
+		if tlv1.Type != tlv0.Type {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVLengthRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{
+			Length: v,
+			ParentAddress: csptp.PortAddress{
+				NetworkProtocol: 1,
+				AddressLength:   4,
+				Address:         []byte{192, 168, 1, 1},
+			},
+		}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.Length != v {
+			t.Fail()
+		}
+		if tlv1.Length != tlv0.Length {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVOrganizationIDRoundTrip(t *testing.T) {
+	vs := [][3]uint8{
+		{0, 0, 0},
+		{1, 1, 1},
+		{0xFF, 0xFF, 0xFE},
+		{0xFF, 0xFF, 0xFF},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{OrganizationID: v}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.OrganizationID != v {
+			t.Fail()
+		}
+		if tlv1.OrganizationID != tlv0.OrganizationID {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVOrganizationSubTypeRoundTrip(t *testing.T) {
+	vs := [][3]uint8{
+		{0, 0, 0},
+		{1, 1, 1},
+		{0xFF, 0xFF, 0xFE},
+		{0xFF, 0xFF, 0xFF},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{OrganizationSubType: v}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.OrganizationSubType != v {
+			t.Fail()
+		}
+		if tlv1.OrganizationSubType != tlv0.OrganizationSubType {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVGrandmasterPriority1RoundTrip(t *testing.T) {
+	vs := []uint8{0, 1, math.MaxUint8 - 1, math.MaxUint8}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{
+			GrandmasterPriority1: v,
+			ParentAddress: csptp.PortAddress{
+				NetworkProtocol: 1,
+				AddressLength:   4,
+				Address:         []byte{192, 168, 1, 1},
+			},
+		}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.GrandmasterPriority1 != v {
+			t.Fail()
+		}
+		if tlv1.GrandmasterPriority1 != tlv0.GrandmasterPriority1 {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVClockQualityRoundTrip(t *testing.T) {
+	vs := []csptp.ClockQuality{
+		{ClockClass: 0, ClockAccuracy: 0, OffsetScaledLogVariance: 0},
+		{ClockClass: 1, ClockAccuracy: 1, OffsetScaledLogVariance: 1},
+		{ClockClass: math.MaxUint8, ClockAccuracy: math.MaxUint8, OffsetScaledLogVariance: math.MaxUint16},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{
+			GrandmasterClockQuality: v,
+			ParentAddress: csptp.PortAddress{
+				NetworkProtocol: 1,
+				AddressLength:   4,
+				Address:         []byte{192, 168, 1, 1},
+			},
+		}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.GrandmasterClockQuality != v {
+			t.Fail()
+		}
+		if tlv1.GrandmasterClockQuality != tlv0.GrandmasterClockQuality {
+			t.Fail()
+		}
+	}
+}
+
+func TestCSPTPStatusTLVParentAddressRoundTrip(t *testing.T) {
+	vs := []csptp.PortAddress{
+		{NetworkProtocol: 0, AddressLength: 0, Address: []byte{}},
+		{NetworkProtocol: 1, AddressLength: 4, Address: []byte{192, 168, 1, 1}},
+		{NetworkProtocol: 2, AddressLength: 16, Address: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+		{NetworkProtocol: 3, AddressLength: 17, Address: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+	}
+	for _, v := range vs {
+		tlv0 := csptp.CSPTPStatusTLV{
+			ParentAddress: v,
+		}
+		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+		var tlv1 csptp.CSPTPStatusTLV
+		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tlv0.ParentAddress.NetworkProtocol != v.NetworkProtocol {
+			t.Fail()
+		}
+		if tlv0.ParentAddress.AddressLength != v.AddressLength {
+			t.Fail()
+		}
+		if !bytes.Equal(tlv0.ParentAddress.Address, v.Address) {
+			t.Fail()
+		}
+		if tlv1.ParentAddress.NetworkProtocol != tlv0.ParentAddress.NetworkProtocol {
+			t.Fail()
+		}
+		if tlv1.ParentAddress.AddressLength != tlv0.ParentAddress.AddressLength {
+			t.Fail()
+		}
+		if !bytes.Equal(tlv1.ParentAddress.Address, tlv0.ParentAddress.Address) {
+			t.Fail()
+		}
+	}
+}
+
+func TestCompleteCSPTPStatusTLVRoundTrip(t *testing.T) {
+	tlv0 := csptp.CSPTPStatusTLV{
+		Type:                 csptp.TLVTypeCSPTPStatus,
+		GrandmasterPriority1: 128,
+		GrandmasterClockQuality: csptp.ClockQuality{
+			ClockClass:              248,
+			ClockAccuracy:           47,
+			OffsetScaledLogVariance: 65535,
+		},
+		GrandmasterPriority2: 128,
+		StepsRemoved:         0,
+		CurrentUTCOffset:     37,
+		GrandmasterIdentity:  [8]uint8{0xA0, 0xA1, 0xB0, 0xB1, 0xC0, 0xC1, 0xD0, 0xD1},
+		ParentAddress: csptp.PortAddress{
+			NetworkProtocol: 1,
+			AddressLength:   4,
+			Address:         []byte{192, 168, 1, 1},
+		},
+	}
+	tlv0.Length = uint16(csptp.EncodedCSPTPStatusTLVLength(&tlv0)) - 4
+
+	b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+	var tlv1 csptp.CSPTPStatusTLV
+	err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tlv1.Type != tlv0.Type {
+		t.Fail()
+	}
+	if tlv1.Length != tlv0.Length {
+		t.Fail()
+	}
+	if tlv1.GrandmasterPriority1 != tlv0.GrandmasterPriority1 {
+		t.Fail()
+	}
+	if tlv1.GrandmasterClockQuality != tlv0.GrandmasterClockQuality {
+		t.Fail()
+	}
+	if tlv1.GrandmasterPriority2 != tlv0.GrandmasterPriority2 {
+		t.Fail()
+	}
+	if tlv1.StepsRemoved != tlv0.StepsRemoved {
+		t.Fail()
+	}
+	if tlv1.CurrentUTCOffset != tlv0.CurrentUTCOffset {
+		t.Fail()
+	}
+	if tlv1.GrandmasterIdentity != tlv0.GrandmasterIdentity {
+		t.Fail()
+	}
+	if tlv1.ParentAddress.NetworkProtocol != tlv0.ParentAddress.NetworkProtocol {
+		t.Fail()
+	}
+	if tlv1.ParentAddress.AddressLength != tlv0.ParentAddress.AddressLength {
+		t.Fail()
+	}
+	if !bytes.Equal(tlv1.ParentAddress.Address, tlv0.ParentAddress.Address) {
+		t.Fail()
+	}
+}
+
+func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
+	var err error
+	var tlv0, tlv1 csptp.CSPTPStatusTLV
+
+	tlv0 = csptp.CSPTPStatusTLV{
+		ParentAddress: csptp.PortAddress{
+			NetworkProtocol: 1,
+			AddressLength:   4,
+			Address:         []byte{192, 168, 1, 1},
+		},
+	}
+	b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+	tlv1 = csptp.CSPTPStatusTLV{}
+	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:25])
+	if err == nil {
+		t.Error("Expected error for insufficient buffer length")
+	}
+
+	tlv0 = csptp.CSPTPStatusTLV{
+		ParentAddress: csptp.PortAddress{
+			NetworkProtocol: 1,
+			AddressLength:   4,
+			Address:         []byte{192, 168, 1, 1},
+		},
+	}
+	b = make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+	tlv1 = csptp.CSPTPStatusTLV{}
+	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:len(b)-1])
+	if err == nil {
+		t.Error("Expected error for insufficient buffer length with parent address")
+	}
+}
