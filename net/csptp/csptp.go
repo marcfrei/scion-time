@@ -55,7 +55,7 @@ const (
 	OrganizationSubTypeResponse2 = 0x73
 
 	TLVFlagServerStateDS = 1 << 0
-	TLVFlagCSPTPStatus   = 1 << 0
+	TLVFlagStatus        = 1 << 0
 	TLVFlagAltTimescale  = 1 << 1
 
 	ErrorTxTimestampInvalid = 1

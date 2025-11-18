@@ -1423,8 +1423,8 @@ func TestCSPTPRequestTLVLengthRoundTrip(t *testing.T) {
 
 func TestCSPTPRequestTLVRequestFlagsRoundTrip(t *testing.T) {
 	vs := []uint32{0, 1, math.MaxUint32 - 1, math.MaxUint32,
-		csptp.TLVFlagCSPTPStatus, csptp.TLVFlagAltTimescale,
-		csptp.TLVFlagCSPTPStatus | csptp.TLVFlagAltTimescale}
+		csptp.TLVFlagStatus, csptp.TLVFlagAltTimescale,
+		csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPRequestTLV{RequestFlags: v}
 		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
@@ -1446,7 +1446,7 @@ func TestCSPTPRequestTLVRequestFlagsRoundTrip(t *testing.T) {
 func TestCompleteCSPTPRequestTLVRoundTrip(t *testing.T) {
 	tlv0 := csptp.CSPTPRequestTLV{
 		Type:         csptp.TLVTypeCSPTPRequest,
-		RequestFlags: csptp.TLVFlagCSPTPStatus | csptp.TLVFlagAltTimescale,
+		RequestFlags: csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale,
 	}
 	tlv0.Length = uint16(csptp.EncodedCSPTPRequestTLVLength) - 4
 
