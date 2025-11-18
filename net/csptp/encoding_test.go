@@ -304,7 +304,10 @@ func TestTimestampRoundTrip(t *testing.T) {
 
 func TestCompleteMessageRoundTrip(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -906,7 +909,10 @@ func TestResponseTLVInvalidLength(t *testing.T) {
 
 func TestSyncRequest0(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -947,7 +953,10 @@ func TestSyncRequest0(t *testing.T) {
 
 func TestFollowUpRequest0(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeFollowUp,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeFollowUp,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1019,7 +1028,10 @@ func TestFollowUpRequest0(t *testing.T) {
 
 func TestSyncResponse0(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1060,7 +1072,10 @@ func TestSyncResponse0(t *testing.T) {
 
 func TestFollowUpResponse0(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeFollowUp,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeFollowUp,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1147,7 +1162,10 @@ func TestFollowUpResponse0(t *testing.T) {
 
 func TestSyncRequest1(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1188,7 +1206,10 @@ func TestSyncRequest1(t *testing.T) {
 
 func TestFollowUpRequest1(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeFollowUp,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeFollowUp,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1257,7 +1278,10 @@ func TestFollowUpRequest1(t *testing.T) {
 
 func TestSyncResponse1(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -1298,7 +1322,10 @@ func TestSyncResponse1(t *testing.T) {
 
 func TestFollowUpResponse1(t *testing.T) {
 	msg0 := csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeFollowUp,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeFollowUp,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,

@@ -81,7 +81,10 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	var reqtlv csptp.RequestTLV
 
 	msg = csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeSync,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeSync,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -178,7 +181,10 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	buf = buf[:cap(buf)]
 
 	msg = csptp.Message{
-		SdoIDMessageType:    csptp.MessageTypeFollowUp,
+		SdoIDMessageType: csptp.SdoIDMessageType(
+			csptp.SdoID,
+			csptp.MessageTypeFollowUp,
+		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
 		DomainNumber:        csptp.DomainNumber,
@@ -414,7 +420,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 			return time.Time{}, 0, err
 		}
 
-		if msg.SdoIDMessageType == csptp.MessageTypeSync {
+		if msg.MessageType() == csptp.MessageTypeSync {
 			respmsg0Ok = false
 
 			if udpLayer.SrcPort != csptp.EventPortSCION {
@@ -446,7 +452,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 
 			cRxTime0 = rxt
 			respmsg0, respmsg0Ok = msg, true
-		} else if msg.SdoIDMessageType == csptp.MessageTypeFollowUp {
+		} else if msg.MessageType() == csptp.MessageTypeFollowUp {
 			respmsg1Ok = false
 
 			if udpLayer.SrcPort != csptp.GeneralPortSCION {

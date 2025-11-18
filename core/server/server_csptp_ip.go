@@ -133,7 +133,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			continue
 		}
 
-		if reqmsg.SdoIDMessageType == csptp.MessageTypeSync && localHostPort == csptp.EventPortIP {
+		if reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortIP {
 			if len(buf)-csptp.MinMessageLength != 0 {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Sync message length")
 				continue
@@ -151,7 +151,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			)
 
 			syncConn, followUpConn = conn, nil
-		} else if reqmsg.SdoIDMessageType == csptp.MessageTypeFollowUp && localHostPort == csptp.GeneralPortIP {
+		} else if reqmsg.MessageType() == csptp.MessageTypeFollowUp && localHostPort == csptp.GeneralPortIP {
 			var reqtlv csptp.RequestTLV
 			err = csptp.DecodeRequestTLV(&reqtlv, buf[csptp.MinMessageLength:])
 			if err != nil {
@@ -229,7 +229,10 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			buf = buf[:cap(buf)]
 
 			msg = csptp.Message{
-				SdoIDMessageType:    csptp.MessageTypeSync,
+				SdoIDMessageType: csptp.SdoIDMessageType(
+					csptp.SdoID,
+					csptp.MessageTypeSync,
+				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
 				DomainNumber:        csptp.DomainNumber,
@@ -277,7 +280,10 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			buf = buf[:cap(buf)]
 
 			msg = csptp.Message{
-				SdoIDMessageType:    csptp.MessageTypeFollowUp,
+				SdoIDMessageType: csptp.SdoIDMessageType(
+					csptp.SdoID,
+					csptp.MessageTypeFollowUp,
+				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
 				DomainNumber:        csptp.DomainNumber,
