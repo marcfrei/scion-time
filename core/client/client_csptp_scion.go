@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/google/gopacket"
+	"github.com/gopacket/gopacket"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/slayers"
@@ -544,7 +544,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
 		slog.Time("at", cRxTime1),
 		slog.String("from", reference),
-		slog.String("via", snet.Fingerprint(path).String()),
+		slog.String("via", path.Metadata().Fingerprint().String()),
 		slog.Duration("C2S delay", c2sDelay),
 		slog.Duration("S2C delay", s2cDelay),
 		slog.Duration("clock offset", clockOffset),

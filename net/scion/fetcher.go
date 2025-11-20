@@ -12,7 +12,6 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/drkey"
-	"github.com/scionproto/scion/pkg/scrypto/cppki"
 
 	"example.com/scion-time/base/metrics"
 )
@@ -71,16 +70,14 @@ func (f *Fetcher) FetchHostASKey(ctx context.Context, meta drkey.HostASMeta) (
 		hak.DstIA != meta.DstIA ||
 		hak.SrcHost != meta.SrcHost {
 		if useMockKeys {
-			now := time.Now()
+			now := time.Now().UTC()
 			hak = drkey.HostASKey{
 				ProtoId: meta.ProtoId,
 				SrcIA:   meta.SrcIA,
 				DstIA:   meta.DstIA,
 				Epoch: drkey.Epoch{
-					Validity: cppki.Validity{
-						NotBefore: now.Add(-6 * time.Hour),
-						NotAfter:  now.Add(6 * time.Hour),
-					},
+					NotBefore: now.Add(-6 * time.Hour),
+					NotAfter:  now.Add(6 * time.Hour),
 				},
 				SrcHost: meta.SrcHost,
 			}
@@ -106,16 +103,14 @@ func (f *Fetcher) FetchHostASKey(ctx context.Context, meta drkey.HostASMeta) (
 func (f *Fetcher) FetchHostHostKey(ctx context.Context, meta drkey.HostHostMeta) (
 	drkey.HostHostKey, error) {
 	if useMockKeys {
-		now := time.Now()
+		now := time.Now().UTC()
 		return drkey.HostHostKey{
 			ProtoId: meta.ProtoId,
 			SrcIA:   meta.SrcIA,
 			DstIA:   meta.DstIA,
 			Epoch: drkey.Epoch{
-				Validity: cppki.Validity{
-					NotBefore: now.Add(-6 * time.Hour),
-					NotAfter:  now.Add(6 * time.Hour),
-				},
+				NotBefore: now.Add(-6 * time.Hour),
+				NotAfter:  now.Add(6 * time.Hour),
 			},
 			SrcHost: meta.SrcHost,
 			DstHost: meta.DstHost,

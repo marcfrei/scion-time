@@ -121,7 +121,7 @@ func RunSCIONBenchmark(
 			_, _ = hg.PercentilesPrint(os.Stdout, 1, 1.0)
 		}()
 	}
-	t0 := time.Now()
+	t0 := time.Now().UTC()
 	close(sg)
 	wg.Wait()
 	log.LogAttrs(ctx, slog.LevelInfo, "time elapsed", slog.Duration("duration", time.Since(t0)))

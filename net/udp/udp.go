@@ -47,7 +47,7 @@ func UDPAddrFromSnet(a *snet.UDPAddr) UDPAddr {
 // Timestamp handling based on studying code from the following projects:
 // - https://github.com/bsdphk/Ntimed, file udp.c
 // - https://github.com/golang/go, package "golang.org/x/sys/unix"
-// - https://github.com/google/gopacket, package "github.com/google/gopacket/pcapgo"
+// - https://github.com/gopacket/gopacket, package "github.com/gopacket/gopacket/pcapgo"
 // - https://github.com/facebook/time, package "github.com/facebook/time/ntp/protocol/ntp"
 
 func TimestampLen() int {

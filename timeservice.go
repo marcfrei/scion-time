@@ -179,7 +179,7 @@ func ntskeServerFromRemoteAddr(remoteAddr string) string {
 }
 
 func (c *tlsCertCache) loadCert(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 	if now.Before(c.reloadedAt) || !now.Before(c.reloadedAt.Add(tlsCertReloadInterval)) {
 		cert, err := tls.LoadX509KeyPair(c.certFile, c.keyFile)
 		if err != nil {
@@ -799,7 +799,7 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 	if serverMode {
 		hostASMeta := drkey.HostASMeta{
 			ProtoId:  123,
-			Validity: time.Now(),
+			Validity: time.Now().UTC(),
 			SrcIA:    serverAddr.IA,
 			DstIA:    clientAddr.IA,
 			SrcHost:  serverAddr.Host.IP.String(),
@@ -809,7 +809,7 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 			fmt.Fprintln(os.Stderr, "Error fetching host-AS key:", err)
 			return
 		}
-		t0 := time.Now()
+		t0 := time.Now().UTC()
 		serverKey, err := scion.DeriveHostHostKey(hostASKey, clientAddr.Host.IP.String())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error deriving host-host key:", err)
@@ -823,13 +823,13 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 	} else {
 		hostHostMeta := drkey.HostHostMeta{
 			ProtoId:  123,
-			Validity: time.Now(),
+			Validity: time.Now().UTC(),
 			SrcIA:    serverAddr.IA,
 			DstIA:    clientAddr.IA,
 			SrcHost:  serverAddr.Host.IP.String(),
 			DstHost:  clientAddr.Host.IP.String(),
 		}
-		t0 := time.Now()
+		t0 := time.Now().UTC()
 		clientKey, err := scion.FetchHostHostKey(ctx, dc, hostHostMeta)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error fetching host-host key:", err)

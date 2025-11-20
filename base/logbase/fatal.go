@@ -15,7 +15,7 @@ func logFatal(ctx context.Context, log *slog.Logger, msg string, attrs ...slog.A
 	if n != 1 {
 		panic("unexpected call stack")
 	}
-	r := slog.NewRecord(time.Now(), slog.LevelError, msg, pcs[0]) // #nosec G602
+	r := slog.NewRecord(time.Now().UTC(), slog.LevelError, msg, pcs[0]) // #nosec G602
 	r.AddAttrs(attrs...)
 	_ = log.Handler().Handle(ctx, r)
 	os.Exit(1)

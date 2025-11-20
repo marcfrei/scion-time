@@ -76,7 +76,7 @@ func RunIPBenchmark(localAddr, remoteAddr *net.UDPAddr, authModes []string, ntsk
 			}
 		}()
 	}
-	t0 := time.Now()
+	t0 := time.Now().UTC()
 	close(sg)
 	wg.Wait()
 	log.LogAttrs(ctx, slog.LevelInfo, "time elapsed", slog.Duration("duration", time.Since(t0)))

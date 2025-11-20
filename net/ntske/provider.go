@@ -46,7 +46,7 @@ func (k *Key) IsValidAt(t time.Time) bool {
 }
 
 func (p *Provider) generateNext() {
-	tNow := time.Now()
+	tNow := time.Now().UTC()
 	for id, key := range p.keys {
 		if !key.IsValidAt(tNow) {
 			delete(p.keys, id)
@@ -92,7 +92,7 @@ func (p *Provider) Get(id int) (Key, bool) {
 	if !ok {
 		return Key{}, false
 	}
-	if !key.IsValidAt(time.Now()) {
+	if !key.IsValidAt(time.Now().UTC()) {
 		return Key{}, false
 	}
 	return key, true
@@ -103,7 +103,7 @@ func (p *Provider) Current() Key {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	tNow := time.Now()
+	tNow := time.Now().UTC()
 	if key := p.keys[p.currentID]; !key.IsValidAt(tNow) || p.generatedAt.Add(keyRenewalInterval).Before(tNow) {
 		p.generateNext()
 	}
