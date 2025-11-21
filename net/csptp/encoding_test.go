@@ -1511,7 +1511,7 @@ func TestCSPTPRequestTLVTypeRoundTrip(t *testing.T) {
 		csptp.TLVTypeCSPTPRequest}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPRequestTLV{Type: v}
-		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		b := make([]byte, csptp.CSPTPRequestTLVLength)
 		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPRequestTLV
 		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
@@ -1531,7 +1531,7 @@ func TestCSPTPRequestTLVLengthRoundTrip(t *testing.T) {
 	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPRequestTLV{Length: v}
-		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		b := make([]byte, csptp.CSPTPRequestTLVLength)
 		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPRequestTLV
 		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
@@ -1553,7 +1553,7 @@ func TestCSPTPRequestTLVRequestFlagsRoundTrip(t *testing.T) {
 		csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPRequestTLV{RequestFlags: v}
-		b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+		b := make([]byte, csptp.CSPTPRequestTLVLength)
 		csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPRequestTLV
 		err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
@@ -1574,9 +1574,9 @@ func TestCompleteCSPTPRequestTLVRoundTrip(t *testing.T) {
 		Type:         csptp.TLVTypeCSPTPRequest,
 		RequestFlags: csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale,
 	}
-	tlv0.Length = uint16(csptp.EncodedCSPTPRequestTLVLength) - 4
+	tlv0.Length = uint16(csptp.CSPTPRequestTLVLength) - 4
 
-	b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+	b := make([]byte, csptp.CSPTPRequestTLVLength)
 	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 	var tlv1 csptp.CSPTPRequestTLV
 	err := csptp.DecodeCSPTPRequestTLV(&tlv1, b)
@@ -1593,7 +1593,7 @@ func TestCSPTPRequestTLVInvalidLength(t *testing.T) {
 	var tlv0, tlv1 csptp.CSPTPRequestTLV
 
 	tlv0 = csptp.CSPTPRequestTLV{}
-	b := make([]byte, csptp.EncodedCSPTPRequestTLVLength)
+	b := make([]byte, csptp.CSPTPRequestTLVLength)
 	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPRequestTLV{}
 	err = csptp.DecodeCSPTPRequestTLV(&tlv1, b[:13])
@@ -1607,7 +1607,7 @@ func TestCSPTPResponseTLVTypeRoundTrip(t *testing.T) {
 		csptp.TLVTypeCSPTPResponse}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{Type: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1627,7 +1627,7 @@ func TestCSPTPResponseTLVLengthRoundTrip(t *testing.T) {
 	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{Length: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1652,7 +1652,7 @@ func TestCSPTPResponseTLVOrganizationIDRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{OrganizationID: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1677,7 +1677,7 @@ func TestCSPTPResponseTLVOrganizationSubTypeRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1714,7 +1714,7 @@ func TestCSPTPResponseTLVReqIngressTimestampRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{ReqIngressTimestamp: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1734,7 +1734,7 @@ func TestCSPTPResponseTLVReqCorrectionFieldRoundTrip(t *testing.T) {
 	vs := []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPResponseTLV{ReqCorrectionField: v}
-		b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+		b := make([]byte, csptp.CSPTPResponseTLVLength)
 		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPResponseTLV
 		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1761,9 +1761,9 @@ func TestCompleteCSPTPResponseTLVRoundTrip(t *testing.T) {
 		},
 		ReqCorrectionField: 0x123456789ABCDEF,
 	}
-	tlv0.Length = uint16(csptp.EncodedCSPTPResponseTLVLength) - 4
+	tlv0.Length = uint16(csptp.CSPTPResponseTLVLength) - 4
 
-	b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+	b := make([]byte, csptp.CSPTPResponseTLVLength)
 	csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 	var tlv1 csptp.CSPTPResponseTLV
 	err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
@@ -1780,7 +1780,7 @@ func TestCSPTPResponseTLVInvalidLength(t *testing.T) {
 	var tlv0, tlv1 csptp.CSPTPResponseTLV
 
 	tlv0 = csptp.CSPTPResponseTLV{}
-	b := make([]byte, csptp.EncodedCSPTPResponseTLVLength)
+	b := make([]byte, csptp.CSPTPResponseTLVLength)
 	csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPResponseTLV{}
 	err = csptp.DecodeCSPTPResponseTLV(&tlv1, b[:27])
@@ -1801,7 +1801,7 @@ func TestCSPTPStatusTLVTypeRoundTrip(t *testing.T) {
 				Address:         []byte{192, 168, 1, 1},
 			},
 		}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1828,7 +1828,7 @@ func TestCSPTPStatusTLVLengthRoundTrip(t *testing.T) {
 				Address:         []byte{192, 168, 1, 1},
 			},
 		}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1853,7 +1853,7 @@ func TestCSPTPStatusTLVOrganizationIDRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPStatusTLV{OrganizationID: v}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1878,7 +1878,7 @@ func TestCSPTPStatusTLVOrganizationSubTypeRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.CSPTPStatusTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1905,7 +1905,7 @@ func TestCSPTPStatusTLVGrandmasterPriority1RoundTrip(t *testing.T) {
 				Address:         []byte{192, 168, 1, 1},
 			},
 		}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1936,7 +1936,7 @@ func TestCSPTPStatusTLVClockQualityRoundTrip(t *testing.T) {
 				Address:         []byte{192, 168, 1, 1},
 			},
 		}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -1963,7 +1963,7 @@ func TestCSPTPStatusTLVParentAddressRoundTrip(t *testing.T) {
 		tlv0 := csptp.CSPTPStatusTLV{
 			ParentAddress: v,
 		}
-		b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 		var tlv1 csptp.CSPTPStatusTLV
 		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -2010,9 +2010,9 @@ func TestCompleteCSPTPStatusTLVRoundTrip(t *testing.T) {
 			Address:         []byte{192, 168, 1, 1},
 		},
 	}
-	tlv0.Length = uint16(csptp.EncodedCSPTPStatusTLVLength(&tlv0)) - 4
+	tlv0.Length = uint16(csptp.CSPTPStatusTLVLength(&tlv0)) - 4
 
-	b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 	var tlv1 csptp.CSPTPStatusTLV
 	err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
@@ -2066,7 +2066,7 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 			Address:         []byte{192, 168, 1, 1},
 		},
 	}
-	b := make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPStatusTLV{}
 	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:25])
@@ -2081,7 +2081,7 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 			Address:         []byte{192, 168, 1, 1},
 		},
 	}
-	b = make([]byte, csptp.EncodedCSPTPStatusTLVLength(&tlv0))
+	b = make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPStatusTLV{}
 	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:len(b)-1])
