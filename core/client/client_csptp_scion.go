@@ -393,6 +393,15 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 			return time.Time{}, 0, err
 		}
 
+		if len(udpLayer.Payload) < csptp.MinMessageLength {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+				continue
+			}
+			return time.Time{}, 0, err
+		}
+
 		err = csptp.DecodeMessage(&msg, udpLayer.Payload[:csptp.MinMessageLength])
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
