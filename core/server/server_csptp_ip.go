@@ -168,7 +168,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Follow Up message")
 				continue
 			}
-			if len(buf)-csptp.MinMessageLength != csptp.EncodedRequestTLVLength(&reqtlv) {
+			if len(buf)-csptp.MinMessageLength != csptp.RequestTLVLength(&reqtlv) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Follow Up message length")
 				continue
 			}
@@ -329,8 +329,8 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					Reserved:        0,
 				},
 			}
-			msg.MessageLength += uint16(csptp.EncodedResponseTLVLength(&resptlv))
-			resptlv.Length = uint16(csptp.EncodedResponseTLVLength(&resptlv))
+			msg.MessageLength += uint16(csptp.ResponseTLVLength(&resptlv))
+			resptlv.Length = uint16(csptp.ResponseTLVLength(&resptlv))
 
 			buf = buf[:msg.MessageLength]
 			csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)

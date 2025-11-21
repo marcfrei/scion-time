@@ -214,8 +214,8 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 			csptp.OrganizationSubTypeRequest2},
 		FlagField: csptp.TLVFlagServerStateDS,
 	}
-	msg.MessageLength += uint16(csptp.EncodedRequestTLVLength(&reqtlv))
-	reqtlv.Length = uint16(csptp.EncodedRequestTLVLength(&reqtlv))
+	msg.MessageLength += uint16(csptp.RequestTLVLength(&reqtlv))
+	reqtlv.Length = uint16(csptp.RequestTLVLength(&reqtlv))
 
 	buf = buf[:msg.MessageLength]
 	csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
@@ -496,7 +496,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 				return time.Time{}, 0, err
 			}
 
-			if len(udpLayer.Payload)-csptp.MinMessageLength != csptp.EncodedResponseTLVLength(&resptlv) {
+			if len(udpLayer.Payload)-csptp.MinMessageLength != csptp.ResponseTLVLength(&resptlv) {
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")

@@ -87,6 +87,11 @@ type Message struct {
 	Timestamp           Timestamp
 }
 
+type TLVHeader struct {
+	Type   uint16
+	Length uint16
+}
+
 type RequestTLV struct {
 	Type                uint16
 	Length              uint16
@@ -243,7 +248,7 @@ var (
 )
 
 func DecodeMessage(msg *Message, b []byte) error {
-	if len(b) < MinMessageLength {
+	if len(b) < 44 {
 		return errUnexpectedMessageSize
 	}
 
@@ -287,9 +292,27 @@ func (m *Message) MessageType() uint8 {
 	return m.SdoIDMessageType & 0b0000_1111
 }
 
-const MaxEncodedRequestTLVLength = 54
+const MinTLVLength = 4
 
-func EncodedRequestTLVLength(tlv *RequestTLV) int {
+var (
+	errUnexpectedTLVSize = errors.New("unexpected TLV size")
+)
+
+func DecodeTLVHeader(hdr *TLVHeader, b []byte) error {
+	if len(b) < 4 {
+		return errUnexpectedTLVSize
+	}
+
+	_ = b[3]
+	hdr.Type = uint16(b[0])<<8 | uint16(b[1])
+	hdr.Length = uint16(b[2])<<8 | uint16(b[3])
+
+	return nil
+}
+
+const MaxRequestTLVLength = 54
+
+func RequestTLVLength(tlv *RequestTLV) int {
 	len := 14 + /* padding: */ 22
 	if tlv.FlagField&TLVFlagServerStateDS == TLVFlagServerStateDS {
 		len += 18
@@ -338,16 +361,16 @@ func DecodeRequestTLV(tlv *RequestTLV, b []byte) error {
 	tlv.OrganizationID = [3]uint8{b[4], b[5], b[6]}
 	tlv.OrganizationSubType = [3]uint8{b[7], b[8], b[9]}
 	tlv.FlagField = uint32(b[10])<<24 | uint32(b[11])<<16 | uint32(b[12])<<8 | uint32(b[13])
-	if len(b) < EncodedRequestTLVLength(tlv) {
+	if len(b) < RequestTLVLength(tlv) {
 		return errUnexpectedRequestTLVSize
 	}
 
 	return nil
 }
 
-const MaxEncodedResponseTLVLength = 54
+const MaxResponseTLVLength = 54
 
-func EncodedResponseTLVLength(tlv *ResponseTLV) int {
+func ResponseTLVLength(tlv *ResponseTLV) int {
 	len := 36
 	if tlv.FlagField&TLVFlagServerStateDS == TLVFlagServerStateDS {
 		len += 18
@@ -430,7 +453,7 @@ func DecodeResponseTLV(tlv *ResponseTLV, b []byte) error {
 	tlv.OrganizationID = [3]uint8{b[4], b[5], b[6]}
 	tlv.OrganizationSubType = [3]uint8{b[7], b[8], b[9]}
 	tlv.FlagField = uint32(b[10])<<24 | uint32(b[11])<<16 | uint32(b[12])<<8 | uint32(b[13])
-	if len(b) < EncodedResponseTLVLength(tlv) {
+	if len(b) < ResponseTLVLength(tlv) {
 		return errUnexpectedResponseTLVSize
 	}
 
@@ -468,7 +491,7 @@ func DecodeResponseTLV(tlv *ResponseTLV, b []byte) error {
 	return nil
 }
 
-const EncodedCSPTPRequestTLVLength = 14
+const CSPTPRequestTLVLength = 14
 
 func EncodeCSPTPRequestTLV(b []byte, tlv *CSPTPRequestTLV) {
 	_ = b[13]
@@ -504,7 +527,7 @@ func DecodeCSPTPRequestTLV(tlv *CSPTPRequestTLV, b []byte) error {
 	return nil
 }
 
-const EncodedCSPTPResponseTLVLength = 28
+const CSPTPResponseTLVLength = 28
 
 func EncodeCSPTPResponseTLV(b []byte, tlv *CSPTPResponseTLV) {
 	_ = b[27]
@@ -559,9 +582,9 @@ func DecodeCSPTPResponseTLV(tlv *CSPTPResponseTLV, b []byte) error {
 	return nil
 }
 
-const MinEncodedCSPTPStatusTLVLength = 32
+const MinCSPTPStatusTLVLength = 32
 
-func EncodedCSPTPStatusTLVLength(tlv *CSPTPStatusTLV) int {
+func CSPTPStatusTLVLength(tlv *CSPTPStatusTLV) int {
 	len := 32 + int(tlv.ParentAddress.AddressLength)
 	if int(tlv.ParentAddress.AddressLength)%2 != 0 {
 		len++

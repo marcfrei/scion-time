@@ -339,12 +339,111 @@ func TestCompleteMessageRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTLVHeaderTypeRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16,
+		csptp.TLVTypeOrganizationExtension, csptp.TLVTypeCSPTPRequest,
+		csptp.TLVTypeCSPTPResponse, csptp.TLVTypeCSPTPStatus}
+	for _, v := range vs {
+		b := []byte{
+			byte(v >> 8), byte(v),
+			0, 0,
+		}
+		var hdr csptp.TLVHeader
+		err := csptp.DecodeTLVHeader(&hdr, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Type != v {
+			t.Fail()
+		}
+	}
+}
+
+func TestTLVHeaderLengthRoundTrip(t *testing.T) {
+	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
+	for _, v := range vs {
+		b := []byte{
+			0, 0,
+			byte(v >> 8), byte(v),
+		}
+		var hdr csptp.TLVHeader
+		err := csptp.DecodeTLVHeader(&hdr, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Length != v {
+			t.Fail()
+		}
+	}
+}
+
+func TestTLVHeaderRoundTrip(t *testing.T) {
+	testCases := []struct {
+		typ uint16
+		len uint16
+	}{
+		{0, 0},
+		{1, 1},
+		{csptp.TLVTypeOrganizationExtension, 36},
+		{csptp.TLVTypeCSPTPRequest, 14},
+		{csptp.TLVTypeCSPTPResponse, 28},
+		{csptp.TLVTypeCSPTPStatus, 32},
+		{math.MaxUint16, math.MaxUint16},
+	}
+	for _, tc := range testCases {
+		b := []byte{
+			byte(tc.typ >> 8), byte(tc.typ),
+			byte(tc.len >> 8), byte(tc.len),
+		}
+		var hdr csptp.TLVHeader
+		err := csptp.DecodeTLVHeader(&hdr, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Type != tc.typ {
+			t.Fail()
+		}
+		if hdr.Length != tc.len {
+			t.Fail()
+		}
+	}
+}
+
+func TestTLVHeaderInvalidLength(t *testing.T) {
+	var hdr csptp.TLVHeader
+
+	err := csptp.DecodeTLVHeader(&hdr, []byte{})
+	if err == nil {
+		t.Error("Expected error for empty buffer")
+	}
+
+	err = csptp.DecodeTLVHeader(&hdr, []byte{0})
+	if err == nil {
+		t.Error("Expected error for 1-byte buffer")
+	}
+
+	err = csptp.DecodeTLVHeader(&hdr, []byte{0, 0})
+	if err == nil {
+		t.Error("Expected error for 2-byte buffer")
+	}
+
+	err = csptp.DecodeTLVHeader(&hdr, []byte{0, 0, 0})
+	if err == nil {
+		t.Error("Expected error for 3-byte buffer")
+	}
+
+	err = csptp.DecodeTLVHeader(&hdr, []byte{0, 0, 0, 0})
+	if err != nil {
+		t.Error("Expected no error for 4-byte buffer")
+	}
+}
+
 func TestRequestTLVTypeRoundTrip(t *testing.T) {
 	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16,
 		csptp.TLVTypeOrganizationExtension}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{Type: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -364,7 +463,7 @@ func TestRequestTLVLengthRoundTrip(t *testing.T) {
 	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{Length: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -390,7 +489,7 @@ func TestRequestTLVOrganizationIDRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{OrganizationID: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -416,7 +515,7 @@ func TestRequestTLVOrganizationSubTypeRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -437,7 +536,7 @@ func TestRequestTLVFlagFieldRoundTrip(t *testing.T) {
 		csptp.TLVFlagServerStateDS}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{FlagField: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -457,7 +556,7 @@ func TestRequestTLVFlagFieldServerStateDSRoundTrip(t *testing.T) {
 	vs := []uint32{0, csptp.TLVFlagServerStateDS}
 	for _, v := range vs {
 		tlv0 := csptp.RequestTLV{FlagField: v}
-		b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+		b := make([]byte, csptp.RequestTLVLength(&tlv0))
 		csptp.EncodeRequestTLV(b, &tlv0)
 		var tlv1 csptp.RequestTLV
 		err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -496,9 +595,9 @@ func TestCompleteRequestTLVRoundTrip(t *testing.T) {
 		},
 		FlagField: csptp.TLVFlagServerStateDS,
 	}
-	tlv0.Length = uint16(csptp.EncodedRequestTLVLength(&tlv0)) - 4
+	tlv0.Length = uint16(csptp.RequestTLVLength(&tlv0)) - 4
 
-	b := make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+	b := make([]byte, csptp.RequestTLVLength(&tlv0))
 	csptp.EncodeRequestTLV(b, &tlv0)
 	var tlv1 csptp.RequestTLV
 	err := csptp.DecodeRequestTLV(&tlv1, b)
@@ -516,7 +615,7 @@ func TestRequestTLVInvalidLength(t *testing.T) {
 	var b []byte
 
 	tlv0 = csptp.RequestTLV{}
-	b = make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+	b = make([]byte, csptp.RequestTLVLength(&tlv0))
 	csptp.EncodeRequestTLV(b, &tlv0)
 	tlv1 = csptp.RequestTLV{}
 	err = csptp.DecodeRequestTLV(&tlv1, b[:13])
@@ -525,7 +624,7 @@ func TestRequestTLVInvalidLength(t *testing.T) {
 	}
 
 	tlv0 = csptp.RequestTLV{}
-	b = make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+	b = make([]byte, csptp.RequestTLVLength(&tlv0))
 	csptp.EncodeRequestTLV(b, &tlv0)
 	tlv1 = csptp.RequestTLV{}
 	err = csptp.DecodeRequestTLV(&tlv1, b[:len(b)-1])
@@ -534,7 +633,7 @@ func TestRequestTLVInvalidLength(t *testing.T) {
 	}
 
 	tlv0 = csptp.RequestTLV{FlagField: csptp.TLVFlagServerStateDS}
-	b = make([]byte, csptp.EncodedRequestTLVLength(&tlv0))
+	b = make([]byte, csptp.RequestTLVLength(&tlv0))
 	csptp.EncodeRequestTLV(b, &tlv0)
 	tlv1 = csptp.RequestTLV{}
 	err = csptp.DecodeRequestTLV(&tlv1, b[:len(b)-1])
@@ -548,7 +647,7 @@ func TestResponseTLVTypeRoundTrip(t *testing.T) {
 		csptp.TLVTypeOrganizationExtension}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{Type: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -568,7 +667,7 @@ func TestResponseTLVLengthRoundTrip(t *testing.T) {
 	vs := []uint16{0, 1, math.MaxUint16 - 1, math.MaxUint16}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{Length: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -594,7 +693,7 @@ func TestResponseTLVOrganizationIDRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{OrganizationID: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -620,7 +719,7 @@ func TestResponseTLVOrganizationSubTypeRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -641,7 +740,7 @@ func TestResponseTLVFlagFieldRoundTrip(t *testing.T) {
 		csptp.TLVFlagServerStateDS}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{FlagField: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -662,7 +761,7 @@ func TestResponseTLVErrorRoundTrip(t *testing.T) {
 		csptp.ErrorTxTimestampInvalid}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{Error: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -699,7 +798,7 @@ func TestResponseTLVRequestIngressTimestampRoundTrip(t *testing.T) {
 	}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{RequestIngressTimestamp: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -719,7 +818,7 @@ func TestResponseTLVRequestCorrectionFieldRoundTrip(t *testing.T) {
 	vs := []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, 1, math.MaxInt64 - 1, math.MaxInt64}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{RequestCorrectionField: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -739,7 +838,7 @@ func TestResponseTLVUTCOffsetRoundTrip(t *testing.T) {
 	vs := []int16{math.MinInt16, math.MinInt16 + 1, -1, 0, 1, math.MaxInt16 - 1, math.MaxInt16}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{UTCOffset: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -784,7 +883,7 @@ func TestResponseTLVServerStateDSRoundTrip(t *testing.T) {
 			FlagField:     csptp.TLVFlagServerStateDS,
 			ServerStateDS: v,
 		}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -804,7 +903,7 @@ func TestResponseTLVFlagFieldServerStateDSRoundTrip(t *testing.T) {
 	vs := []uint32{0, csptp.TLVFlagServerStateDS}
 	for _, v := range vs {
 		tlv0 := csptp.ResponseTLV{FlagField: v}
-		b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+		b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 		csptp.EncodeResponseTLV(b, &tlv0)
 		var tlv1 csptp.ResponseTLV
 		err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -860,9 +959,9 @@ func TestCompleteResponseTLVRoundTrip(t *testing.T) {
 			TimeSource:      7,
 		},
 	}
-	tlv0.Length = uint16(csptp.EncodedResponseTLVLength(&tlv0)) - 4
+	tlv0.Length = uint16(csptp.ResponseTLVLength(&tlv0)) - 4
 
-	b := make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+	b := make([]byte, csptp.ResponseTLVLength(&tlv0))
 	csptp.EncodeResponseTLV(b, &tlv0)
 	var tlv1 csptp.ResponseTLV
 	err := csptp.DecodeResponseTLV(&tlv1, b)
@@ -880,7 +979,7 @@ func TestResponseTLVInvalidLength(t *testing.T) {
 	var b []byte
 
 	tlv0 = csptp.ResponseTLV{}
-	b = make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+	b = make([]byte, csptp.ResponseTLVLength(&tlv0))
 	csptp.EncodeResponseTLV(b, &tlv0)
 	tlv1 = csptp.ResponseTLV{}
 	err = csptp.DecodeResponseTLV(&tlv1, b[:13])
@@ -889,7 +988,7 @@ func TestResponseTLVInvalidLength(t *testing.T) {
 	}
 
 	tlv0 = csptp.ResponseTLV{}
-	b = make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+	b = make([]byte, csptp.ResponseTLVLength(&tlv0))
 	csptp.EncodeResponseTLV(b, &tlv0)
 	tlv1 = csptp.ResponseTLV{}
 	err = csptp.DecodeResponseTLV(&tlv1, b[:len(b)-1])
@@ -898,7 +997,7 @@ func TestResponseTLVInvalidLength(t *testing.T) {
 	}
 
 	tlv0 = csptp.ResponseTLV{FlagField: csptp.TLVFlagServerStateDS}
-	b = make([]byte, csptp.EncodedResponseTLVLength(&tlv0))
+	b = make([]byte, csptp.ResponseTLVLength(&tlv0))
 	csptp.EncodeResponseTLV(b, &tlv0)
 	tlv1 = csptp.ResponseTLV{}
 	err = csptp.DecodeResponseTLV(&tlv1, b[:len(b)-1])
@@ -986,8 +1085,8 @@ func TestFollowUpRequest0(t *testing.T) {
 			csptp.OrganizationSubTypeRequest2},
 		FlagField: csptp.TLVFlagServerStateDS,
 	}
-	msg0.MessageLength += uint16(csptp.EncodedRequestTLVLength(&tlv0))
-	tlv0.Length = uint16(csptp.EncodedRequestTLVLength(&tlv0))
+	msg0.MessageLength += uint16(csptp.RequestTLVLength(&tlv0))
+	tlv0.Length = uint16(csptp.RequestTLVLength(&tlv0))
 	b0 := []byte{
 		0x08, 0x12, 0x00, 0x62, 0x00, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1120,8 +1219,8 @@ func TestFollowUpResponse0(t *testing.T) {
 			Reserved:        0,
 		},
 	}
-	msg0.MessageLength += uint16(csptp.EncodedResponseTLVLength(&tlv0))
-	tlv0.Length = uint16(csptp.EncodedResponseTLVLength(&tlv0))
+	msg0.MessageLength += uint16(csptp.ResponseTLVLength(&tlv0))
+	tlv0.Length = uint16(csptp.ResponseTLVLength(&tlv0))
 	b0 := []byte{
 		0x08, 0x12, 0x00, 0x62, 0x00, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1239,8 +1338,8 @@ func TestFollowUpRequest1(t *testing.T) {
 			csptp.OrganizationSubTypeRequest2},
 		FlagField: 0,
 	}
-	msg0.MessageLength += uint16(csptp.EncodedRequestTLVLength(&tlv0))
-	tlv0.Length = uint16(csptp.EncodedRequestTLVLength(&tlv0))
+	msg0.MessageLength += uint16(csptp.RequestTLVLength(&tlv0))
+	tlv0.Length = uint16(csptp.RequestTLVLength(&tlv0))
 	b0 := []byte{
 		0x08, 0x12, 0x00, 0x50, 0x00, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1370,8 +1469,8 @@ func TestFollowUpResponse1(t *testing.T) {
 			Reserved:        0,
 		},
 	}
-	msg0.MessageLength += uint16(csptp.EncodedResponseTLVLength(&tlv0))
-	tlv0.Length = uint16(csptp.EncodedResponseTLVLength(&tlv0))
+	msg0.MessageLength += uint16(csptp.ResponseTLVLength(&tlv0))
+	tlv0.Length = uint16(csptp.ResponseTLVLength(&tlv0))
 	b0 := []byte{
 		0x08, 0x12, 0x00, 0x50, 0x00, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
