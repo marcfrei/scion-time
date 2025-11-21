@@ -283,22 +283,8 @@ func (m *Message) MajorSdoID() uint8 {
 	return (m.SdoIDMessageType >> 4) & 0b0000_1111
 }
 
-func (m *Message) SetMajorSdoID(v uint8) {
-	if v&0b0000_1111 != v {
-		panic("unexpected SdoID value")
-	}
-	m.SdoIDMessageType = (m.SdoIDMessageType & 0b0000_1111) | (v << 4)
-}
-
 func (m *Message) MessageType() uint8 {
 	return m.SdoIDMessageType & 0b0000_1111
-}
-
-func (m *Message) SetMessageType(v uint8) {
-	if v&0b0000_1111 != v {
-		panic("unexpected message type value")
-	}
-	m.SdoIDMessageType = (m.SdoIDMessageType & 0b1111_0000) | v
 }
 
 const MaxEncodedRequestTLVLength = 54
