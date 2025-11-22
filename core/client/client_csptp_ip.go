@@ -306,8 +306,7 @@ rxloop:
 						}
 						return time.Time{}, 0, err
 					}
-					if tlv.Type != csptp.TLVTypeOrganizationExtension ||
-						tlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
+					if tlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
 						tlv.OrganizationID[1] != csptp.OrganizationIDMeinberg1 ||
 						tlv.OrganizationID[2] != csptp.OrganizationIDMeinberg2 ||
 						tlv.OrganizationSubType[0] != csptp.OrganizationSubTypeResponse0 ||
