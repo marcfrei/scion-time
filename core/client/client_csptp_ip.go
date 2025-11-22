@@ -155,6 +155,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	var respmsg0Ok, respmsg1Ok bool
 
 	const maxNumRetries = 3
+rxloop:
 	for numRetries := 0; ; numRetries++ {
 		buf = buf[:cap(buf)]
 		oob = oob[:cap(oob)]
@@ -182,16 +183,8 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		}
 		buf = buf[:n]
 
-		if len(buf) < csptp.MinMessageLength {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		err = csptp.DecodeMessage(&msg, buf[:csptp.MinMessageLength])
+		var msg csptp.Message
+		err = csptp.DecodeMessage(&msg, buf)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
@@ -230,7 +223,28 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 				return time.Time{}, 0, err
 			}
 
-			if len(buf)-csptp.MinMessageLength != 0 {
+			tlvbuf := buf[csptp.MinMessageLength:]
+			for len(tlvbuf) >= csptp.MinTLVLength {
+				var tlvhdr csptp.TLVHeader
+				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return time.Time{}, 0, err
+				}
+				if len(tlvbuf) < int(tlvhdr.Length) {
+					err = errUnexpectedPacket
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return time.Time{}, 0, err
+				}
+				tlvbuf = tlvbuf[tlvhdr.Length:]
+			}
+			if len(tlvbuf) != 0 {
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
@@ -262,21 +276,55 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 				return time.Time{}, 0, err
 			}
 
-			err = csptp.DecodeResponseTLV(&resptlv, buf[csptp.MinMessageLength:])
-			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
-					continue
+			var resptlvOk bool
+			tlvbuf := buf[csptp.MinMessageLength:]
+			for len(tlvbuf) >= csptp.MinTLVLength {
+				var tlvhdr csptp.TLVHeader
+				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return time.Time{}, 0, err
 				}
-				return time.Time{}, 0, err
+				if len(tlvbuf) < int(tlvhdr.Length) {
+					err = errUnexpectedPacket
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return time.Time{}, 0, err
+				}
+				if tlvhdr.Type == csptp.TLVTypeOrganizationExtension {
+					var tlv csptp.ResponseTLV
+					err := csptp.DecodeResponseTLV(&tlv, tlvbuf)
+					if err != nil {
+						if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+							c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
+							continue rxloop
+						}
+						return time.Time{}, 0, err
+					}
+					if tlv.Type != csptp.TLVTypeOrganizationExtension ||
+						tlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
+						tlv.OrganizationID[1] != csptp.OrganizationIDMeinberg1 ||
+						tlv.OrganizationID[2] != csptp.OrganizationIDMeinberg2 ||
+						tlv.OrganizationSubType[0] != csptp.OrganizationSubTypeResponse0 ||
+						tlv.OrganizationSubType[1] != csptp.OrganizationSubTypeResponse1 ||
+						tlv.OrganizationSubType[2] != csptp.OrganizationSubTypeResponse2 {
+						err = errUnexpectedPacket
+						if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+							c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+							continue rxloop
+						}
+						return time.Time{}, 0, err
+					}
+					resptlv, resptlvOk = tlv, true
+				}
+				tlvbuf = tlvbuf[tlvhdr.Length:]
 			}
-			if resptlv.Type != csptp.TLVTypeOrganizationExtension ||
-				resptlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
-				resptlv.OrganizationID[1] != csptp.OrganizationIDMeinberg1 ||
-				resptlv.OrganizationID[2] != csptp.OrganizationIDMeinberg2 ||
-				resptlv.OrganizationSubType[0] != csptp.OrganizationSubTypeResponse0 ||
-				resptlv.OrganizationSubType[1] != csptp.OrganizationSubTypeResponse1 ||
-				resptlv.OrganizationSubType[2] != csptp.OrganizationSubTypeResponse2 {
+			if len(tlvbuf) != 0 {
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
@@ -285,7 +333,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 				return time.Time{}, 0, err
 			}
 
-			if len(buf)-csptp.MinMessageLength != csptp.ResponseTLVLength(&resptlv) {
+			if !resptlvOk {
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
