@@ -48,10 +48,10 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	buf := make([]byte, csptp.MaxMessageLength)
 	var n int
 
-	var msg csptp.Message
+	var reqmsg csptp.Message
 	var reqtlv csptp.RequestTLV
 
-	msg = csptp.Message{
+	reqmsg = csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.SdoID,
 			csptp.MessageTypeSync,
@@ -73,8 +73,8 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		Timestamp:          csptp.Timestamp{},
 	}
 
-	buf = buf[:msg.MessageLength]
-	csptp.EncodeMessage(buf, &msg)
+	buf = buf[:reqmsg.MessageLength]
+	csptp.EncodeMessage(buf, &reqmsg)
 
 	n, err = conn.WriteToUDPAddrPort(buf, netip.AddrPortFrom(remoteAddr, csptp.EventPortIP))
 	if err != nil {
@@ -91,7 +91,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 
 	buf = buf[:cap(buf)]
 
-	msg = csptp.Message{
+	reqmsg = csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.SdoID,
 			csptp.MessageTypeFollowUp,
@@ -125,11 +125,11 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 			csptp.OrganizationSubTypeRequest2},
 		FlagField: csptp.TLVFlagServerStateDS,
 	}
-	msg.MessageLength += uint16(csptp.RequestTLVLength(&reqtlv))
+	reqmsg.MessageLength += uint16(csptp.RequestTLVLength(&reqtlv))
 	reqtlv.Length = uint16(csptp.RequestTLVLength(&reqtlv))
 
-	buf = buf[:msg.MessageLength]
-	csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
+	buf = buf[:reqmsg.MessageLength]
+	csptp.EncodeMessage(buf[:csptp.MinMessageLength], &reqmsg)
 	csptp.EncodeRequestTLV(buf[csptp.MinMessageLength:], &reqtlv)
 
 	n, err = conn.WriteToUDPAddrPort(buf, netip.AddrPortFrom(remoteAddr, csptp.GeneralPortIP))
@@ -183,8 +183,8 @@ rxloop:
 		}
 		buf = buf[:n]
 
-		var msg csptp.Message
-		err = csptp.DecodeMessage(&msg, buf)
+		var respmsg csptp.Message
+		err = csptp.DecodeMessage(&respmsg, buf)
 		if err != nil {
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
@@ -193,7 +193,7 @@ rxloop:
 			return time.Time{}, 0, err
 		}
 
-		if len(buf) != int(msg.MessageLength) {
+		if len(buf) != int(respmsg.MessageLength) {
 			err = errUnexpectedPacket
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
@@ -202,7 +202,7 @@ rxloop:
 			return time.Time{}, 0, err
 		}
 
-		if msg.SequenceID != c.sequenceID {
+		if respmsg.SequenceID != c.sequenceID {
 			err = errUnexpectedPacket
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
@@ -211,7 +211,7 @@ rxloop:
 			return time.Time{}, 0, err
 		}
 
-		if msg.MessageType() == csptp.MessageTypeSync {
+		if respmsg.MessageType() == csptp.MessageTypeSync {
 			respmsg0Ok = false
 
 			if srcAddr.Compare(netip.AddrPortFrom(remoteAddr, csptp.EventPortIP)) != 0 {
@@ -253,7 +253,7 @@ rxloop:
 				return time.Time{}, 0, err
 			}
 
-			if msg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
+			if respmsg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")
@@ -263,8 +263,8 @@ rxloop:
 			}
 
 			cRxTime0 = rxt
-			respmsg0, respmsg0Ok = msg, true
-		} else if msg.MessageType() == csptp.MessageTypeFollowUp {
+			respmsg0, respmsg0Ok = respmsg, true
+		} else if respmsg.MessageType() == csptp.MessageTypeFollowUp {
 			respmsg1Ok = false
 
 			if srcAddr.Compare(netip.AddrPortFrom(remoteAddr, csptp.GeneralPortIP)) != 0 {
@@ -342,7 +342,7 @@ rxloop:
 			}
 
 			cRxTime1 = rxt
-			respmsg1, respmsg1Ok = msg, true
+			respmsg1, respmsg1Ok = respmsg, true
 		} else {
 			err = errUnexpectedPacket
 			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
