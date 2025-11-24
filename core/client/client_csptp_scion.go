@@ -425,7 +425,7 @@ rxloop:
 		if respmsg.MessageType() == csptp.MessageTypeSync {
 			respmsg0Ok = false
 
-			if udpLayer.SrcPort != csptp.EventPortSCION { // TODO: check for source host address
+			if udpLayer.SrcPort != csptp.EventPortSCION {
 				err = errUnexpectedPacketSource
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
@@ -478,7 +478,7 @@ rxloop:
 		} else if respmsg.MessageType() == csptp.MessageTypeFollowUp {
 			respmsg1Ok = false
 
-			if udpLayer.SrcPort != csptp.GeneralPortSCION { // TODO: check for source host address
+			if udpLayer.SrcPort != csptp.GeneralPortSCION {
 				err = errUnexpectedPacketSource
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
