@@ -70,8 +70,9 @@ const (
 )
 
 type ReferenceClock struct {
-	log *slog.Logger
-	dev string
+	log    *slog.Logger
+	dev    string
+	offset time.Duration
 }
 
 func init() {
@@ -108,8 +109,8 @@ func extendedTS(extendedTS [3]ptpClockTime) (sysTime, phcTime time.Time, delay t
 	return
 }
 
-func NewReferenceClock(log *slog.Logger, dev string) *ReferenceClock {
-	return &ReferenceClock{log: log, dev: dev}
+func NewReferenceClock(log *slog.Logger, dev string, offset time.Duration) *ReferenceClock {
+	return &ReferenceClock{log: log, dev: dev, offset: offset}
 }
 
 func (c *ReferenceClock) MeasureClockOffset(ctx context.Context) (
@@ -161,6 +162,7 @@ func (c *ReferenceClock) MeasureClockOffset(ctx context.Context) (
 			}
 		}
 		offset := phc.Sub(sys)
+		offset += c.offset
 		c.log.LogAttrs(ctx, slog.LevelDebug,
 			"PTP hardware clock sample",
 			slog.Time("sysRealTime", sys),
@@ -173,6 +175,7 @@ func (c *ReferenceClock) MeasureClockOffset(ctx context.Context) (
 	sysRealTime := time.Unix(off.sysRealTime.sec, int64(off.sysRealTime.nsec)).UTC()
 	deviceTime := time.Unix(off.device.sec, int64(off.device.nsec)).UTC()
 	offset := deviceTime.Sub(sysRealTime)
+	offset += c.offset
 
 	c.log.LogAttrs(ctx, slog.LevelDebug,
 		"PTP hardware clock sample",
