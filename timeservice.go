@@ -657,7 +657,7 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 }
 
 func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr,
-	dscp uint8, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) {
+	dscp uint8, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
 	var err error
 	ctx := context.Background()
 	log := slog.Default()
@@ -709,12 +709,21 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, daemonAddr, laddr, raddr, log)
 	}
 
-	_, _, err = client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)
-	if err != nil {
-		logbase.Fatal(slog.Default(), "failed to measure clock offset",
-			slog.Any("remote", remoteAddr),
-			slog.Any("error", err),
-		)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ts, off, err := client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)
+		if err != nil {
+			log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
+				slog.Any("remote", raddr), slog.Any("error", err))
+		}
+		cancel()
+		if !periodic {
+			break
+		}
+		if err == nil {
+			fmt.Printf("%s,%+.9f,%t\n", ts.UTC().Format(time.RFC3339), off.Seconds(), c.InInterleavedMode())
+		}
+		lclk.Sleep(1 * time.Second)
 	}
 }
 
@@ -977,7 +986,7 @@ func main() {
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(verbose)
 			runToolSCION(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, uint8(dscp),
-				authModes, ntskeServer, ntskeInsecureSkipVerify)
+				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		} else {
 			if daemonAddr != "" {
 				exitWithUsage()
