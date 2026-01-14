@@ -115,8 +115,8 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 	sps := make([]snet.Path, len(ntpcs))
 	nsps := 0
 	for i, c := range ntpcs {
-		pf := c.InterleavedModePath()
-		if pf != "" {
+		if c.InInterleavedMode() {
+			pf := c.InterleavedModePath()
 			for j := range len(ps) {
 				if p := ps[j]; p.Metadata().Fingerprint().String() == pf {
 					ps[j] = ps[len(ps)-1]

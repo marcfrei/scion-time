@@ -103,14 +103,14 @@ func (c *SCIONClient) InInterleavedMode() bool {
 
 func (c *SCIONClient) InterleavedModeReference() string {
 	if !c.InInterleavedMode() {
-		return ""
+		panic("undefined value, not in interleaved mode")
 	}
 	return c.prev.reference
 }
 
 func (c *SCIONClient) InterleavedModePath() string {
 	if !c.InInterleavedMode() {
-		return ""
+		panic("undefined value, not in interleaved mode")
 	}
 	return c.prev.path
 }
