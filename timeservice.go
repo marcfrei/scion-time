@@ -426,7 +426,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 					slog.String("spec", s), slog.Any("error", err))
 			}
 		}
-		refClocks = append(refClocks, phc.NewReferenceClock(log, t[0], time.Duration(o) * time.Second))
+		refClocks = append(refClocks, phc.NewReferenceClock(log, t[0], time.Duration(o)*time.Second))
 	}
 
 	for _, s := range cfg.SHMReferenceClocks {
