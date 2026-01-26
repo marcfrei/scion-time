@@ -53,6 +53,10 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 	return errUnsupportedOperation
 }
 
+func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) error {
+	return errUnsupportedOperation
+}
+
 func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 	return time.Time{}, 0, errUnsupportedOperation
 }

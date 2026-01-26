@@ -23,6 +23,7 @@ import (
 
 const (
 	ipServerNumGoroutine = 8
+	virtualClockPHC = 6 // /dev/ptp6
 )
 
 type ipServerMetrics struct {
@@ -51,7 +52,7 @@ func newIPServerMetrics() *ipServerMetrics {
 func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 	conn *net.UDPConn, iface string, dscp uint8, provider *ntske.Provider) {
 	defer func() { _ = conn.Close() }()
-	err := udp.EnableTimestamping(conn, iface)
+	err := udp.EnableTimestampingWithPHC(conn, iface, virtualClockPHC)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

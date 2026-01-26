@@ -1,6 +1,8 @@
 package udp
 
 import (
+"fmt"
+
 	"unsafe"
 
 	"errors"
@@ -91,6 +93,12 @@ type hwtstampConfig struct {
 	rxFilter int32
 }
 
+// See https://docs.kernel.org/networking/timestamping.html
+type soTimestamping struct {
+	flags   int32
+	bindPHC int32
+}
+
 // See https://man7.org/linux/man-pages/man7/netdevice.7.html
 type ifreq struct {
 	ifrName [unix.IFNAMSIZ]byte
@@ -167,6 +175,72 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 	err = sconn.Control(func(fd uintptr) {
 		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET,
 			unix.SO_TIMESTAMPING_NEW, sockopts)
+	})
+	if err != nil {
+		return err
+	}
+	return res.err
+}
+
+func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) error {
+	if iface == "" {
+		return errors.New("interface name required for PHC binding")
+	}
+
+	sconn, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var res struct {
+		err error
+	}
+
+	// Bind socket to the interface - required for SOF_TIMESTAMPING_BIND_PHC
+	err = sconn.Control(func(fd uintptr) {
+		res.err = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, iface)
+	})
+	if err != nil {
+		return err
+	}
+	if res.err != nil {
+		return fmt.Errorf("SO_BINDTODEVICE: %w", res.err)
+	}
+
+	// Initialize hardware timestamping on the interface
+	err = sconn.Control(func(fd uintptr) {
+		err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
+		if err != nil {
+			if errors.Is(err, syscall.EPERM) {
+				return
+			}
+			res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_PTP_V2_EVENT)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if res.err != nil {
+		return fmt.Errorf("initNetworkInterface: %w", res.err)
+	}
+
+	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
+		unix.SOF_TIMESTAMPING_OPT_TSONLY |
+		unix.SOF_TIMESTAMPING_RAW_HARDWARE |
+		unix.SOF_TIMESTAMPING_RX_HARDWARE |
+		unix.SOF_TIMESTAMPING_TX_HARDWARE |
+		unix.SOF_TIMESTAMPING_BIND_PHC
+
+	err = sconn.Control(func(fd uintptr) {
+		ts := soTimestamping{
+			flags:   int32(sockopts),
+			bindPHC: int32(phcIndex),
+		}
+		_, _, errno := unix.Syscall6(unix.SYS_SETSOCKOPT,
+			fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING_NEW,
+			uintptr(unsafe.Pointer(&ts)), unsafe.Sizeof(ts), 0)
+		if errno != 0 {
+			res.err = errno
+		}
 	})
 	if err != nil {
 		return err
