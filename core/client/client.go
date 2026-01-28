@@ -231,5 +231,5 @@ func (c *ReferenceClockClient) MeasureClockOffsets(ctx context.Context,
 			}
 		}(ctx, refclk)
 	}
-	collectMeasurements(ctx, ms, msc)
+	collectMeasurements(context.Background(), ms, msc)
 }
