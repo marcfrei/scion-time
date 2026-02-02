@@ -763,14 +763,18 @@ func runPing(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPA
 		laddr := udp.UDPAddrFromSnet(localAddr)
 		raddr := udp.UDPAddrFromSnet(remoteAddr)
 
-		rtt, err := scion.SendPing(ctx, laddr, raddr, ps[0])
-		if err != nil {
-			logbase.Fatal(slog.Default(), "failed to send ping",
-				slog.Any("remote", remoteAddr),
-				slog.Any("error", err))
+		for _, p := range ps {
+			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			defer cancel()
+			rtt, err := scion.SendPing(ctx, laddr, raddr, ps[0])
+			if err != nil {
+				logbase.Fatal(slog.Default(), "failed to send ping",
+					slog.Any("remote", remoteAddr),
+					slog.Any("via", p.Metadata().Fingerprint().String()),
+					slog.Any("error", err))
+			}
+			fmt.Printf("PING %s, rtt=%v, via %v\n", remoteAddr, rtt, p)
 		}
-
-		fmt.Printf("PING %s: rtt=%v\n", remoteAddr, rtt)
 	} else {
 		logbase.Fatal(slog.Default(), "ping subcommand only supports SCION addresses")
 	}
