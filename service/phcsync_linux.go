@@ -57,8 +57,8 @@ func StartPHCSync(log *slog.Logger, config string) {
 
 	adj := &adjustments.PIController{
 		ClockID:       clockID,
-		KP:            adjustments.PIControllerDefaultPRatio,
-		KI:            adjustments.PIControllerDefaultIRatio,
+		KP:            0.05,
+		KI:            0.15,
 		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
 	}
 
