@@ -50,6 +50,10 @@ import (
 )
 
 type PIController struct {
+	// Clock ID of the clock to be adjusted. A value of 0 defaults to
+	// CLOCK_REALTIME.
+	ClockID int32
+
 	// Ratio (gain factor) of the proportional control output value (applied to
 	// the measured offset).
 	KP float64
@@ -73,8 +77,13 @@ func (c *PIController) Do(offset time.Duration) {
 	ctx := context.Background()
 	log := slog.Default()
 
+	cid := int32(unix.CLOCK_REALTIME)
+	if c.ClockID != 0 {
+		cid = c.ClockID
+	}
+
 	tx := unix.Timex{}
-	_, err := unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+	_, err := unix.ClockAdjtime(cid, &tx)
 	if err != nil {
 		logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 	}
@@ -100,7 +109,7 @@ func (c *PIController) Do(offset time.Duration) {
 			Modes: unix.ADJ_SETOFFSET | unix.ADJ_NANO,
 			Time:  unixutil.TimevalFromNsec(offset.Nanoseconds()),
 		}
-		_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+		_, err = unix.ClockAdjtime(cid, &tx)
 		if err != nil {
 			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 		}
@@ -116,7 +125,7 @@ func (c *PIController) Do(offset time.Duration) {
 			Modes: unix.ADJ_FREQUENCY,
 			Freq:  unixutil.ScaledPPMFromFreq(freq),
 		}
-		_, err = unix.ClockAdjtime(unix.CLOCK_REALTIME, &tx)
+		_, err = unix.ClockAdjtime(cid, &tx)
 		if err != nil {
 			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 		}
