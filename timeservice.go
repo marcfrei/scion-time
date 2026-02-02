@@ -414,11 +414,11 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		refClocks = append(refClocks, mbg.NewReferenceClock(log, s))
 	}
 
-	for _, s := range cfg.PHCReferenceClocks {
-		t := strings.Split(s, ",")
+	for _, c := range cfg.PHCReferenceClocks {
+		t := strings.Split(c, ",")
 		if len(t) > 2 {
 			logbase.Fatal(slog.Default(), "unexpected PHC reference clock specification",
-				slog.String("spec", s))
+				slog.String("config", c))
 		}
 		var o int
 		if len(t) > 1 {
@@ -426,7 +426,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			o, err = strconv.Atoi(t[1])
 			if err != nil {
 				logbase.Fatal(slog.Default(), "unexpected PHC reference clock offset",
-					slog.String("spec", s), slog.Any("error", err))
+					slog.String("config", c), slog.Any("error", err))
 			}
 		}
 		refClocks = append(refClocks, phc.NewReferenceClock(log, t[0], time.Duration(o)*time.Second))

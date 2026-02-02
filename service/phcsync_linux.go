@@ -23,17 +23,27 @@ func StartPHCSync(log *slog.Logger, config string) {
 	}
 
 	t := strings.Split(config, ",")
+	if len(t) != 1 && len(t) != 3 {
+		logbase.Fatal(log, "unexpected PHC sync config format",
+			slog.String("config", config))
+	}
 	dev := t[0]
-	pollExp := 0
-	if len(t) > 1 {
+	var o, i int
+	if len(t) == 3 {
 		var err error
-		pollExp, err = strconv.Atoi(t[1])
+		o, err = strconv.Atoi(t[1])
+		if err != nil {
+			logbase.Fatal(log, "unexpected PHC sync offset",
+				slog.String("config", config), slog.Any("error", err))
+		}
+		i, err = strconv.Atoi(t[2])
 		if err != nil {
 			logbase.Fatal(log, "unexpected PHC sync poll exponent",
 				slog.String("config", config), slog.Any("error", err))
 		}
 	}
-	pollInterval := time.Duration(math.Pow(2, float64(pollExp)) * float64(time.Second))
+	offset := time.Duration(o)*time.Second
+	interval := time.Duration(math.Pow(2, float64(i)) * float64(time.Second))
 
 	fd, err := unix.Open(dev, unix.O_RDWR, 0)
 	if err != nil {
@@ -43,7 +53,7 @@ func StartPHCSync(log *slog.Logger, config string) {
 
 	clockID := (^int32(fd) << 3) | 3
 
-	refClk := phc.NewReferenceClock(log, dev, 0 /* offset */)
+	refClk := phc.NewReferenceClock(log, dev, offset)
 
 	adj := &adjustments.PIController{
 		ClockID:       clockID,
@@ -62,7 +72,7 @@ func StartPHCSync(log *slog.Logger, config string) {
 			} else {
 				adj.Do(-offset)
 			}
-			time.Sleep(pollInterval)
+			time.Sleep(interval)
 		}
 	}()
 }
