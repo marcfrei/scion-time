@@ -50,6 +50,8 @@ import (
 	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
+
+	"example.com/scion-time/service"
 )
 
 const (
@@ -90,6 +92,7 @@ type svcConfig struct {
 	PeerClockCutoff         float64  `toml:"peer_clock_cutoff,omitempty"`
 	SyncTimeout             float64  `toml:"sync_timeout,omitempty"`
 	SyncInterval            float64  `toml:"sync_interval,omitempty"`
+	PHCSync                 string   `toml:"phc_sync,omitempty"`
 }
 
 type ntpReferenceClockIP struct {
@@ -574,6 +577,8 @@ func runServer(configFile string) {
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
 
+	service.StartPHCSync(log, cfg.PHCSync)
+
 	runMonitor(cfg)
 }
 
@@ -616,6 +621,8 @@ func runClient(configFile string) {
 	}
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
+
+	service.StartPHCSync(log, cfg.PHCSync)
 
 	runMonitor(cfg)
 }
