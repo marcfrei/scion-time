@@ -23,7 +23,7 @@ import (
 
 const (
 	ipServerNumGoroutine = 8
-	virtualClockPHC = 6 // /dev/ptp6
+	virtualClockPHC      = 6 // /dev/ptp6
 )
 
 type ipServerMetrics struct {
