@@ -40,7 +40,7 @@ func runT() {
 		panic("failed to parse arguments")
 	}
 
-	initLogger(true /* verbose */)
+	initLogger(logLevelVerbose)
 	log := slog.Default()
 
 	ctx := context.Background()

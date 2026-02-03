@@ -53,6 +53,10 @@ import (
 )
 
 const (
+	logLevelQuiet = iota
+	logLevelDefault
+	logLevelVerbose
+
 	dispatcherModeExternal = "external"
 	dispatcherModeInternal = "internal"
 	authModeNTS            = "nts"
@@ -114,43 +118,48 @@ type tlsCertCache struct {
 	keyFile    string
 }
 
-func initLogger(verbose bool) {
-	var (
-		addSource   bool
-		level       slog.Leveler
-		replaceAttr func(groups []string, a slog.Attr) slog.Attr
-	)
-	if verbose {
-		_, f, _, ok := runtime.Caller(0)
-		var basepath string
-		if ok {
-			basepath = filepath.Dir(f)
-		}
-		addSource = true
-		level = slog.LevelDebug
-		replaceAttr = func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.SourceKey {
-				source := a.Value.Any().(*slog.Source)
-				if basepath == "" {
-					source.File = filepath.Base(source.File)
-				} else {
-					relpath, err := filepath.Rel(basepath, source.File)
-					if err != nil {
+func initLogger(logLevel int) {
+	var h slog.Handler
+	if logLevel == logLevelQuiet {
+		h = slog.DiscardHandler
+	} else {
+		var (
+			addSource   bool
+			level       slog.Leveler
+			replaceAttr func(groups []string, a slog.Attr) slog.Attr
+		)
+		if logLevel == logLevelVerbose {
+			_, f, _, ok := runtime.Caller(0)
+			var basepath string
+			if ok {
+				basepath = filepath.Dir(f)
+			}
+			addSource = true
+			level = slog.LevelDebug
+			replaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+				if a.Key == slog.SourceKey {
+					source := a.Value.Any().(*slog.Source)
+					if basepath == "" {
 						source.File = filepath.Base(source.File)
 					} else {
-						source.File = relpath
+						relpath, err := filepath.Rel(basepath, source.File)
+						if err != nil {
+							source.File = filepath.Base(source.File)
+						} else {
+							source.File = relpath
+						}
 					}
 				}
+				return a
 			}
-			return a
 		}
-	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr,
-		&slog.HandlerOptions{
+		h = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			AddSource:   addSource,
 			Level:       level,
 			ReplaceAttr: replaceAttr,
-		})))
+		})
+	}
+	slog.SetDefault(slog.New(h))
 }
 
 func showInfo() {
@@ -878,6 +887,7 @@ func exitWithUsage() {
 
 func main() {
 	var (
+		quiet                   bool
 		verbose                 bool
 		configFile              string
 		daemonAddr              string
@@ -901,12 +911,15 @@ func main() {
 	benchmarkFlags := flag.NewFlagSet("benchmark", flag.ExitOnError)
 	drkeyFlags := flag.NewFlagSet("drkey", flag.ExitOnError)
 
+	serverFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	serverFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	serverFlags.StringVar(&configFile, "config", "", "Config file")
 
+	clientFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	clientFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	clientFlags.StringVar(&configFile, "config", "", "Config file")
 
+	toolFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	toolFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	toolFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
@@ -917,20 +930,36 @@ func main() {
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
 	toolFlags.BoolVar(&periodic, "periodic", false, "Perform periodic offset measurements")
 
+	pingFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	pingFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	pingFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	pingFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	pingFlags.Var(&localAddr, "local", "Local address")
 	pingFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
 
+	benchmarkFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	benchmarkFlags.StringVar(&configFile, "config", "", "Config file")
 
+	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	drkeyFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
 	drkeyFlags.StringVar(&drkeyMode, "mode", "", "Mode")
 	drkeyFlags.Var(&drkeyServerAddr, "server", "Server address")
 	drkeyFlags.Var(&drkeyClientAddr, "client", "Client address")
+
+	logLevel := func() int {
+		if quiet && verbose {
+			exitWithUsage()
+		}
+		if quiet {
+			return logLevelQuiet
+		}
+		if verbose {
+			return logLevelVerbose
+		}
+		return logLevelDefault
+	}
 
 	if len(os.Args) < 2 {
 		exitWithUsage()
@@ -951,7 +980,7 @@ func main() {
 		if configFile == "" {
 			exitWithUsage()
 		}
-		initLogger(verbose)
+		initLogger(logLevel())
 		runServer(configFile)
 	case clientFlags.Name():
 		err := clientFlags.Parse(os.Args[2:])
@@ -961,7 +990,7 @@ func main() {
 		if configFile == "" {
 			exitWithUsage()
 		}
-		initLogger(verbose)
+		initLogger(logLevel())
 		runClient(configFile)
 	case toolFlags.Name():
 		err := toolFlags.Parse(os.Args[2:])
@@ -988,7 +1017,7 @@ func main() {
 				exitWithUsage()
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
-			initLogger(verbose)
+			initLogger(logLevel())
 			runToolSCION(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, uint8(dscp),
 				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		} else {
@@ -999,7 +1028,7 @@ func main() {
 				exitWithUsage()
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
-			initLogger(verbose)
+			initLogger(logLevel())
 			runToolIP(&localAddr, &remoteAddr, uint8(dscp),
 				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		}
@@ -1021,7 +1050,7 @@ func main() {
 				exitWithUsage()
 			}
 		}
-		initLogger(verbose)
+		initLogger(logLevel())
 		runPing(daemonAddr, dispatcherMode, &localAddr, &remoteAddr)
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
@@ -1031,7 +1060,7 @@ func main() {
 		if configFile == "" {
 			exitWithUsage()
 		}
-		initLogger(verbose)
+		initLogger(logLevel())
 		runBenchmark(configFile)
 	case drkeyFlags.Name():
 		err := drkeyFlags.Parse(os.Args[2:])
@@ -1042,7 +1071,7 @@ func main() {
 			exitWithUsage()
 		}
 		serverMode := drkeyMode == "server"
-		initLogger(verbose)
+		initLogger(logLevel())
 		runDRKeyDemo(daemonAddr, serverMode, &drkeyServerAddr, &drkeyClientAddr)
 	case "t":
 		runT()
