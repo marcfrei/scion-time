@@ -7,28 +7,10 @@ import (
 
 	"errors"
 	"net"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
-
-func EnableRxTimestamps(conn *net.UDPConn) error {
-	sconn, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var res struct {
-		err error
-	}
-	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1)
-	})
-	if err != nil {
-		return err
-	}
-	return res.err
-}
 
 func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	for unix.CmsgSpace(0) <= len(oob) {
@@ -37,7 +19,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 			return time.Time{}, errUnexpectedData
 		}
 		if h.Level == unix.SOL_SOCKET {
-			if h.Type == unix.SO_TIMESTAMPING_NEW {
+			if h.Type == unix.SO_TIMESTAMPING || h.Type == unix.SO_TIMESTAMPING_NEW {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, errUnexpectedData
 				}
@@ -83,8 +65,6 @@ const (
 	HWTSTAMP_TX_ON = 1
 	//lint:ignore ST1003 maintain consistency with package 'unix'
 	HWTSTAMP_FILTER_ALL = 1
-	//lint:ignore ST1003 maintain consistency with package 'unix'
-	HWTSTAMP_FILTER_PTP_V2_EVENT = 12
 )
 
 type hwtstampConfig struct {
@@ -154,13 +134,7 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 		err = sconn.Control(func(fd uintptr) {
 			err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
 			if err != nil {
-				if errors.Is(err, syscall.EPERM) {
-					return
-				}
-				err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_PTP_V2_EVENT)
-				if err != nil {
-					return
-				}
+				return
 			}
 		})
 		if err != nil {
@@ -182,7 +156,7 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 	return res.err
 }
 
-func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) error {
+func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, index int) error {
 	if iface == "" {
 		return errors.New("interface name required for PHC binding")
 	}
@@ -195,7 +169,6 @@ func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) er
 		err error
 	}
 
-	// Bind socket to the interface - required for SOF_TIMESTAMPING_BIND_PHC
 	err = sconn.Control(func(fd uintptr) {
 		res.err = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, iface)
 	})
@@ -208,13 +181,7 @@ func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) er
 
 	// Initialize hardware timestamping on the interface
 	err = sconn.Control(func(fd uintptr) {
-		err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
-		if err != nil {
-			if errors.Is(err, syscall.EPERM) {
-				return
-			}
-			res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_PTP_V2_EVENT)
-		}
+		res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
 	})
 	if err != nil {
 		return err
@@ -233,7 +200,7 @@ func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) er
 	err = sconn.Control(func(fd uintptr) {
 		ts := soTimestamping{
 			flags:   int32(sockopts),
-			bindPHC: int32(phcIndex),
+			bindPHC: int32(index),
 		}
 		_, _, errno := unix.Syscall6(unix.SYS_SETSOCKOPT,
 			fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING_NEW,
@@ -258,7 +225,7 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 			return time.Time{}, 0, errUnexpectedData
 		}
 		if h.Level == unix.SOL_SOCKET {
-			if h.Type == unix.SO_TIMESTAMPING_NEW {
+			if h.Type == unix.SO_TIMESTAMPING || h.Type == unix.SO_TIMESTAMPING_NEW {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, 0, errUnexpectedData
 				}
@@ -281,24 +248,25 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 					ts = time.Unix(sec0, nsec0).UTC()
 				}
 				tsSet = true
+				idSet = true
 			}
-		} else if h.Level == unix.SOL_IP && h.Type == unix.IP_RECVERR ||
-			h.Level == unix.SOL_IPV6 && h.Type == unix.IPV6_RECVERR {
-			if h.Len < uint64(unix.CmsgSpace(int(unsafe.Sizeof(unix.SockExtendedErr{})))) {
-				return time.Time{}, 0, errUnexpectedData
-			}
-			seerr := *(*unix.SockExtendedErr)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
-			if seerr.Errno != uint32(unix.ENOMSG) {
-				return time.Time{}, 0, errUnexpectedData
-			}
-			if seerr.Origin != unix.SO_EE_ORIGIN_TIMESTAMPING {
-				return time.Time{}, 0, errUnexpectedData
-			}
-			if seerr.Info != unix.SCM_TSTAMP_SND {
-				return time.Time{}, 0, errUnexpectedData
-			}
-			id = seerr.Data
-			idSet = true
+			// } else if h.Level == unix.SOL_IP && h.Type == unix.IP_RECVERR ||
+			// 	h.Level == unix.SOL_IPV6 && h.Type == unix.IPV6_RECVERR {
+			// 	if h.Len < uint64(unix.CmsgSpace(int(unsafe.Sizeof(unix.SockExtendedErr{})))) {
+			// 		return time.Time{}, 0, errUnexpectedData
+			// 	}
+			// 	seerr := *(*unix.SockExtendedErr)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
+			// 	if seerr.Errno != uint32(unix.ENOMSG) {
+			// 		return time.Time{}, 0, errUnexpectedData
+			// 	}
+			// 	if seerr.Origin != unix.SO_EE_ORIGIN_TIMESTAMPING {
+			// 		return time.Time{}, 0, errUnexpectedData
+			// 	}
+			// 	if seerr.Info != unix.SCM_TSTAMP_SND {
+			// 		return time.Time{}, 0, errUnexpectedData
+			// 	}
+			// 	id = seerr.Data
+			// 	idSet = true
 		}
 		oob = oob[unix.CmsgSpace(int(h.Len)-unix.SizeofCmsghdr):]
 	}
@@ -370,16 +338,18 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				res.err = errUnexpectedData
 				return
 			}
-			rests, resid, err := timestampFromOOBData(oob[:oobn])
+			rests, _, err := timestampFromOOBData(oob[:oobn])
 			if err != nil {
 				res.err = err
 				return
 			}
-			if resid >= id {
-				res.ts, res.id = rests, resid
-				return
-			}
-			timeout = 0
+			// if resid >= id {
+			// 	res.ts, res.id = rests, resid
+			// 	return
+			// }
+			res.ts, res.id = rests, id+1
+			return
+			// timeout = 0
 		}
 		res.err = errTimestampNotFound
 	})

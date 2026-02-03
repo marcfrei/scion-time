@@ -42,7 +42,7 @@ func StartPHCSync(log *slog.Logger, config string) {
 				slog.String("config", config), slog.Any("error", err))
 		}
 	}
-	offset := time.Duration(o)*time.Second
+	offset := time.Duration(o) * time.Second
 	interval := time.Duration(math.Pow(2, float64(i)) * float64(time.Second))
 
 	fd, err := unix.Open(dev, unix.O_RDWR, 0)
