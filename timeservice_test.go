@@ -21,7 +21,7 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 		t.Skip("set up and start chrony to run this integration test")
 	}
 
-	initLogger(true /* verbose */)
+	initLogger(logLevelVerbose)
 	remoteAddr := "0-0,127.0.0.1:4460"
 	localAddr := "0-0,0.0.0.0:0"
 	ntskeServer := "127.0.0.1:4460"
