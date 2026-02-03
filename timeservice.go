@@ -968,7 +968,7 @@ func main() {
 	switch os.Args[1] {
 	case infoFlags.Name():
 		err := infoFlags.Parse(os.Args[2:])
-		if err != nil || serverFlags.NArg() != 0 {
+		if err != nil || infoFlags.NArg() != 0 {
 			exitWithUsage()
 		}
 		showInfo()
