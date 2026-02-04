@@ -248,25 +248,24 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 					ts = time.Unix(sec0, nsec0).UTC()
 				}
 				tsSet = true
-				idSet = true
 			}
-			// } else if h.Level == unix.SOL_IP && h.Type == unix.IP_RECVERR ||
-			// 	h.Level == unix.SOL_IPV6 && h.Type == unix.IPV6_RECVERR {
-			// 	if h.Len < uint64(unix.CmsgSpace(int(unsafe.Sizeof(unix.SockExtendedErr{})))) {
-			// 		return time.Time{}, 0, errUnexpectedData
-			// 	}
-			// 	seerr := *(*unix.SockExtendedErr)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
-			// 	if seerr.Errno != uint32(unix.ENOMSG) {
-			// 		return time.Time{}, 0, errUnexpectedData
-			// 	}
-			// 	if seerr.Origin != unix.SO_EE_ORIGIN_TIMESTAMPING {
-			// 		return time.Time{}, 0, errUnexpectedData
-			// 	}
-			// 	if seerr.Info != unix.SCM_TSTAMP_SND {
-			// 		return time.Time{}, 0, errUnexpectedData
-			// 	}
-			// 	id = seerr.Data
-			// 	idSet = true
+		} else if h.Level == unix.SOL_IP && h.Type == unix.IP_RECVERR ||
+			h.Level == unix.SOL_IPV6 && h.Type == unix.IPV6_RECVERR {
+			if h.Len < uint64(unix.CmsgSpace(int(unsafe.Sizeof(unix.SockExtendedErr{})))) {
+				return time.Time{}, 0, errUnexpectedData
+			}
+			seerr := *(*unix.SockExtendedErr)(unsafe.Pointer(&oob[unix.CmsgSpace(0)]))
+			if seerr.Errno != uint32(unix.ENOMSG) {
+				return time.Time{}, 0, errUnexpectedData
+			}
+			if seerr.Origin != unix.SO_EE_ORIGIN_TIMESTAMPING {
+				return time.Time{}, 0, errUnexpectedData
+			}
+			if seerr.Info != unix.SCM_TSTAMP_SND {
+				return time.Time{}, 0, errUnexpectedData
+			}
+			id = seerr.Data
+			idSet = true
 		}
 		oob = oob[unix.CmsgSpace(int(h.Len)-unix.SizeofCmsghdr):]
 	}
@@ -338,18 +337,16 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				res.err = errUnexpectedData
 				return
 			}
-			rests, _, err := timestampFromOOBData(oob[:oobn])
+			rests, resid, err := timestampFromOOBData(oob[:oobn])
 			if err != nil {
 				res.err = err
 				return
 			}
-			// if resid >= id {
-			// 	res.ts, res.id = rests, resid
-			// 	return
-			// }
-			res.ts, res.id = rests, id+1
-			return
-			// timeout = 0
+			if resid >= id {
+				res.ts, res.id = rests, resid
+				return
+			}
+			timeout = 0
 		}
 		res.err = errTimestampNotFound
 	})
