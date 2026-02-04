@@ -34,7 +34,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 			return time.Time{}, 0, err
 		}
 	}
-	err = udp.EnableTimestamping(conn, localAddr.Zone())
+	err = udp.EnableTimestamping(conn, localAddr.Zone(), -1 /* index */)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

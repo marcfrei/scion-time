@@ -148,7 +148,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			return time.Time{}, 0, err
 		}
 	}
-	err = udp.EnableTimestamping(conn, localAddr.Host.Zone)
+	err = udp.EnableTimestamping(conn, localAddr.Host.Zone, -1 /* index */)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

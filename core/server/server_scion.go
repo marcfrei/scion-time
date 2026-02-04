@@ -74,7 +74,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 
 	localConnPort := conn.LocalAddr().(*net.UDPAddr).Port
 
-	err := udp.EnableTimestamping(conn, localHostIface)
+	err := udp.EnableTimestamping(conn, localHostIface, -1 /* index */)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

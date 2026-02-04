@@ -79,7 +79,7 @@ func (q *csptpClientQueueSCION) Pop() any {
 
 func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 	conn *udpConn, localHostIface string, localHostPort int, dscp uint8) {
-	err := udp.EnableTimestamping(conn.c, localHostIface)
+	err := udp.EnableTimestamping(conn.c, localHostIface, -1 /* index */)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

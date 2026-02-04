@@ -1,11 +1,8 @@
 package udp
 
 import (
-	"fmt"
-
 	"unsafe"
 
-	"errors"
 	"net"
 	"time"
 
@@ -19,7 +16,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 			return time.Time{}, errUnexpectedData
 		}
 		if h.Level == unix.SOL_SOCKET {
-			if h.Type == unix.SO_TIMESTAMPING || h.Type == unix.SO_TIMESTAMPING_NEW {
+			if h.Type == unix.SO_TIMESTAMPING_NEW {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, errUnexpectedData
 				}
@@ -114,13 +111,25 @@ func initNetworkInterface(fd int, ifname string, filter int32) error {
 	return nil
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string) error {
+func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return err
 	}
 	var res struct {
 		err error
+	}
+
+	if index >= 0 {
+		err = sconn.Control(func(fd uintptr) {
+			res.err = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, iface)
+		})
+		if err != nil {
+			return err
+		}
+		if res.err != nil {
+			return res.err
+		}
 	}
 
 	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
@@ -132,13 +141,13 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 			unix.SOF_TIMESTAMPING_TX_HARDWARE
 
 		err = sconn.Control(func(fd uintptr) {
-			err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
-			if err != nil {
-				return
-			}
+			res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
 		})
 		if err != nil {
 			return err
+		}
+		if res.err != nil {
+			return res.err
 		}
 	} else {
 		sockopts |= unix.SOF_TIMESTAMPING_SOFTWARE |
@@ -146,62 +155,16 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 			unix.SOF_TIMESTAMPING_TX_SOFTWARE
 	}
 
-	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET,
-			unix.SO_TIMESTAMPING_NEW, sockopts)
-	})
-	if err != nil {
-		return err
+	ts := soTimestamping{
+		flags: int32(sockopts),
 	}
-	return res.err
-}
-
-func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, index int) error {
-	if iface == "" {
-		return errors.New("interface name required for PHC binding")
-	}
-
-	sconn, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var res struct {
-		err error
+	if index >= 0 {
+		sockopts |= unix.SOF_TIMESTAMPING_BIND_PHC
+		ts.flags = int32(sockopts)
+		ts.bindPHC = int32(index)
 	}
 
 	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, iface)
-	})
-	if err != nil {
-		return err
-	}
-	if res.err != nil {
-		return fmt.Errorf("SO_BINDTODEVICE: %w", res.err)
-	}
-
-	// Initialize hardware timestamping on the interface
-	err = sconn.Control(func(fd uintptr) {
-		res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
-	})
-	if err != nil {
-		return err
-	}
-	if res.err != nil {
-		return fmt.Errorf("initNetworkInterface: %w", res.err)
-	}
-
-	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
-		unix.SOF_TIMESTAMPING_OPT_TSONLY |
-		unix.SOF_TIMESTAMPING_RAW_HARDWARE |
-		unix.SOF_TIMESTAMPING_RX_HARDWARE |
-		unix.SOF_TIMESTAMPING_TX_HARDWARE |
-		unix.SOF_TIMESTAMPING_BIND_PHC
-
-	err = sconn.Control(func(fd uintptr) {
-		ts := soTimestamping{
-			flags:   int32(sockopts),
-			bindPHC: int32(index),
-		}
 		_, _, errno := unix.Syscall6(unix.SYS_SETSOCKOPT,
 			fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING_NEW,
 			uintptr(unsafe.Pointer(&ts)), unsafe.Sizeof(ts), 0)
@@ -212,7 +175,11 @@ func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, index int) error
 	if err != nil {
 		return err
 	}
-	return res.err
+	if res.err != nil {
+		return res.err
+	}
+
+	return nil
 }
 
 func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
@@ -225,7 +192,7 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 			return time.Time{}, 0, errUnexpectedData
 		}
 		if h.Level == unix.SOL_SOCKET {
-			if h.Type == unix.SO_TIMESTAMPING || h.Type == unix.SO_TIMESTAMPING_NEW {
+			if h.Type == unix.SO_TIMESTAMPING_NEW {
 				if h.Len != uint64(unix.CmsgSpace(3*16)) {
 					return time.Time{}, 0, errUnexpectedData
 				}

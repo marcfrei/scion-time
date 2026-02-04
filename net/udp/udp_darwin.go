@@ -32,11 +32,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	return time.Time{}, errTimestampNotFound
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string) error {
-	return errUnsupportedOperation
-}
-
-func EnableTimestampingWithPHC(conn *net.UDPConn, iface string, phcIndex int) error {
+func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 	return errUnsupportedOperation
 }
 
