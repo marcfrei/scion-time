@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ipServerNumGoroutine = 1
+	ipServerNumGoroutine = 8
 )
 
 type ipServerMetrics struct {
