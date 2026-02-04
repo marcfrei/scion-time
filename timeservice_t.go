@@ -67,11 +67,11 @@ func runT() {
 		// Client mode
 		var localAddr snet.UDPAddr
 		if err := localAddr.Set(laddr); err != nil {
-			panic("failed to parse local address")
+			panic(fmt.Sprintf("failed to parse local address: %v", err))
 		}
 		var remoteAddr snet.UDPAddr
 		if err = remoteAddr.Set(raddr); err != nil {
-			panic("failed to parse remote address")
+			panic(fmt.Sprintf("failed to parse remote address: %v", err))
 		}
 		if remoteAddr.IA.IsZero() {
 			if ip4 := localAddr.Host.IP.To4(); ip4 != nil {
