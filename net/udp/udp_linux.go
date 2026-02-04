@@ -252,13 +252,13 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 		err error
 	}
 	err = sconn.Control(func(fd uintptr) {
-		for range 10 {
+		for range 1000 {
 			pollFds := []unix.PollFd{
 				{Fd: int32(fd), Events: unix.POLLPRI},
 			}
-			var timeout, n int
+			var n int
 			for {
-				n, err = unix.Poll(pollFds, timeout)
+				n, err = unix.Poll(pollFds, 0)
 				if err == unix.EINTR {
 					continue
 				}
@@ -269,11 +269,6 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				return
 			}
 			if n != len(pollFds) {
-				if timeout != 0 {
-					res.err = errTimestampNotFound
-					return
-				}
-				timeout = 1
 				continue
 			}
 			buf := make([]byte, 0)
@@ -312,7 +307,6 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				res.ts, res.id = rests, resid
 				return
 			}
-			timeout = 0
 		}
 		res.err = errTimestampNotFound
 	})
