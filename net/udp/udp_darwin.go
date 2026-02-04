@@ -14,23 +14,6 @@ var (
 	errUnsupportedOperation = errors.New("unsupported operation")
 )
 
-func EnableRxTimestamps(conn *net.UDPConn) error {
-	sconn, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var res struct {
-		err error
-	}
-	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TIMESTAMP, 1)
-	})
-	if err != nil {
-		return err
-	}
-	return res.err
-}
-
 func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	for unix.CmsgSpace(0) <= len(oob) {
 		h := (*unix.Cmsghdr)(unsafe.Pointer(&oob[0]))
@@ -49,7 +32,7 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	return time.Time{}, errTimestampNotFound
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string) error {
+func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 	return errUnsupportedOperation
 }
 

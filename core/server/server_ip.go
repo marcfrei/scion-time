@@ -51,7 +51,7 @@ func newIPServerMetrics() *ipServerMetrics {
 func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 	conn *net.UDPConn, iface string, dscp uint8, provider *ntske.Provider) {
 	defer func() { _ = conn.Close() }()
-	err := udp.EnableTimestamping(conn, iface)
+	err := udp.EnableTimestamping(conn, iface, -1 /* index */)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

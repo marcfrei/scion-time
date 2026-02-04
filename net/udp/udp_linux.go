@@ -3,30 +3,11 @@ package udp
 import (
 	"unsafe"
 
-	"errors"
 	"net"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
-
-func EnableRxTimestamps(conn *net.UDPConn) error {
-	sconn, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var res struct {
-		err error
-	}
-	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1)
-	})
-	if err != nil {
-		return err
-	}
-	return res.err
-}
 
 func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	for unix.CmsgSpace(0) <= len(oob) {
@@ -81,14 +62,17 @@ const (
 	HWTSTAMP_TX_ON = 1
 	//lint:ignore ST1003 maintain consistency with package 'unix'
 	HWTSTAMP_FILTER_ALL = 1
-	//lint:ignore ST1003 maintain consistency with package 'unix'
-	HWTSTAMP_FILTER_PTP_V2_EVENT = 12
 )
 
 type hwtstampConfig struct {
 	flags    int32
 	txType   int32
 	rxFilter int32
+}
+
+type soTimestamping struct {
+	flags   int32
+	bindPHC int32
 }
 
 // See https://man7.org/linux/man-pages/man7/netdevice.7.html
@@ -126,13 +110,25 @@ func initNetworkInterface(fd int, ifname string, filter int32) error {
 	return nil
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string) error {
+func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return err
 	}
 	var res struct {
 		err error
+	}
+
+	if index >= 0 {
+		err = sconn.Control(func(fd uintptr) {
+			res.err = unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, iface)
+		})
+		if err != nil {
+			return err
+		}
+		if res.err != nil {
+			return res.err
+		}
 	}
 
 	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
@@ -144,19 +140,13 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 			unix.SOF_TIMESTAMPING_TX_HARDWARE
 
 		err = sconn.Control(func(fd uintptr) {
-			err := initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
-			if err != nil {
-				if errors.Is(err, syscall.EPERM) {
-					return
-				}
-				err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_PTP_V2_EVENT)
-				if err != nil {
-					return
-				}
-			}
+			res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
 		})
 		if err != nil {
 			return err
+		}
+		if res.err != nil {
+			return res.err
 		}
 	} else {
 		sockopts |= unix.SOF_TIMESTAMPING_SOFTWARE |
@@ -164,14 +154,31 @@ func EnableTimestamping(conn *net.UDPConn, iface string) error {
 			unix.SOF_TIMESTAMPING_TX_SOFTWARE
 	}
 
+	ts := soTimestamping{
+		flags: int32(sockopts),
+	}
+	if index >= 0 {
+		sockopts |= unix.SOF_TIMESTAMPING_BIND_PHC
+		ts.flags = int32(sockopts)
+		ts.bindPHC = int32(index)
+	}
+
 	err = sconn.Control(func(fd uintptr) {
-		res.err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET,
-			unix.SO_TIMESTAMPING_NEW, sockopts)
+		_, _, errno := unix.Syscall6(unix.SYS_SETSOCKOPT,
+			fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING_NEW,
+			uintptr(unsafe.Pointer(&ts)), unsafe.Sizeof(ts), 0)
+		if errno != 0 {
+			res.err = errno
+		}
 	})
 	if err != nil {
 		return err
 	}
-	return res.err
+	if res.err != nil {
+		return res.err
+	}
+
+	return nil
 }
 
 func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {

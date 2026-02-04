@@ -50,6 +50,8 @@ import (
 	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
+
+	"example.com/scion-time/service"
 )
 
 const (
@@ -94,6 +96,7 @@ type svcConfig struct {
 	PeerClockCutoff         float64  `toml:"peer_clock_cutoff,omitempty"`
 	SyncTimeout             float64  `toml:"sync_timeout,omitempty"`
 	SyncInterval            float64  `toml:"sync_interval,omitempty"`
+	PHCSync                 string   `toml:"phc_sync,omitempty"`
 }
 
 type ntpReferenceClockIP struct {
@@ -420,11 +423,11 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		refClocks = append(refClocks, mbg.NewReferenceClock(log, s))
 	}
 
-	for _, s := range cfg.PHCReferenceClocks {
-		t := strings.Split(s, ",")
+	for _, c := range cfg.PHCReferenceClocks {
+		t := strings.Split(c, ",")
 		if len(t) > 2 {
 			logbase.Fatal(slog.Default(), "unexpected PHC reference clock specification",
-				slog.String("spec", s))
+				slog.String("config", c))
 		}
 		var o int
 		if len(t) > 1 {
@@ -432,7 +435,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			o, err = strconv.Atoi(t[1])
 			if err != nil {
 				logbase.Fatal(slog.Default(), "unexpected PHC reference clock offset",
-					slog.String("spec", s), slog.Any("error", err))
+					slog.String("config", c), slog.Any("error", err))
 			}
 		}
 		refClocks = append(refClocks, phc.NewReferenceClock(log, t[0], time.Duration(o)*time.Second))
@@ -583,6 +586,8 @@ func runServer(configFile string) {
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
 
+	service.StartPHCSync(log, cfg.PHCSync)
+
 	runMonitor(cfg)
 }
 
@@ -625,6 +630,8 @@ func runClient(configFile string) {
 	}
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
+
+	service.StartPHCSync(log, cfg.PHCSync)
 
 	runMonitor(cfg)
 }
