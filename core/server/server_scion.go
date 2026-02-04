@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gopacket/gopacket"
@@ -74,7 +75,14 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 
 	localConnPort := conn.LocalAddr().(*net.UDPAddr).Port
 
-	err := udp.EnableTimestamping(conn, localHostIface, -1 /* index */)
+	index := -1
+	if t := strings.Split(localHostIface, "%"); len(t) == 2 {
+		i, err := strconv.Atoi(t[1])
+		if err == nil {
+			localHostIface, index = t[0], i
+		}
+	}
+	err := udp.EnableTimestamping(conn, localHostIface, index)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
