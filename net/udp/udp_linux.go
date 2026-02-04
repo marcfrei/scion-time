@@ -70,7 +70,6 @@ type hwtstampConfig struct {
 	rxFilter int32
 }
 
-// See https://docs.kernel.org/networking/timestamping.html
 type soTimestamping struct {
 	flags   int32
 	bindPHC int32
