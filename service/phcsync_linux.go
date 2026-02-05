@@ -59,7 +59,7 @@ func StartPHCSync(log *slog.Logger, config string) {
 		ClockID:       clockID,
 		KP:            0.05,
 		KI:            0.15,
-		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
+		StepThreshold: 250 * time.Nanosecond,
 	}
 
 	go func() {

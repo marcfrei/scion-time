@@ -252,7 +252,7 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 		err error
 	}
 	err = sconn.Control(func(fd uintptr) {
-		for range 1000 {
+		for range 8192 {
 			pollFds := []unix.PollFd{
 				{Fd: int32(fd), Events: unix.POLLPRI},
 			}
