@@ -62,8 +62,8 @@ func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 
 	var loNoise, hiNoise float64
 	if f.navg > 2.0 {
-		loNoise = math.Sqrt(f.alolo - f.alo*f.alo)
-		hiNoise = math.Sqrt(f.ahihi - f.ahi*f.ahi)
+		loNoise = math.Sqrt(max(0.0, f.alolo-f.alo*f.alo))
+		hiNoise = math.Sqrt(max(0.0, f.ahihi-f.ahi*f.ahi))
 	}
 
 	loLim := f.alo - loNoise*filterThreshold
