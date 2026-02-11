@@ -53,7 +53,7 @@ func uploadData(cfg aws.Config, bucket, key string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	tm := transfermanager.New(s3.NewFromConfig(cfg)
+	tm := transfermanager.New(s3.NewFromConfig(cfg))
 	ctx, cancel := context.WithTimeout(context.Background(), uploadTimeout)
 	defer cancel()
 	_, err = tm.UploadObject(ctx, &transfermanager.UploadObjectInput{
