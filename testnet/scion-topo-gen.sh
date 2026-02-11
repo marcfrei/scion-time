@@ -5,13 +5,13 @@ cd ~/scion
 
 rm -rf gen*
 printf '#!/bin/bash\necho "0.0.0.0"' > tools/docker-ip
-sed -i "s/DEFAULT_NETWORK = \"127\.0\.0\.0\/8\"/DEFAULT_NETWORK = \"10\.0\.0\.0\/16\"/" tools/topology/net.py
+sed -i "s/DEFAULT_NETWORK = \"127\.0\.0\.0\/8\"/DEFAULT_NETWORK = \"10\.0\.0\.0\/16\"/" tools/topology/defines.py
 tools/topogen.py -c ~/scion-time/testnet/default4.topo
 git checkout --quiet tools/topology/net.py
 git checkout --quiet tools/docker-ip
 
 export PYTHONPATH=python/:.
-~/scion-time/testnet/scion-topo-add-drkey.py
+~/scion-time/testnet/scion-topo-add-drkey.py gen
 
 gen_delete_crypto () {
 	rm -rf gen/certs

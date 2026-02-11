@@ -19,7 +19,7 @@
       "interfaces": {
         "3": {
           "underlay": {
-            "public": "10.0.0.23:50000",
+            "local": "10.0.0.23:50000",
             "remote": "10.0.0.22:50000"
           },
           "isd_as": "1-ff00:0:120",
@@ -33,12 +33,13 @@
       "interfaces": {
         "4": {
           "underlay": {
-            "public": "10.0.0.15:50000",
+            "local": "10.0.0.15:50000",
             "remote": "10.0.0.14:50000"
           },
           "isd_as": "1-ff00:0:111",
           "link_to": "peer",
-          "mtu": 1472
+          "mtu": 1472,
+          "remote_interface_id": 100
         }
       }
     },
@@ -47,12 +48,13 @@
       "interfaces": {
         "1": {
           "underlay": {
-            "public": "10.0.0.28:50000",
+            "local": "10.0.0.28:50000",
             "remote": "10.0.0.29:50000"
           },
           "isd_as": "1-ff00:0:131",
           "link_to": "peer",
-          "mtu": 1472
+          "mtu": 1472,
+          "remote_interface_id": 480
         }
       }
     },
@@ -61,7 +63,7 @@
       "interfaces": {
         "2": {
           "underlay": {
-            "public": "10.0.0.30:50000",
+            "local": "10.0.0.30:50000",
             "remote": "10.0.0.31:50000"
           },
           "isd_as": "1-ff00:0:122",
@@ -70,6 +72,5 @@
         }
       }
     }
-  },
-  "colibri_service": {}
+  }
 }

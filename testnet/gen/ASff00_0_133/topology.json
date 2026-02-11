@@ -19,12 +19,13 @@
       "interfaces": {
         "1": {
           "underlay": {
-            "public": "10.0.0.33:50000",
+            "local": "10.0.0.33:50000",
             "remote": "10.0.0.32:50000"
           },
           "isd_as": "1-ff00:0:122",
           "link_to": "peer",
-          "mtu": 1472
+          "mtu": 1472,
+          "remote_interface_id": 1
         }
       }
     },
@@ -33,7 +34,7 @@
       "interfaces": {
         "2": {
           "underlay": {
-            "public": "10.0.0.39:50000",
+            "local": "10.0.0.39:50000",
             "remote": "10.0.0.38:50000"
           },
           "isd_as": "1-ff00:0:132",
@@ -42,6 +43,5 @@
         }
       }
     }
-  },
-  "colibri_service": {}
+  }
 }

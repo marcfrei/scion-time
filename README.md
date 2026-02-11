@@ -97,7 +97,6 @@ cd ~
 git clone https://github.com/scionproto/scion.git
 
 cd ~/scion
-git checkout v0.12.0
 go build -o ./bin/ ./control/cmd/control
 go build -o ./bin/ ./daemon/cmd/daemon
 go build -o ./bin/ ./dispatcher/cmd/dispatcher
@@ -122,7 +121,7 @@ rm -rf logs
 ./scion-topo-gen-crypto.sh
 ./testnet-up.sh
 
-./supervisor/supervisor.sh reload && sleep 1
+./supervisor/supervisor.sh reload && sleep 3
 ./supervisor/supervisor.sh start all
 ```
 

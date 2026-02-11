@@ -24,6 +24,10 @@ addr = "10.0.0.197:31152"
 
 [features]
 
+[rpc]
+client_protocol = "all"
+server_protocol = "all"
+
 [ca]
 mode = "in-process"
 

@@ -1,9 +1,6 @@
 {
   "attributes": [
-    "authoritative",
-    "core",
-    "issuing",
-    "voting"
+    "core"
   ],
   "isd_as": "1-ff00:0:110",
   "mtu": 1472,
@@ -24,7 +21,7 @@
       "interfaces": {
         "1": {
           "underlay": {
-            "public": "10.0.0.0:50000",
+            "local": "10.0.0.0:50000",
             "remote": "10.0.0.1:50000"
           },
           "isd_as": "1-ff00:0:120",
@@ -38,7 +35,7 @@
       "interfaces": {
         "2": {
           "underlay": {
-            "public": "10.0.0.2:50000",
+            "local": "10.0.0.2:50000",
             "remote": "10.0.0.3:50000"
           },
           "isd_as": "1-ff00:0:130",
@@ -52,7 +49,7 @@
       "interfaces": {
         "3": {
           "underlay": {
-            "public": "10.0.0.4:50000",
+            "local": "10.0.0.4:50000",
             "remote": "10.0.0.5:50000"
           },
           "isd_as": "2-ff00:0:210",
@@ -61,6 +58,5 @@
         }
       }
     }
-  },
-  "colibri_service": {}
+  }
 }
