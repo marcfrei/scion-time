@@ -97,7 +97,7 @@ func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 
 	trust := 1.0
 
-	offset, weight = combine(timemath.Duration(lo), timemath.Duration(f.amid), timemath.Duration(hi), trust)
+	offset, weight = combine(timemath.Duration(lo), timemath.Duration(mid), timemath.Duration(hi), trust)
 
 	if f.log != nil {
 		f.log.LogAttrs(f.logCtx, slog.LevelDebug, "filtered response",
