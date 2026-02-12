@@ -27,15 +27,6 @@ func NewNtimedFilter(log *slog.Logger) *NtimedFilter {
 	return &NtimedFilter{log: log, logCtx: context.Background()}
 }
 
-func combine(lo, mid, hi time.Duration, trust float64) (offset time.Duration, weight float64) {
-	offset = mid
-	weight = 0.001 + trust*2.0/(hi-lo).Seconds()
-	if weight < 1.0 {
-		weight = 1.0
-	}
-	return
-}
-
 func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 	offset time.Duration) {
 
@@ -95,9 +86,8 @@ func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 	f.alolo += (lo*lo - f.alolo) / r
 	f.ahihi += (hi*hi - f.ahihi) / r
 
-	trust := 1.0
-
-	offset, weight = combine(timemath.Duration(lo), timemath.Duration(mid), timemath.Duration(hi), trust)
+	offset = timemath.Duration(mid)
+	weight = max(1.0, 0.001+2.0/(hi-lo))
 
 	if f.log != nil {
 		f.log.LogAttrs(f.logCtx, slog.LevelDebug, "filtered response",
