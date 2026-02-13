@@ -73,6 +73,11 @@ type PIController struct {
 
 var _ Adjustment = (*PIController)(nil)
 
+var (
+	linuxMinFreqAdj = unixutil.FreqFromScaledPPM(-32768000)
+	linuxMaxFreqAdj = unixutil.FreqFromScaledPPM(32768000)
+)
+
 func (c *PIController) Do(offset time.Duration) {
 	ctx := context.Background()
 	log := slog.Default()
@@ -90,8 +95,8 @@ func (c *PIController) Do(offset time.Duration) {
 	freq := unixutil.FreqFromScaledPPM(tx.Freq)
 
 	if c.freq != 0 &&
-		c.freq >= unixutil.FreqFromScaledPPM(-32768000) &&
-		c.freq <= unixutil.FreqFromScaledPPM(32768000) &&
+		c.freq >= linuxMinFreqAdj &&
+		c.freq <= linuxMaxFreqAdj &&
 		math.Abs(c.freq-freq) >= unixutil.FreqFromScaledPPM(1) {
 		log.LogAttrs(ctx, slog.LevelError, "unexpected clock behavior",
 			slog.Float64("cfreq", c.freq),
@@ -119,6 +124,11 @@ func (c *PIController) Do(offset time.Duration) {
 		c.freqAddend = offset.Seconds() * c.KP
 		c.p = c.freqAddend
 		freq += c.freqAddend
+		if freq < linuxMinFreqAdj {
+			freq = linuxMinFreqAdj
+		} else if freq > linuxMaxFreqAdj {
+			freq = linuxMaxFreqAdj
+		}
 		log.LogAttrs(ctx, slog.LevelDebug, "adjusting clock frequency",
 			slog.Float64("frequency", freq))
 		tx = unix.Timex{

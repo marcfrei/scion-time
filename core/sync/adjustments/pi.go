@@ -4,11 +4,11 @@ import "time"
 
 const (
 	PIControllerMinPRatio     = 0.01
-	PIControllerDefaultPRatio = 0.2
+	PIControllerDefaultPRatio = 0.1
 	PIControllerMaxPRatio     = 1.0
 	PIControllerMinIRatio     = 0.005
-	PIControllerDefaultIRatio = 0.05
+	PIControllerDefaultIRatio = 0.02
 	PIControllerMaxIRatio     = 0.5
 
-	PIControllerDefaultStepThreshold = 100 * time.Millisecond
+	PIControllerDefaultStepThreshold = 10 * time.Millisecond
 )
