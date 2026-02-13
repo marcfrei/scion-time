@@ -16,6 +16,7 @@ import (
 
 type sample struct {
 	cTx, sRx, sTx, cRx time.Time
+	rtd                time.Duration
 }
 
 type NtimedFilter struct {
@@ -46,32 +47,50 @@ func NewNtimedFilter(log *slog.Logger, size, pick int) *NtimedFilter {
 	}
 }
 
-func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
+func cmpCTx(a, b sample) int {
+	return a.cTx.Compare(b.cTx)
+}
+
+func cmpRTD(a, b sample) int {
+	return cmp.Compare(a.rtd, b.rtd)
+}
+
+func (f *NtimedFilter) Do(cTx, sRx, sTx, cRx time.Time) (
 	offset time.Duration, ok bool) {
 
 	if f.epoch != timebase.Epoch() {
 		f.Reset()
 	}
 
-	f.buf = append(f.buf, sample{cTxTime, sRxTime, sTxTime, cRxTime})
+	f.buf = append(f.buf, sample{
+		cTx: cTx, sRx: sRx, sTx: sTx, cRx: cRx,
+		rtd: cRx.Sub(cTx) - sTx.Sub(sRx),
+	})
 	if len(f.buf) < cap(f.buf) {
 		return 0, false
 	}
 
-	slices.SortStableFunc(f.buf, func(a, b sample) int { return cmp.Compare(a.rtd(), b.rtd()) })
-	f.buf = f.buf[:f.pick]
-	slices.SortStableFunc(f.buf, func(a, b sample) int { return a.cTx.Compare(b.cTx) })
 	var off time.Duration
-	for _, s := range f.buf {
-		off = f.filter(s.cTx, s.sRx, s.sTx, s.cRx)
+	if f.pick == 1 {
+		x := f.buf[0]
+		for i := 1; i != len(f.buf); i++ {
+			s := f.buf[i]
+			if s.rtd < x.rtd {
+				x = s
+			}
+		}
+		off = f.filter(x.cTx, x.sRx, x.sTx, x.cRx)
+	} else {
+		slices.SortStableFunc(f.buf, cmpRTD)
+		f.buf = f.buf[:f.pick]
+		slices.SortStableFunc(f.buf, cmpCTx)
+		for _, s := range f.buf {
+			off = f.filter(s.cTx, s.sRx, s.sTx, s.cRx)
+		}
 	}
 	f.buf = f.buf[:0]
 
 	return off, true
-}
-
-func (s *sample) rtd() time.Duration {
-	return s.cRx.Sub(s.cTx) - s.sTx.Sub(s.sRx)
 }
 
 func (f *NtimedFilter) filter(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
