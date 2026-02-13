@@ -145,6 +145,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 
 	reference := remoteAddr.String()
 
+	var txid uint32
 	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -179,10 +180,18 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 		if n != len(buf) {
 			return time.Time{}, 0, errWrite
 		}
-		cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
-		if err != nil || id != 0 {
-			cTxTime1 = timebase.Now()
-			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
+		cTxTime1, id, err := udp.ReadTXTimestamp(conn, txid)
+		if err != nil {
+			cTxTime1 = cTxTime0
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+				slog.Any("error", err))
+		} else if id != txid {
+			cTxTime1 = cTxTime0
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
+			txid = id + 1
+		} else {
+			txid++
 		}
 		mtrcs.reqsSent.Inc()
 		if interleavedReq {

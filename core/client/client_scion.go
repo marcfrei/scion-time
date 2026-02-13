@@ -191,6 +191,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
 
+	var txid uint32
 	buf := make([]byte, scion.MTU)
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -327,10 +328,18 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		if n != len(buffer.Bytes()) {
 			return time.Time{}, 0, errWrite
 		}
-		cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
-		if err != nil || id != 0 {
-			cTxTime1 = timebase.Now()
-			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
+		cTxTime1, id, err := udp.ReadTXTimestamp(conn, txid)
+		if err != nil {
+			cTxTime1 = cTxTime0
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+				slog.Any("error", err))
+		} else if id != txid {
+			cTxTime1 = cTxTime0
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
+			txid = id + 1
+		} else {
+			txid++
 		}
 		mtrcs.reqsSent.Inc()
 		if interleavedReq {
