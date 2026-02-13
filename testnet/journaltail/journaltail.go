@@ -82,9 +82,7 @@ func queueUpload(ch chan uploadRequest, bucket, key string, data []byte) {
 }
 
 func startUploader(cfg aws.Config, wg *sync.WaitGroup, ch chan uploadRequest) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for req := range ch {
 			fmt.Fprintf(os.Stderr, "Uploading %d bytes to S3: %s/%s\n",
 				len(req.data), req.bucket, req.key)
@@ -93,7 +91,7 @@ func startUploader(cfg aws.Config, wg *sync.WaitGroup, ch chan uploadRequest) {
 				fmt.Fprintf(os.Stderr, "Error uploading to S3: %s\n", err)
 			}
 		}
-	}()
+	})
 }
 
 func main() {

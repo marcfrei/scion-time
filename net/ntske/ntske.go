@@ -90,7 +90,7 @@ func (h RecordHdr) pack(buf *bytes.Buffer) error {
 
 func (h RecordHdr) Header() RecordHdr { return h }
 
-func packsimple(t uint16, c bool, v interface{}, buf *bytes.Buffer) error {
+func packsimple(t uint16, c bool, v any, buf *bytes.Buffer) error {
 	value := new(bytes.Buffer)
 	err := binary.Write(value, binary.BigEndian, v)
 	if err != nil {
