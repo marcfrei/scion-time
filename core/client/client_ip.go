@@ -143,216 +143,216 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 		remoteAddr.IP = ip4
 	}
 
-	buf := make([]byte, ntp.PacketLen)
-
 	reference := remoteAddr.String()
-	cTxTime0 := timebase.Now()
-	interleavedReq := false
 
-	ntpreq := ntp.Packet{}
-	ntpreq.SetVersion(ntp.VersionMax)
-	ntpreq.SetMode(ntp.ModeClient)
-	if c.InterleavedMode && reference == c.prev.reference &&
-		cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) <= 3*time.Second {
-		interleavedReq = true
-		ntpreq.OriginTime = c.prev.sRxTime
-		ntpreq.ReceiveTime = c.prev.cRxTime
-		ntpreq.TransmitTime = c.prev.cTxTime
-	} else {
-		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
-	}
-	ntp.EncodePacket(&buf, &ntpreq)
-
-	var requestID []byte
-	var ntsreq nts.Packet
-	if c.Auth.Enabled {
-		ntsreq, requestID = nts.NewRequestPacket(ntskeData)
-		nts.EncodePacket(&buf, &ntsreq)
-	}
-
-	n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-	if n != len(buf) {
-		return time.Time{}, 0, errWrite
-	}
-	cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
-	if err != nil || id != 0 {
-		cTxTime1 = timebase.Now()
-		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
-	}
-	mtrcs.reqsSent.Inc()
-	if interleavedReq {
-		mtrcs.reqsSentInterleaved.Inc()
-	}
-
-	const maxNumRetries = 1
-	numRetries := 0
+	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
 	for {
-		buf = buf[:cap(buf)]
-		oob = oob[:cap(oob)]
-		n, oobn, flags, srcAddr, err := conn.ReadMsgUDPAddrPort(buf, oob)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if flags != 0 {
-			err = errUnexpectedPacketFlags
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		oob = oob[:oobn]
-		cRxTime, err := udp.TimestampFromOOBData(oob)
-		if err != nil {
-			cRxTime = timebase.Now()
-			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
-		}
-		buf = buf[:n]
-		mtrcs.pktsReceived.Inc()
+		cTxTime0 := timebase.Now()
+		interleavedReq := false
 
-		if compareAddrs(srcAddr.Addr(), remoteAddr.AddrPort().Addr()) != 0 {
-			err = errUnexpectedPacketSource
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
+		ntpreq := ntp.Packet{}
+		ntpreq.SetVersion(ntp.VersionMax)
+		ntpreq.SetMode(ntp.ModeClient)
+		if c.InterleavedMode && reference == c.prev.reference &&
+			cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) <= 3*time.Second {
+			interleavedReq = true
+			ntpreq.OriginTime = c.prev.sRxTime
+			ntpreq.ReceiveTime = c.prev.cRxTime
+			ntpreq.TransmitTime = c.prev.cTxTime
+		} else {
+			ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 		}
+		ntp.EncodePacket(&buf, &ntpreq)
 
-		var ntpresp ntp.Packet
-		err = ntp.DecodePacket(&ntpresp, buf)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		authenticated := false
-		var ntsresp nts.Packet
+		var requestID []byte
+		var ntsreq nts.Packet
 		if c.Auth.Enabled {
-			err = nts.DecodePacket(&ntsresp, buf)
+			ntsreq, requestID = nts.NewRequestPacket(ntskeData)
+			nts.EncodePacket(&buf, &ntsreq)
+		}
+
+		n, err := conn.WriteToUDPAddrPort(buf, remoteAddr.AddrPort())
+		if err != nil {
+			return time.Time{}, 0, err
+		}
+		if n != len(buf) {
+			return time.Time{}, 0, errWrite
+		}
+		cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
+		if err != nil || id != 0 {
+			cTxTime1 = timebase.Now()
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
+		}
+		mtrcs.reqsSent.Inc()
+		if interleavedReq {
+			mtrcs.reqsSentInterleaved.Inc()
+		}
+
+		const maxNumRetries = 1
+		numRetries := 0
+		for {
+			buf = buf[:cap(buf)]
+			oob = oob[:cap(oob)]
+			n, oobn, flags, srcAddr, err := conn.ReadMsgUDPAddrPort(buf, oob)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			if flags != 0 {
+				err = errUnexpectedPacketFlags
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			oob = oob[:oobn]
+			cRxTime, err := udp.TimestampFromOOBData(oob)
+			if err != nil {
+				cRxTime = timebase.Now()
+				c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+			}
+			buf = buf[:n]
+			mtrcs.pktsReceived.Inc()
+
+			if compareAddrs(srcAddr.Addr(), remoteAddr.AddrPort().Addr()) != 0 {
+				err = errUnexpectedPacketSource
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
 					numRetries++
 					continue
 				}
 				return time.Time{}, 0, err
 			}
 
-			err = nts.ProcessResponse(buf, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
+			var ntpresp ntp.Packet
+			err = ntp.DecodePacket(&ntpresp, buf)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 					numRetries++
 					continue
 				}
 				return time.Time{}, 0, err
 			}
 
-			authenticated = true
-			mtrcs.pktsAuthenticated.Inc()
-		}
+			authenticated := false
+			var ntsresp nts.Packet
+			if c.Auth.Enabled {
+				err = nts.DecodePacket(&ntsresp, buf)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
+						numRetries++
+						continue
+					}
+					return time.Time{}, 0, err
+				}
 
-		interleavedResp := false
-		if interleavedReq && ntpresp.OriginTime == ntpreq.ReceiveTime {
-			interleavedResp = true
-		} else if ntpresp.OriginTime != ntpreq.TransmitTime {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
-				numRetries++
-				continue
+				err = nts.ProcessResponse(buf, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
+						numRetries++
+						continue
+					}
+					return time.Time{}, 0, err
+				}
+
+				authenticated = true
+				mtrcs.pktsAuthenticated.Inc()
 			}
-			return time.Time{}, 0, err
-		}
 
-		err = ntp.ValidateResponseMetadata(&ntpresp)
-		if err != nil {
-			return time.Time{}, 0, err
-		}
+			interleavedResp := false
+			if interleavedReq && ntpresp.OriginTime == ntpreq.ReceiveTime {
+				interleavedResp = true
+			} else if ntpresp.OriginTime != ntpreq.TransmitTime {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
 
-		c.Log.LogAttrs(ctx, slog.LevelDebug, "received response",
-			slog.Time("at", cRxTime),
-			slog.String("from", reference),
-			slog.Bool("auth", authenticated),
-			slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
-		)
-
-		sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime, cTxTime0)
-		sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime, cTxTime0)
-
-		var t0, t1, t2, t3 time.Time
-		if interleavedResp {
-			t0 = ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)
-			t1 = ntp.TimeFromTime64(c.prev.sRxTime, cTxTime0)
-			t2 = sTxTime
-			t3 = ntp.TimeFromTime64(c.prev.cRxTime, cTxTime0)
-		} else {
-			t0 = cTxTime1
-			t1 = sRxTime
-			t2 = sTxTime
-			t3 = cRxTime
-		}
-
-		err = ntp.ValidateResponseTimestamps(t0, t1, t2, t3)
-		if err != nil {
-			return time.Time{}, 0, err
-		}
-
-		off := ntp.ClockOffset(t0, t1, t2, t3)
-		rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
-
-		mtrcs.respsAccepted.Inc()
-		if interleavedResp {
-			mtrcs.respsAcceptedInterleaved.Inc()
-		}
-		c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
-			slog.Time("at", cRxTime),
-			slog.String("from", reference),
-			slog.Bool("interleaved", interleavedResp),
-			slog.Duration("clock offset", off),
-			slog.Duration("round trip delay", rtd),
-		)
-
-		if c.InterleavedMode {
-			c.prev.reference = reference
-			c.prev.interleaved = interleavedResp
-			c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
-			c.prev.cRxTime = ntp.Time64FromTime(cRxTime)
-			c.prev.sRxTime = ntpresp.ReceiveTime
-		}
-
-		timestamp = cRxTime
-		if c.Filter == nil {
-			offset = off
-		} else {
-			offset = c.Filter.Do(t0, t1, t2, t3)
-		}
-
-		if c.Histogram != nil {
-			err := c.Histogram.RecordValue(rtd.Microseconds())
+			err = ntp.ValidateResponseMetadata(&ntpresp)
 			if err != nil {
 				return time.Time{}, 0, err
 			}
-		}
 
-		break
+			c.Log.LogAttrs(ctx, slog.LevelDebug, "received response",
+				slog.Time("at", cRxTime),
+				slog.String("from", reference),
+				slog.Bool("auth", authenticated),
+				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
+			)
+
+			sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime, cTxTime0)
+			sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime, cTxTime0)
+
+			var t0, t1, t2, t3 time.Time
+			if interleavedResp {
+				t0 = ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)
+				t1 = ntp.TimeFromTime64(c.prev.sRxTime, cTxTime0)
+				t2 = sTxTime
+				t3 = ntp.TimeFromTime64(c.prev.cRxTime, cTxTime0)
+			} else {
+				t0 = cTxTime1
+				t1 = sRxTime
+				t2 = sTxTime
+				t3 = cRxTime
+			}
+
+			err = ntp.ValidateResponseTimestamps(t0, t1, t2, t3)
+			if err != nil {
+				return time.Time{}, 0, err
+			}
+
+			off := ntp.ClockOffset(t0, t1, t2, t3)
+			rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
+
+			mtrcs.respsAccepted.Inc()
+			if interleavedResp {
+				mtrcs.respsAcceptedInterleaved.Inc()
+			}
+			c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
+				slog.Time("at", cRxTime),
+				slog.String("from", reference),
+				slog.Bool("interleaved", interleavedResp),
+				slog.Duration("clock offset", off),
+				slog.Duration("round trip delay", rtd),
+			)
+
+			if c.InterleavedMode {
+				c.prev.reference = reference
+				c.prev.interleaved = interleavedResp
+				c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
+				c.prev.cRxTime = ntp.Time64FromTime(cRxTime)
+				c.prev.sRxTime = ntpresp.ReceiveTime
+			}
+
+			if c.Histogram != nil {
+				err := c.Histogram.RecordValue(rtd.Microseconds())
+				if err != nil {
+					return time.Time{}, 0, err
+				}
+			}
+
+			if c.Filter != nil {
+				off, ok = c.Filter.Do(t0, t1, t2, t3)
+				if !ok {
+					break
+				}
+			}
+
+			return cRxTime, off, nil
+		}
 	}
-
-	return timestamp, offset, nil
 }

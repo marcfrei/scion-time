@@ -128,7 +128,6 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		c.Auth.buf = make([]byte, spao.MACBufferSize)
 		c.Auth.mac = make([]byte, scion.PacketAuthMACLen)
 	}
-	var authKey []byte
 
 	laddr, ok := netip.AddrFromSlice(localAddr.Host.IP)
 	if !ok {
@@ -190,427 +189,428 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			nextHop.Port())
 	}
 
-	buf := make([]byte, scion.MTU)
-
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
-	cTxTime0 := timebase.Now()
-	interleavedReq := false
 
-	ntpreq := ntp.Packet{}
-	ntpreq.SetVersion(ntp.VersionMax)
-	ntpreq.SetMode(ntp.ModeClient)
-	if c.InterleavedMode && reference == c.prev.reference &&
-		cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) < 3*time.Second {
-		interleavedReq = true
-		ntpreq.OriginTime = c.prev.sRxTime
-		ntpreq.ReceiveTime = c.prev.cRxTime
-		ntpreq.TransmitTime = c.prev.cTxTime
-	} else {
-		ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
-	}
-	ntp.EncodePacket(&buf, &ntpreq)
-
-	var requestID []byte
-	var ntsreq nts.Packet
-	if c.Auth.NTSEnabled {
-		ntsreq, requestID = nts.NewRequestPacket(ntskeData)
-		nts.EncodePacket(&buf, &ntsreq)
-	}
-
-	var scionLayer slayers.SCION
-	scionLayer.TrafficClass = c.DSCP << 2
-	scionLayer.SrcIA = localAddr.IA
-	srcAddrIP, ok := netip.AddrFromSlice(localAddr.Host.IP)
-	if !ok {
-		panic(errUnexpectedAddrType)
-	}
-	err = scionLayer.SetSrcAddr(addr.HostIP(srcAddrIP.Unmap()))
-	if err != nil {
-		panic(err)
-	}
-	scionLayer.DstIA = remoteAddr.IA
-	dstAddrIP, ok := netip.AddrFromSlice(remoteAddr.Host.IP)
-	if !ok {
-		panic(errUnexpectedAddrType)
-	}
-	err = scionLayer.SetDstAddr(addr.HostIP(dstAddrIP.Unmap()))
-	if err != nil {
-		panic(err)
-	}
-	err = path.Dataplane().SetPath(&scionLayer)
-	if err != nil {
-		panic(err)
-	}
-	scionLayer.NextHdr = slayers.L4UDP
-
-	var udpLayer slayers.UDP
-	udpLayer.SrcPort = uint16(localPort)
-	udpLayer.DstPort = uint16(remoteAddr.Host.Port)
-	udpLayer.SetNetworkLayerForChecksum(&scionLayer)
-
-	payload := gopacket.Payload(buf)
-
-	buffer := gopacket.NewSerializeBuffer()
-	options := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-		FixLengths:       true,
-	}
-
-	err = payload.SerializeTo(buffer, options)
-	if err != nil {
-		panic(err)
-	}
-	buffer.PushLayer(payload.LayerType())
-
-	err = udpLayer.SerializeTo(buffer, options)
-	if err != nil {
-		panic(err)
-	}
-	buffer.PushLayer(udpLayer.LayerType())
-
-	if c.Auth.Enabled {
-		hostHostKey, err := c.Auth.DRKeyFetcher.FetchHostHostKey(ctx, drkey.HostHostMeta{
-			ProtoId:  scion.DRKeyProtocolTS,
-			Validity: cTxTime0,
-			SrcIA:    remoteAddr.IA,
-			DstIA:    localAddr.IA,
-			SrcHost:  remoteAddr.Host.IP.String(),
-			DstHost:  localAddr.Host.IP.String(),
-		})
-		if err != nil {
-			c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to fetch DRKey level 3: host-host key", slog.Any("error", err))
-		} else {
-			authKey = hostHostKey.Key[:]
-
-			scion.PreparePacketAuthOpt(c.Auth.opt, scion.PacketAuthSPIClient, scion.PacketAuthAlgorithm)
-			_, err = spao.ComputeAuthCMAC(
-				spao.MACInput{
-					Key:        authKey,
-					Header:     slayers.PacketAuthOption{EndToEndOption: c.Auth.opt},
-					ScionLayer: &scionLayer,
-					PldType:    scionLayer.NextHdr,
-					Pld:        buffer.Bytes(),
-				},
-				c.Auth.buf,
-				scion.PacketAuthOptMAC(c.Auth.opt),
-			)
-			if err != nil {
-				panic(err)
-			}
-
-			e2eExtn := slayers.EndToEndExtn{}
-			e2eExtn.NextHdr = scionLayer.NextHdr
-			e2eExtn.Options = []*slayers.EndToEndOption{c.Auth.opt}
-
-			err = e2eExtn.SerializeTo(buffer, options)
-			if err != nil {
-				panic(err)
-			}
-			buffer.PushLayer(e2eExtn.LayerType())
-
-			scionLayer.NextHdr = slayers.End2EndClass
-		}
-	}
-
-	err = scionLayer.SerializeTo(buffer, options)
-	if err != nil {
-		panic(err)
-	}
-	buffer.PushLayer(scionLayer.LayerType())
-
-	n, err := conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-	if n != len(buffer.Bytes()) {
-		return time.Time{}, 0, errWrite
-	}
-	cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
-	if err != nil || id != 0 {
-		cTxTime1 = timebase.Now()
-		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
-	}
-	mtrcs.reqsSent.Inc()
-	if interleavedReq {
-		mtrcs.reqsSentInterleaved.Inc()
-	}
-
-	const maxNumRetries = 1
-	numRetries := 0
+	buf := make([]byte, scion.MTU)
 	oob := make([]byte, udp.TimestampLen())
 	for {
-		buf = buf[:cap(buf)]
-		oob = oob[:cap(oob)]
-		n, oobn, flags, lastHop, err := conn.ReadMsgUDPAddrPort(buf, oob)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if flags != 0 {
-			err = errUnexpectedPacketFlags
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		oob = oob[:oobn]
-		cRxTime, err := udp.TimestampFromOOBData(oob)
-		if err != nil {
-			cRxTime = timebase.Now()
-			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
-		}
-		buf = buf[:n]
-		mtrcs.pktsReceived.Inc()
+		cTxTime0 := timebase.Now()
+		interleavedReq := false
 
-		var (
-			hbhLayer  slayers.HopByHopExtnSkipper
-			e2eLayer  slayers.EndToEndExtn
-			scmpLayer slayers.SCMP
-		)
-		parser := gopacket.NewDecodingLayerParser(
-			slayers.LayerTypeSCION, &scionLayer, &hbhLayer, &e2eLayer, &udpLayer, &scmpLayer,
-		)
-		parser.IgnoreUnsupported = true
-		decoded := make([]gopacket.LayerType, 4)
-		err = parser.DecodeLayers(buf, &decoded)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
+		ntpreq := ntp.Packet{}
+		ntpreq.SetVersion(ntp.VersionMax)
+		ntpreq.SetMode(ntp.ModeClient)
+		if c.InterleavedMode && reference == c.prev.reference &&
+			cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) < 3*time.Second {
+			interleavedReq = true
+			ntpreq.OriginTime = c.prev.sRxTime
+			ntpreq.ReceiveTime = c.prev.cRxTime
+			ntpreq.TransmitTime = c.prev.cTxTime
+		} else {
+			ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 		}
-		validType := len(decoded) >= 2 && (decoded[len(decoded)-1] == slayers.LayerTypeSCIONUDP ||
-			decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
-		if !validType {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if decoded[len(decoded)-1] == slayers.LayerTypeSCMP {
-			err = errUnexpectedPacket
-			c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to handle packet",
-				slog.String("cause", "unexpected SCMP message type"),
-				slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
-				slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if len(buf) < int(udpLayer.Length) {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
-			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
-		validDst := scionLayer.DstIA == localAddr.IA &&
-			ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
-		if !validSrc || !validDst {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				if !validSrc {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
-				}
-				if !validDst {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet to unexpected destination")
-				}
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
+		ntp.EncodePacket(&buf, &ntpreq)
+
+		var requestID []byte
+		var ntsreq nts.Packet
+		if c.Auth.NTSEnabled {
+			ntsreq, requestID = nts.NewRequestPacket(ntskeData)
+			nts.EncodePacket(&buf, &ntsreq)
 		}
 
-		authenticated := false
-		if len(decoded) >= 3 &&
-			decoded[len(decoded)-2] == slayers.LayerTypeEndToEndExtn {
-			tsOpt, err := e2eLayer.FindOption(scion.OptTypeTimestamp)
-			if err == nil {
-				cRxTime0, err := udp.TimestampFromOOBData(tsOpt.OptData)
-				if err == nil {
-					cRxTime = cRxTime0
+		var scionLayer slayers.SCION
+		scionLayer.TrafficClass = c.DSCP << 2
+		scionLayer.SrcIA = localAddr.IA
+		srcAddrIP, ok := netip.AddrFromSlice(localAddr.Host.IP)
+		if !ok {
+			panic(errUnexpectedAddrType)
+		}
+		err = scionLayer.SetSrcAddr(addr.HostIP(srcAddrIP.Unmap()))
+		if err != nil {
+			panic(err)
+		}
+		scionLayer.DstIA = remoteAddr.IA
+		dstAddrIP, ok := netip.AddrFromSlice(remoteAddr.Host.IP)
+		if !ok {
+			panic(errUnexpectedAddrType)
+		}
+		err = scionLayer.SetDstAddr(addr.HostIP(dstAddrIP.Unmap()))
+		if err != nil {
+			panic(err)
+		}
+		err = path.Dataplane().SetPath(&scionLayer)
+		if err != nil {
+			panic(err)
+		}
+		scionLayer.NextHdr = slayers.L4UDP
+
+		var udpLayer slayers.UDP
+		udpLayer.SrcPort = uint16(localPort)
+		udpLayer.DstPort = uint16(remoteAddr.Host.Port)
+		udpLayer.SetNetworkLayerForChecksum(&scionLayer)
+
+		payload := gopacket.Payload(buf)
+
+		buffer := gopacket.NewSerializeBuffer()
+		options := gopacket.SerializeOptions{
+			ComputeChecksums: true,
+			FixLengths:       true,
+		}
+
+		err = payload.SerializeTo(buffer, options)
+		if err != nil {
+			panic(err)
+		}
+		buffer.PushLayer(payload.LayerType())
+
+		err = udpLayer.SerializeTo(buffer, options)
+		if err != nil {
+			panic(err)
+		}
+		buffer.PushLayer(udpLayer.LayerType())
+
+		var authKey []byte
+		if c.Auth.Enabled {
+			hostHostKey, err := c.Auth.DRKeyFetcher.FetchHostHostKey(ctx, drkey.HostHostMeta{
+				ProtoId:  scion.DRKeyProtocolTS,
+				Validity: cTxTime0,
+				SrcIA:    remoteAddr.IA,
+				DstIA:    localAddr.IA,
+				SrcHost:  remoteAddr.Host.IP.String(),
+				DstHost:  localAddr.Host.IP.String(),
+			})
+			if err != nil {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to fetch DRKey level 3: host-host key", slog.Any("error", err))
+			} else {
+				authKey = hostHostKey.Key[:]
+
+				scion.PreparePacketAuthOpt(c.Auth.opt, scion.PacketAuthSPIClient, scion.PacketAuthAlgorithm)
+				_, err = spao.ComputeAuthCMAC(
+					spao.MACInput{
+						Key:        authKey,
+						Header:     slayers.PacketAuthOption{EndToEndOption: c.Auth.opt},
+						ScionLayer: &scionLayer,
+						PldType:    scionLayer.NextHdr,
+						Pld:        buffer.Bytes(),
+					},
+					c.Auth.buf,
+					scion.PacketAuthOptMAC(c.Auth.opt),
+				)
+				if err != nil {
+					panic(err)
 				}
+
+				e2eExtn := slayers.EndToEndExtn{}
+				e2eExtn.NextHdr = scionLayer.NextHdr
+				e2eExtn.Options = []*slayers.EndToEndOption{c.Auth.opt}
+
+				err = e2eExtn.SerializeTo(buffer, options)
+				if err != nil {
+					panic(err)
+				}
+				buffer.PushLayer(e2eExtn.LayerType())
+
+				scionLayer.NextHdr = slayers.End2EndClass
 			}
-			if authKey != nil {
-				authOpt, err := e2eLayer.FindOption(slayers.OptTypeAuthenticator)
+		}
+
+		err = scionLayer.SerializeTo(buffer, options)
+		if err != nil {
+			panic(err)
+		}
+		buffer.PushLayer(scionLayer.LayerType())
+
+		n, err := conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
+		if err != nil {
+			return time.Time{}, 0, err
+		}
+		if n != len(buffer.Bytes()) {
+			return time.Time{}, 0, errWrite
+		}
+		cTxTime1, id, err := udp.ReadTXTimestamp(conn, 0)
+		if err != nil || id != 0 {
+			cTxTime1 = timebase.Now()
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
+		}
+		mtrcs.reqsSent.Inc()
+		if interleavedReq {
+			mtrcs.reqsSentInterleaved.Inc()
+		}
+
+		const maxNumRetries = 1
+		numRetries := 0
+		for {
+			buf = buf[:cap(buf)]
+			oob = oob[:cap(oob)]
+			n, oobn, flags, lastHop, err := conn.ReadMsgUDPAddrPort(buf, oob)
+			if err != nil {
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			if flags != 0 {
+				err = errUnexpectedPacketFlags
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			oob = oob[:oobn]
+			cRxTime, err := udp.TimestampFromOOBData(oob)
+			if err != nil {
+				cRxTime = timebase.Now()
+				c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+			}
+			buf = buf[:n]
+			mtrcs.pktsReceived.Inc()
+
+			var (
+				hbhLayer  slayers.HopByHopExtnSkipper
+				e2eLayer  slayers.EndToEndExtn
+				scmpLayer slayers.SCMP
+			)
+			parser := gopacket.NewDecodingLayerParser(
+				slayers.LayerTypeSCION, &scionLayer, &hbhLayer, &e2eLayer, &udpLayer, &scmpLayer,
+			)
+			parser.IgnoreUnsupported = true
+			decoded := make([]gopacket.LayerType, 4)
+			err = parser.DecodeLayers(buf, &decoded)
+			if err != nil {
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			validType := len(decoded) >= 2 && (decoded[len(decoded)-1] == slayers.LayerTypeSCIONUDP ||
+				decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
+			if !validType {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			if decoded[len(decoded)-1] == slayers.LayerTypeSCMP {
+				err = errUnexpectedPacket
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to handle packet",
+					slog.String("cause", "unexpected SCMP message type"),
+					slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
+					slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			if len(buf) < int(udpLayer.Length) {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+			validSrc := scionLayer.SrcIA == remoteAddr.IA &&
+				ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
+			validDst := scionLayer.DstIA == localAddr.IA &&
+				ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
+			if !validSrc || !validDst {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					if !validSrc {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
+					}
+					if !validDst {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet to unexpected destination")
+					}
+					numRetries++
+					continue
+				}
+				return time.Time{}, 0, err
+			}
+
+			authenticated := false
+			if len(decoded) >= 3 &&
+				decoded[len(decoded)-2] == slayers.LayerTypeEndToEndExtn {
+				tsOpt, err := e2eLayer.FindOption(scion.OptTypeTimestamp)
 				if err == nil {
-					spi, algo := scion.PacketAuthOptMetadata(authOpt)
-					if spi == scion.PacketAuthSPIServer && algo == scion.PacketAuthAlgorithm {
-						_, err = spao.ComputeAuthCMAC(
-							spao.MACInput{
-								Key:        authKey,
-								Header:     slayers.PacketAuthOption{EndToEndOption: authOpt},
-								ScionLayer: &scionLayer,
-								PldType:    slayers.L4UDP,
-								Pld:        buf[len(buf)-int(udpLayer.Length):],
-							},
-							c.Auth.buf,
-							c.Auth.mac,
-						)
-						if err != nil {
-							panic(err)
-						}
-						authenticated = subtle.ConstantTimeCompare(scion.PacketAuthOptMAC(authOpt), c.Auth.mac) != 0
-						if !authenticated {
-							err = errInvalidPacketAuthenticator
-							if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-								c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to authenticate packet", slog.Any("error", err))
-								numRetries++
-								continue
+					cRxTime0, err := udp.TimestampFromOOBData(tsOpt.OptData)
+					if err == nil {
+						cRxTime = cRxTime0
+					}
+				}
+				if authKey != nil {
+					authOpt, err := e2eLayer.FindOption(slayers.OptTypeAuthenticator)
+					if err == nil {
+						spi, algo := scion.PacketAuthOptMetadata(authOpt)
+						if spi == scion.PacketAuthSPIServer && algo == scion.PacketAuthAlgorithm {
+							_, err = spao.ComputeAuthCMAC(
+								spao.MACInput{
+									Key:        authKey,
+									Header:     slayers.PacketAuthOption{EndToEndOption: authOpt},
+									ScionLayer: &scionLayer,
+									PldType:    slayers.L4UDP,
+									Pld:        buf[len(buf)-int(udpLayer.Length):],
+								},
+								c.Auth.buf,
+								c.Auth.mac,
+							)
+							if err != nil {
+								panic(err)
 							}
-							return time.Time{}, 0, err
+							authenticated = subtle.ConstantTimeCompare(scion.PacketAuthOptMAC(authOpt), c.Auth.mac) != 0
+							if !authenticated {
+								err = errInvalidPacketAuthenticator
+								if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+									c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to authenticate packet", slog.Any("error", err))
+									numRetries++
+									continue
+								}
+								return time.Time{}, 0, err
+							}
+							mtrcs.pktsAuthenticated.Inc()
 						}
-						mtrcs.pktsAuthenticated.Inc()
 					}
 				}
 			}
-		}
 
-		var ntpresp ntp.Packet
-		err = ntp.DecodePacket(&ntpresp, udpLayer.Payload)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		ntsAuthenticated := false
-		var ntsresp nts.Packet
-		if c.Auth.NTSEnabled {
-			err = nts.DecodePacket(&ntsresp, udpLayer.Payload)
+			var ntpresp ntp.Packet
+			err = ntp.DecodePacket(&ntpresp, udpLayer.Payload)
 			if err != nil {
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 					numRetries++
 					continue
 				}
 				return time.Time{}, 0, err
 			}
 
-			err = nts.ProcessResponse(udpLayer.Payload, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
-			if err != nil {
+			ntsAuthenticated := false
+			var ntsresp nts.Packet
+			if c.Auth.NTSEnabled {
+				err = nts.DecodePacket(&ntsresp, udpLayer.Payload)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
+						numRetries++
+						continue
+					}
+					return time.Time{}, 0, err
+				}
+
+				err = nts.ProcessResponse(udpLayer.Payload, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
+						numRetries++
+						continue
+					}
+					return time.Time{}, 0, err
+				}
+				ntsAuthenticated = true
+			}
+
+			interleavedResp := false
+			if interleavedReq && ntpresp.OriginTime == ntpreq.ReceiveTime {
+				interleavedResp = true
+			} else if ntpresp.OriginTime != ntpreq.TransmitTime {
+				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue
 				}
 				return time.Time{}, 0, err
 			}
-			ntsAuthenticated = true
-		}
 
-		interleavedResp := false
-		if interleavedReq && ntpresp.OriginTime == ntpreq.ReceiveTime {
-			interleavedResp = true
-		} else if ntpresp.OriginTime != ntpreq.TransmitTime {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
-				numRetries++
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		err = ntp.ValidateResponseMetadata(&ntpresp)
-		if err != nil {
-			return time.Time{}, 0, err
-		}
-
-		dscp := scionLayer.TrafficClass >> 2
-
-		c.Log.LogAttrs(ctx, slog.LevelDebug, "received response",
-			slog.Time("at", cRxTime),
-			slog.String("from", reference),
-			slog.Any("via", lastHop),
-			slog.Uint64("DSCP", uint64(dscp)),
-			slog.Bool("auth", authenticated),
-			slog.Bool("ntsauth", ntsAuthenticated),
-			slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
-		)
-
-		sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime, cTxTime0)
-		sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime, cTxTime0)
-
-		var t0, t1, t2, t3 time.Time
-		if interleavedResp {
-			t0 = ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)
-			t1 = ntp.TimeFromTime64(c.prev.sRxTime, cTxTime0)
-			t2 = sTxTime
-			t3 = ntp.TimeFromTime64(c.prev.cRxTime, cTxTime0)
-		} else {
-			t0 = cTxTime1
-			t1 = sRxTime
-			t2 = sTxTime
-			t3 = cRxTime
-		}
-
-		err = ntp.ValidateResponseTimestamps(t0, t1, t2, t3)
-		if err != nil {
-			return time.Time{}, 0, err
-		}
-
-		off := ntp.ClockOffset(t0, t1, t2, t3)
-		rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
-
-		mtrcs.respsAccepted.Inc()
-		if interleavedResp {
-			mtrcs.respsAcceptedInterleaved.Inc()
-		}
-		c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
-			slog.Time("at", cRxTime),
-			slog.String("from", reference),
-			slog.String("via", path.Metadata().Fingerprint().String()),
-			slog.Bool("interleaved", interleavedResp),
-			slog.Duration("clock offset", off),
-			slog.Duration("round trip delay", rtd),
-		)
-
-		if c.InterleavedMode {
-			c.prev.reference = reference
-			c.prev.path = path.Metadata().Fingerprint().String()
-			c.prev.interleaved = interleavedResp
-			c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
-			c.prev.cRxTime = ntp.Time64FromTime(cRxTime)
-			c.prev.sRxTime = ntpresp.ReceiveTime
-		}
-
-		timestamp = cRxTime
-		if c.Filter == nil {
-			offset = off
-		} else {
-			offset = c.Filter.Do(t0, t1, t2, t3)
-		}
-
-		if c.Histogram != nil {
-			err := c.Histogram.RecordValue(rtd.Microseconds())
+			err = ntp.ValidateResponseMetadata(&ntpresp)
 			if err != nil {
 				return time.Time{}, 0, err
 			}
-		}
 
-		break
+			dscp := scionLayer.TrafficClass >> 2
+
+			c.Log.LogAttrs(ctx, slog.LevelDebug, "received response",
+				slog.Time("at", cRxTime),
+				slog.String("from", reference),
+				slog.Any("via", lastHop),
+				slog.Uint64("DSCP", uint64(dscp)),
+				slog.Bool("auth", authenticated),
+				slog.Bool("ntsauth", ntsAuthenticated),
+				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
+			)
+
+			sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime, cTxTime0)
+			sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime, cTxTime0)
+
+			var t0, t1, t2, t3 time.Time
+			if interleavedResp {
+				t0 = ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)
+				t1 = ntp.TimeFromTime64(c.prev.sRxTime, cTxTime0)
+				t2 = sTxTime
+				t3 = ntp.TimeFromTime64(c.prev.cRxTime, cTxTime0)
+			} else {
+				t0 = cTxTime1
+				t1 = sRxTime
+				t2 = sTxTime
+				t3 = cRxTime
+			}
+
+			err = ntp.ValidateResponseTimestamps(t0, t1, t2, t3)
+			if err != nil {
+				return time.Time{}, 0, err
+			}
+
+			off := ntp.ClockOffset(t0, t1, t2, t3)
+			rtd := ntp.RoundTripDelay(t0, t1, t2, t3)
+
+			mtrcs.respsAccepted.Inc()
+			if interleavedResp {
+				mtrcs.respsAcceptedInterleaved.Inc()
+			}
+			c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
+				slog.Time("at", cRxTime),
+				slog.String("from", reference),
+				slog.String("via", path.Metadata().Fingerprint().String()),
+				slog.Bool("interleaved", interleavedResp),
+				slog.Duration("clock offset", off),
+				slog.Duration("round trip delay", rtd),
+			)
+
+			if c.InterleavedMode {
+				c.prev.reference = reference
+				c.prev.path = path.Metadata().Fingerprint().String()
+				c.prev.interleaved = interleavedResp
+				c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
+				c.prev.cRxTime = ntp.Time64FromTime(cRxTime)
+				c.prev.sRxTime = ntpresp.ReceiveTime
+			}
+
+			if c.Histogram != nil {
+				err := c.Histogram.RecordValue(rtd.Microseconds())
+				if err != nil {
+					return time.Time{}, 0, err
+				}
+			}
+
+			if c.Filter != nil {
+				off, ok = c.Filter.Do(t0, t1, t2, t3)
+				if !ok {
+					break
+				}
+			}
+
+			return cRxTime, off, nil
+		}
 	}
-
-	return timestamp, offset, nil
 }

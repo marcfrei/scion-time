@@ -1,9 +1,11 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"example.com/scion-time/base/timemath"
@@ -12,10 +14,16 @@ import (
 	"example.com/scion-time/core/measurements"
 )
 
+type sample struct {
+	cTx, sRx, sTx, cRx time.Time
+}
+
 type NtimedFilter struct {
 	log            *slog.Logger
 	logCtx         context.Context
 	epoch          uint64
+	buf            []sample
+	pick           int
 	alo, amid, ahi float64
 	alolo, ahihi   float64
 	navg           float64
@@ -23,11 +31,50 @@ type NtimedFilter struct {
 
 var _ measurements.Filter = (*NtimedFilter)(nil)
 
-func NewNtimedFilter(log *slog.Logger) *NtimedFilter {
-	return &NtimedFilter{log: log, logCtx: context.Background()}
+func NewNtimedFilter(log *slog.Logger, size, pick int) *NtimedFilter {
+	if size < 1 {
+		panic("lucky packet window size must be >= 1")
+	}
+	if pick < 1 || pick > size {
+		panic("lucky packet pick must be >= 1 and <= size")
+	}
+	return &NtimedFilter{
+		log:    log,
+		logCtx: context.Background(),
+		buf:    make([]sample, 0, size),
+		pick:   pick,
+	}
 }
 
 func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
+	offset time.Duration, ok bool) {
+
+	if f.epoch != timebase.Epoch() {
+		f.Reset()
+	}
+
+	f.buf = append(f.buf, sample{cTxTime, sRxTime, sTxTime, cRxTime})
+	if len(f.buf) < cap(f.buf) {
+		return 0, false
+	}
+
+	slices.SortStableFunc(f.buf, func(a, b sample) int { return cmp.Compare(a.rtd(), b.rtd()) })
+	f.buf = f.buf[:f.pick]
+	slices.SortStableFunc(f.buf, func(a, b sample) int { return a.cTx.Compare(b.cTx) })
+	var off time.Duration
+	for _, s := range f.buf {
+		off = f.filter(s.cTx, s.sRx, s.sTx, s.cRx)
+	}
+	f.buf = f.buf[:0]
+
+	return off, true
+}
+
+func (s *sample) rtd() time.Duration {
+	return s.cRx.Sub(s.cTx) - s.sTx.Sub(s.sRx)
+}
+
+func (f *NtimedFilter) filter(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 	offset time.Duration) {
 
 	// Based on Ntimed by Poul-Henning Kamp, https://github.com/bsdphk/Ntimed
@@ -37,10 +84,6 @@ func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 	lo := cTxTime.Sub(sRxTime).Seconds()
 	hi := cRxTime.Sub(sTxTime).Seconds()
 	mid := (lo + hi) / 2
-
-	if f.epoch != timebase.Epoch() {
-		f.Reset()
-	}
 
 	const (
 		filterAverage   = 20.0
@@ -108,6 +151,7 @@ func (f *NtimedFilter) Do(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 
 func (f *NtimedFilter) Reset() {
 	f.epoch = timebase.Epoch()
+	f.buf = f.buf[:0]
 	f.alo = 0.0
 	f.amid = 0.0
 	f.ahi = 0.0
