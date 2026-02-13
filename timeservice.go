@@ -90,6 +90,8 @@ type svcConfig struct {
 	AuthModes               []string `toml:"auth_modes,omitempty"`
 	NTSKEInsecureSkipVerify bool     `toml:"ntske_insecure_skip_verify,omitempty"`
 	DSCP                    uint8    `toml:"dscp,omitempty"` // must be in range [0, 63]
+	FilterSize              int      `toml:"filter_size,omitempty"`
+	FilterPick              int      `toml:"filter_pick,omitempty"`
 	ClockDrift              float64  `toml:"clock_drift,omitempty"`
 	ReferenceClockImpact    float64  `toml:"reference_clock_impact,omitempty"`
 	PeerClockImpact         float64  `toml:"peer_clock_impact,omitempty"`
@@ -220,7 +222,7 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 }
 
 func newNTPReferenceClockIP(log *slog.Logger, localAddr, remoteAddr *net.UDPAddr, dscp uint8,
-	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
+	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		log:        log,
 		localAddr:  localAddr,
@@ -231,7 +233,7 @@ func newNTPReferenceClockIP(log *slog.Logger, localAddr, remoteAddr *net.UDPAddr
 		DSCP:            dscp,
 		InterleavedMode: true,
 	}
-	c.ntpc.Filter = client.NewNtimedFilter(log, 1 /* size */, 1 /* pick */)
+	c.ntpc.Filter = client.NewNtimedFilter(log, filterSize, filterPick)
 	if slices.Contains(authModes, authModeNTS) {
 		configureIPClientNTS(c.ntpc, ntskeServer, ntskeInsecureSkipVerify, log)
 	}
@@ -265,7 +267,7 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 }
 
 func newNTPReferenceClockSCION(log *slog.Logger, daemonAddr string, localAddr, remoteAddr udp.UDPAddr, dscp uint8,
-	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
+	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		log:        log,
 		localAddr:  localAddr,
@@ -277,7 +279,7 @@ func newNTPReferenceClockSCION(log *slog.Logger, daemonAddr string, localAddr, r
 			DSCP:            dscp,
 			InterleavedMode: true,
 		}
-		c.ntpcs[i].Filter = client.NewNtimedFilter(log, 1 /* size */, 1 /* pick */)
+		c.ntpcs[i].Filter = client.NewNtimedFilter(log, filterSize, filterPick)
 		if slices.Contains(authModes, authModeNTS) {
 			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, daemonAddr, localAddr, remoteAddr, log)
 		}
@@ -356,6 +358,20 @@ func dscp(cfg svcConfig) uint8 {
 	return cfg.DSCP
 }
 
+func filterConfig(cfg svcConfig) (size, pick int) {
+	size, pick = cfg.FilterSize, cfg.FilterPick
+	if size == 0 {
+		size = 1
+	}
+	if pick == 0 {
+		pick = 1
+	}
+	if size < 1 || pick < 1 || pick > size {
+		logbase.Fatal(slog.Default(), "invalid filter configuration specified in config")
+	}
+	return
+}
+
 func clockDrift(cfg svcConfig) time.Duration {
 	if cfg.ClockDrift < 0 {
 		logbase.Fatal(slog.Default(), "invalid clock drift value specified in config")
@@ -418,6 +434,7 @@ func tlsConfig(cfg svcConfig) *tls.Config {
 func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 	refClocks, peerClocks []client.ReferenceClock) {
 	dscp := dscp(cfg)
+	filterSize, filterPick := filterConfig(cfg)
 
 	for _, s := range cfg.MBGReferenceClocks {
 		refClocks = append(refClocks, mbg.NewReferenceClock(log, s))
@@ -473,6 +490,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 				udp.UDPAddrFromSnet(localAddr),
 				udp.UDPAddrFromSnet(remoteAddr),
 				dscp,
+				filterSize, filterPick,
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -484,6 +502,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 				localAddr.Host,
 				remoteAddr.Host,
 				dscp,
+				filterSize, filterPick,
 				cfg.AuthModes,
 				ntskeServer,
 				cfg.NTSKEInsecureSkipVerify,
@@ -506,6 +525,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			udp.UDPAddrFromSnet(localAddr),
 			udp.UDPAddrFromSnet(remoteAddr),
 			dscp,
+			filterSize, filterPick,
 			cfg.AuthModes,
 			ntskeServer,
 			cfg.NTSKEInsecureSkipVerify,
