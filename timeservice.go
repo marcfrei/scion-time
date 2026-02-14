@@ -92,6 +92,8 @@ type svcConfig struct {
 	DSCP                    uint8    `toml:"dscp,omitempty"` // must be in range [0, 63]
 	FilterSize              int      `toml:"filter_size,omitempty"`
 	FilterPick              int      `toml:"filter_pick,omitempty"`
+	PIControllerKP          float64  `toml:"pi_controller_kp,omitempty"`
+	PIControllerKI          float64  `toml:"pi_controller_ki,omitempty"`
 	ClockDrift              float64  `toml:"clock_drift,omitempty"`
 	ReferenceClockImpact    float64  `toml:"reference_clock_impact,omitempty"`
 	PeerClockImpact         float64  `toml:"peer_clock_impact,omitempty"`
@@ -379,6 +381,21 @@ func clockDrift(cfg svcConfig) time.Duration {
 	return timemath.Duration(cfg.ClockDrift)
 }
 
+func piControllerConfig(cfg svcConfig) (kp, ki float64) {
+	kp, ki = cfg.PIControllerKP, cfg.PIControllerKI
+	if kp == 0 {
+		kp = adjustments.PIControllerDefaultPRatio
+	}
+	if ki == 0 {
+		ki = adjustments.PIControllerDefaultIRatio
+	}
+	if kp < adjustments.PIControllerMinPRatio || kp > adjustments.PIControllerMaxPRatio ||
+		ki < adjustments.PIControllerMinIRatio || ki > adjustments.PIControllerMaxIRatio {
+		logbase.Fatal(slog.Default(), "invalid PI controller configuration specified in config")
+	}
+	return
+}
+
 func syncConfig(cfg svcConfig) sync.Config {
 	const (
 		defaultReferenceClockImpact = 1.25
@@ -597,10 +614,11 @@ func runServer(configFile string) {
 	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	syncCfg := syncConfig(cfg)
+	kp, ki := piControllerConfig(cfg)
 
 	adj := &adjustments.PIController{
-		KP:            adjustments.PIControllerDefaultPRatio,
-		KI:            adjustments.PIControllerDefaultIRatio,
+		KP:            kp,
+		KI:            ki,
 		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
 	}
 
@@ -642,10 +660,11 @@ func runClient(configFile string) {
 	}
 
 	syncCfg := syncConfig(cfg)
+	kp, ki := piControllerConfig(cfg)
 
 	adj := &adjustments.PIController{
-		KP:            adjustments.PIControllerDefaultPRatio,
-		KI:            adjustments.PIControllerDefaultIRatio,
+		KP:            kp,
+		KI:            ki,
 		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
 	}
 
