@@ -105,7 +105,7 @@ func (f *NtimedFilter) filter(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
 	mid := (lo + hi) / 2
 
 	const (
-		filterAverage   = 20.0
+		filterAverage   = 40.0
 		filterThreshold = 3.0
 	)
 
