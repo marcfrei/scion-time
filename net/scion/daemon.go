@@ -49,21 +49,21 @@ func (cp *daemonControlPlane) Close() error {
 	return cp.dc.Close()
 }
 
-type daemonConnector struct {
-	daemonAddr string
+type DaemonConnector struct {
+	Address string
 }
 
-func (d *daemonConnector) Connect(ctx context.Context) (ControlPlane, error) {
-	s := &daemon.Service{
-		Address: d.daemonAddr,
+func (c DaemonConnector) Connect(ctx context.Context) (ControlPlane, error) {
+	if c.Address == "" {
+		panic("invalid configuration: empty address")
 	}
-	c, err := s.Connect(ctx)
+
+	ds := &daemon.Service{
+		Address: c.Address,
+	}
+	dc, err := ds.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &daemonControlPlane{dc: c}, nil
-}
-
-func NewDaemonConnector(daemonAddr string) ControlPlaneConnector {
-	return &daemonConnector{daemonAddr: daemonAddr}
+	return &daemonControlPlane{dc: dc}, nil
 }

@@ -74,9 +74,10 @@ type svcConfig struct {
 	LocalAddr               string   `toml:"local_address,omitempty"`
 	LocalMetricsAddr        string   `toml:"local_metrics_address,omitempty"`
 	SCIONDaemonAddr         string   `toml:"scion_daemon_address,omitempty"`
+	SCIONTopoFile           string   `toml:"scion_topo_file,omitempty"`
+	SCIONCertsDir           string   `toml:"scion_certs_dir,omitempty"`
+	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
 	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
-	SCIONConfigDir          string   `toml:"scion_config_dir,omitempty"`
-	SCIONDataDir            string   `toml:"scion_data_dir,omitempty"`
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	PHCReferenceClocks      []string `toml:"phc_reference_clocks,omitempty"`
@@ -447,6 +448,37 @@ func tlsConfig(cfg svcConfig) *tls.Config {
 	}
 }
 
+func controlPlaneConnector(daemonAddr, topoFile, certsDir string, persistTRCs bool) scion.ControlPlaneConnector {
+	if daemonAddr != "" {
+		return scion.DaemonConnector{Address: daemonAddr}
+	}
+	return scion.CSConnector{
+		TopoFile:    topoFile,
+		CertsDir:    certsDir,
+		PersistTRCs: persistTRCs,
+	}
+}
+
+func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector {
+	if cfg.SCIONDaemonAddr != "" {
+		if cfg.SCIONTopoFile != "" {
+			logbase.Fatal(slog.Default(), "unexpected topology file specification in config")
+		}
+		if cfg.SCIONCertsDir != "" {
+			logbase.Fatal(slog.Default(), "unexpected certificates directory specification in config")
+		}
+		if cfg.SCIONPersistTRCs {
+			logbase.Fatal(slog.Default(), "unexpected TRC persistence specification in config")
+		}
+	} else {
+		if cfg.SCIONTopoFile == "" {
+			logbase.Fatal(slog.Default(), "missing topology file specification in config")
+		}
+	}
+	return controlPlaneConnector(
+		cfg.SCIONDaemonAddr, cfg.SCIONTopoFile, cfg.SCIONCertsDir, cfg.SCIONPersistTRCs)
+}
+
 func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 	refClocks, peerClocks []client.ReferenceClock) {
 	dscp := dscp(cfg)
@@ -491,12 +523,6 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		refClocks = append(refClocks, shm.NewReferenceClock(log, u))
 	}
 
-	var cpc scion.ControlPlaneConnector
-	daemonAddr := cfg.SCIONDaemonAddr
-	if daemonAddr != "" {
-		cpc = scion.NewDaemonConnector(daemonAddr)
-	}
-
 	var dstIAs []addr.IA
 	for _, s := range cfg.NTPReferenceClocks {
 		remoteAddr, err := snet.ParseUDPAddr(s)
@@ -506,7 +532,8 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		}
 		ntskeServer := ntskeServerFromRemoteAddr(s)
 		if !remoteAddr.IA.IsZero() {
-			refClocks = append(refClocks, newNTPReferenceClockSCION(log, cpc,
+			refClocks = append(refClocks, newNTPReferenceClockSCION(log,
+				controlPlaneConnectorFromConfig(cfg),
 				udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
 				dscp, filterSize, filterPick,
 				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
@@ -530,7 +557,8 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			logbase.Fatal(slog.Default(), "unexpected peer address", slog.String("address", s), slog.Any("error", err))
 		}
 		ntskeServer := ntskeServerFromRemoteAddr(s)
-		peerClocks = append(peerClocks, newNTPReferenceClockSCION(log, cpc,
+		peerClocks = append(peerClocks, newNTPReferenceClockSCION(log,
+			controlPlaneConnectorFromConfig(cfg),
 			udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
 			dscp, filterSize, filterPick,
 			cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
@@ -538,9 +566,10 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		dstIAs = append(dstIAs, remoteAddr.IA)
 	}
 
-	if cpc != nil {
+	if cfg.SCIONDaemonAddr != "" || cfg.SCIONTopoFile != "" {
 		ctx := context.Background()
-		pather, err := scion.StartPather(ctx, log, cpc, dstIAs)
+		pather, err := scion.StartPather(ctx, log,
+			controlPlaneConnectorFromConfig(cfg), dstIAs)
 		if err != nil {
 			logbase.Fatal(slog.Default(), "failed to start path discovery",
 				slog.Any("error", err))
@@ -552,7 +581,8 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
-						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(
+							controlPlaneConnectorFromConfig(cfg))
 					}
 				}
 			}
@@ -564,7 +594,8 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
-						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(
+							controlPlaneConnectorFromConfig(cfg))
 					}
 				}
 			}
@@ -597,7 +628,7 @@ func runServer(configFile string) {
 
 	localAddr.Host.Port = ntp.ServerPortSCION
 	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
-	cpc := scion.NewDaemonConnector(cfg.SCIONDaemonAddr)
+	cpc := controlPlaneConnectorFromConfig(cfg)
 	server.StartSCIONServer(ctx, log, cpc, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	syncCfg := syncConfig(cfg)
@@ -698,8 +729,9 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	}
 }
 
-func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr,
-	dscp uint8, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
+func runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode string,
+	localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
 	ctx := context.Background()
 	log := slog.Default()
 
@@ -710,7 +742,7 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
-	cpc := scion.NewDaemonConnector(daemonAddr)
+	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -762,7 +794,8 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	}
 }
 
-func runPing(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr) {
+func runPing(daemonAddr, topoFile, certsDir, dispatcherMode string,
+	localAddr, remoteAddr *snet.UDPAddr) {
 	ctx := context.Background()
 	log := slog.Default()
 
@@ -774,7 +807,7 @@ func runPing(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPA
 			server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 		}
 
-		cpc := scion.NewDaemonConnector(daemonAddr)
+		cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
 		cp, err := cpc.Connect(ctx)
 		if err != nil {
 			logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -812,7 +845,6 @@ func runBenchmark(configFile string) {
 	cfg := loadConfig(configFile)
 	log := slog.Default()
 
-	daemonAddr := cfg.SCIONDaemonAddr
 	localAddr := localAddress(cfg)
 	remoteAddr := remoteAddress(cfg)
 
@@ -820,12 +852,9 @@ func runBenchmark(configFile string) {
 	ntskeServer := ntskeServerFromRemoteAddr(cfg.RemoteAddr)
 
 	if !remoteAddr.IA.IsZero() {
-		cpc := scion.NewDaemonConnector(daemonAddr)
+		cpc := controlPlaneConnectorFromConfig(cfg)
 		runBenchmarkSCION(cpc, localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
 	} else {
-		if daemonAddr != "" {
-			exitWithUsage()
-		}
 		runBenchmarkIP(localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
 	}
 }
@@ -848,12 +877,13 @@ func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *s
 	benchmark.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
 }
 
-func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
+func runDRKeyDemo(daemonAddr, topoFile, certsDir string,
+	serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
 	ctx := context.Background()
-	cpc := scion.NewDaemonConnector(daemonAddr)
+	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error connecting to control plane:", err)
+		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
 		return
 	}
 
@@ -916,6 +946,8 @@ func main() {
 		verbose                 bool
 		configFile              string
 		daemonAddr              string
+		topoFile                string
+		certsDir                string
 		localAddr               snet.UDPAddr
 		remoteAddrStr           string
 		dispatcherMode          string
@@ -947,6 +979,8 @@ func main() {
 	toolFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	toolFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	toolFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	toolFlags.StringVar(&topoFile, "topo", "", "Topology file")
+	toolFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
@@ -958,6 +992,8 @@ func main() {
 	pingFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	pingFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	pingFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	pingFlags.StringVar(&topoFile, "topo", "", "Topology file")
+	pingFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	pingFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	pingFlags.Var(&localAddr, "local", "Local address")
 	pingFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
@@ -969,6 +1005,8 @@ func main() {
 	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	drkeyFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	drkeyFlags.StringVar(&topoFile, "topo", "", "Topology file")
+	drkeyFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	drkeyFlags.StringVar(&drkeyMode, "mode", "", "Mode")
 	drkeyFlags.Var(&drkeyServerAddr, "server", "Server address")
 	drkeyFlags.Var(&drkeyClientAddr, "client", "Client address")
@@ -1035,6 +1073,15 @@ func main() {
 			authModes[i] = strings.TrimSpace(authModes[i])
 		}
 		if !remoteAddr.IA.IsZero() {
+			if daemonAddr != "" {
+				if topoFile != "" || certsDir != "" {
+					exitWithUsage()
+				}
+			} else {
+				if topoFile == "" {
+					exitWithUsage()
+				}
+			}
 			if dispatcherMode == "" {
 				dispatcherMode = dispatcherModeExternal
 			} else if dispatcherMode != dispatcherModeExternal &&
@@ -1043,10 +1090,11 @@ func main() {
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(logLevel())
-			runToolSCION(daemonAddr, dispatcherMode, &localAddr, &remoteAddr, uint8(dscp),
+			runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode,
+				&localAddr, &remoteAddr, uint8(dscp),
 				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		} else {
-			if daemonAddr != "" {
+			if daemonAddr != "" || topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
 			if dispatcherMode != "" {
@@ -1062,6 +1110,15 @@ func main() {
 		if err != nil || pingFlags.NArg() != 0 {
 			exitWithUsage()
 		}
+		if daemonAddr != "" {
+			if topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else {
+			if topoFile == "" {
+				exitWithUsage()
+			}
+		}
 		var remoteAddr snet.UDPAddr
 		err = remoteAddr.Set(remoteAddrStr)
 		if err != nil {
@@ -1076,7 +1133,8 @@ func main() {
 			}
 		}
 		initLogger(logLevel())
-		runPing(daemonAddr, dispatcherMode, &localAddr, &remoteAddr)
+		runPing(daemonAddr, topoFile, certsDir, dispatcherMode,
+			&localAddr, &remoteAddr)
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
 		if err != nil || benchmarkFlags.NArg() != 0 {
@@ -1092,12 +1150,22 @@ func main() {
 		if err != nil || drkeyFlags.NArg() != 0 {
 			exitWithUsage()
 		}
+		if daemonAddr != "" {
+			if topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else {
+			if topoFile == "" {
+				exitWithUsage()
+			}
+		}
 		if drkeyMode != "server" && drkeyMode != "client" {
 			exitWithUsage()
 		}
 		serverMode := drkeyMode == "server"
 		initLogger(logLevel())
-		runDRKeyDemo(daemonAddr, serverMode, &drkeyServerAddr, &drkeyClientAddr)
+		runDRKeyDemo(daemonAddr, topoFile, certsDir,
+			serverMode, &drkeyServerAddr, &drkeyClientAddr)
 	case "t":
 		runT()
 	default:
