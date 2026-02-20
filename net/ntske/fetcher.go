@@ -10,6 +10,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
+	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
 )
 
@@ -24,10 +25,10 @@ type Fetcher struct {
 	TLSConfig tls.Config
 	Port      string
 	QUIC      struct {
-		Enabled    bool
-		DaemonAddr string
-		LocalAddr  udp.UDPAddr
-		RemoteAddr udp.UDPAddr
+		Enabled               bool
+		LocalAddr             udp.UDPAddr
+		RemoteAddr            udp.UDPAddr
+		ControlPlaneConnector scion.ControlPlaneConnector
 	}
 	data Data
 }
@@ -46,7 +47,8 @@ func logData(ctx context.Context, log *slog.Logger, data Data) {
 
 func (f *Fetcher) exchangeKeys(ctx context.Context) error {
 	if f.QUIC.Enabled {
-		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.DaemonAddr, &f.TLSConfig)
+		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.ControlPlaneConnector,
+			&f.TLSConfig)
 		if err != nil {
 			return err
 		}

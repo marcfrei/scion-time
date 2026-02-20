@@ -70,7 +70,7 @@ func newSCIONServerMetrics() *scionServerMetrics {
 
 func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMetrics,
 	conn *net.UDPConn, localHostIface string, localHostPort int, dscp uint8,
-	fetcher *scion.Fetcher, provider *ntske.Provider) {
+	fetcher *scion.DRKeyFetcher, provider *ntske.Provider) {
 	defer func() { _ = conn.Close() }()
 
 	localConnPort := conn.LocalAddr().(*net.UDPAddr).Port
@@ -640,7 +640,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 }
 
 func StartSCIONServer(ctx context.Context, log *slog.Logger,
-	daemonAddr string, localHost *net.UDPAddr, dscp uint8, provider *ntske.Provider) {
+	cpc scion.ControlPlaneConnector, localHost *net.UDPAddr, dscp uint8, provider *ntske.Provider) {
 	mtrcs := newSCIONServerMetrics()
 
 	log.LogAttrs(ctx, slog.LevelInfo,
@@ -659,7 +659,7 @@ func StartSCIONServer(ctx context.Context, log *slog.Logger,
 	for _, localHostPort := range []int{localHost.Port, scion.EndhostPort} {
 		address := net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHostPort))
 		for range scionServerNumGoroutine {
-			fetcher := scion.NewFetcher(scion.NewDaemonConnector(ctx, daemonAddr))
+			fetcher := scion.NewDRKeyFetcher(cpc)
 			conn, err := lc.ListenPacket(ctx, "udp", address)
 			if err != nil {
 				logbase.FatalContext(ctx, log, "failed to listen for packets", slog.Any("error", err))

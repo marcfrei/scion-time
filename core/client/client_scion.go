@@ -41,7 +41,7 @@ type SCIONClient struct {
 	Auth            struct {
 		Enabled      bool
 		NTSEnabled   bool
-		DRKeyFetcher *scion.Fetcher
+		DRKeyFetcher *scion.DRKeyFetcher
 		opt          *slayers.EndToEndOption
 		buf          []byte
 		mac          []byte

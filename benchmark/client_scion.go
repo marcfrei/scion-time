@@ -12,9 +12,7 @@ import (
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 
-	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/snet"
-	"github.com/scionproto/scion/pkg/snet/path"
 
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/core/client"
@@ -23,7 +21,7 @@ import (
 )
 
 func RunSCIONBenchmark(
-	daemonAddr string, localAddr, remoteAddr *snet.UDPAddr,
+	cpc scion.ControlPlaneConnector, localAddr, remoteAddr *snet.UDPAddr,
 	authModes []string, ntskeServer string,
 	log *slog.Logger) {
 	const numClientGoroutine = 10
@@ -38,29 +36,22 @@ func RunSCIONBenchmark(
 
 	for range numClientGoroutine {
 		go func() {
-			var err error
 			hg := hdrhistogram.New(1, 50000, 5)
 
-			dc := scion.NewDaemonConnector(ctx, daemonAddr)
+			cp, err := cpc.Connect(ctx)
+			if err != nil {
+				logbase.FatalContext(ctx, log, "failed to connect to control plane",
+					slog.Any("error", err))
+			}
 
-			var ps []snet.Path
-			if remoteAddr.IA == localAddr.IA {
-				ps = []snet.Path{path.Path{
-					Src:           localAddr.IA,
-					Dst:           remoteAddr.IA,
-					DataplanePath: path.Empty{},
-					NextHop:       remoteAddr.Host,
-				}}
-			} else {
-				ps, err = dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-				if err != nil {
-					logbase.FatalContext(ctx, log, "failed to lookup paths",
-						slog.Any("to", remoteAddr), slog.Any("error", err))
-				}
-				if len(ps) == 0 {
-					logbase.FatalContext(ctx, log, "no paths available",
-						slog.Any("to", remoteAddr))
-				}
+			ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
+			if err != nil {
+				logbase.FatalContext(ctx, log, "failed to lookup paths",
+					slog.Any("to", remoteAddr), slog.Any("error", err))
+			}
+			if len(ps) == 0 {
+				logbase.FatalContext(ctx, log, "no paths available",
+					slog.Any("to", remoteAddr))
 			}
 			log.LogAttrs(ctx, slog.LevelDebug,
 				"available paths",
@@ -78,7 +69,7 @@ func RunSCIONBenchmark(
 
 			if slices.Contains(authModes, "spao") {
 				c.Auth.Enabled = true
-				c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
+				c.Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
 			}
 
 			if slices.Contains(authModes, "nts") {
@@ -96,9 +87,9 @@ func RunSCIONBenchmark(
 				c.Auth.NTSKEFetcher.Port = ntskePort
 				c.Auth.NTSKEFetcher.Log = log
 				c.Auth.NTSKEFetcher.QUIC.Enabled = true
-				c.Auth.NTSKEFetcher.QUIC.DaemonAddr = daemonAddr
 				c.Auth.NTSKEFetcher.QUIC.LocalAddr = laddr
 				c.Auth.NTSKEFetcher.QUIC.RemoteAddr = raddr
+				c.Auth.NTSKEFetcher.QUIC.ControlPlaneConnector = cpc
 			}
 
 			defer wg.Done()

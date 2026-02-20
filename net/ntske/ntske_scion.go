@@ -8,10 +8,6 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/scionproto/scion/pkg/daemon"
-	"github.com/scionproto/scion/pkg/snet"
-	"github.com/scionproto/scion/pkg/snet/path"
-
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
@@ -19,38 +15,31 @@ import (
 
 var errNoPath = errors.New("failed to dial QUIC connection: no path")
 
-func dialQUIC(log *slog.Logger, localAddr, remoteAddr udp.UDPAddr, daemonAddr string, config *tls.Config) (*scion.QUICConnection, Data, error) {
+func dialQUIC(log *slog.Logger, localAddr, remoteAddr udp.UDPAddr, cpc scion.ControlPlaneConnector, config *tls.Config) (*scion.QUICConnection, Data, error) {
 	config.NextProtos = []string{alpn}
-	var err error
 	ctx := context.Background()
 
-	dc := scion.NewDaemonConnector(ctx, daemonAddr)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		return nil, Data{}, err
+	}
+	defer func() { _ = cp.Close() }()
 
-	var ps []snet.Path
-	if remoteAddr.IA == localAddr.IA {
-		ps = []snet.Path{path.Path{
-			Src:           localAddr.IA,
-			Dst:           remoteAddr.IA,
-			DataplanePath: path.Empty{},
-			NextHop:       remoteAddr.Host,
-		}}
-	} else {
-		ps, err = dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-		if err != nil {
-			log.LogAttrs(ctx, slog.LevelError,
-				"failed to lookup paths",
-				slog.Any("remote", remoteAddr),
-				slog.Any("error", err),
-			)
-			return nil, Data{}, err
-		}
-		if len(ps) == 0 {
-			log.LogAttrs(ctx, slog.LevelError,
-				"no paths available",
-				slog.Any("remote", remoteAddr),
-			)
-			return nil, Data{}, errNoPath
-		}
+	ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
+	if err != nil {
+		log.LogAttrs(ctx, slog.LevelError,
+			"failed to lookup paths",
+			slog.Any("remote", remoteAddr),
+			slog.Any("error", err),
+		)
+		return nil, Data{}, err
+	}
+	if len(ps) == 0 {
+		log.LogAttrs(ctx, slog.LevelError,
+			"no paths available",
+			slog.Any("remote", remoteAddr),
+		)
+		return nil, Data{}, errNoPath
 	}
 
 	log.LogAttrs(ctx, slog.LevelDebug, "available paths", slog.Any("remote", remoteAddr), slog.Any("via", ps))

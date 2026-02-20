@@ -3,12 +3,13 @@ package scion
 import (
 	"context"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
-	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/snet"
+	"github.com/scionproto/scion/pkg/snet/path"
 )
 
 const pathRefreshPeriod = 15 * time.Second
@@ -36,20 +37,13 @@ func (p *Pather) Paths(dst addr.IA) []snet.Path {
 	return append(make([]snet.Path, 0, len(paths)), paths...)
 }
 
-func update(ctx context.Context, p *Pather, dc daemon.Connector, dstIAs []addr.IA) {
-	localIA, err := dc.LocalIA(ctx)
-	if err != nil {
-		p.log.LogAttrs(ctx, slog.LevelInfo,
-			"failed to look up local IA", slog.Any("error", err))
-		return
-	}
-
+func update(ctx context.Context, p *Pather, cp ControlPlane, dstIAs []addr.IA) {
 	paths := map[addr.IA][]snet.Path{}
 	for _, dstIA := range dstIAs {
 		if dstIA.IsWildcard() {
 			panic("unexpected destination IA: wildcard.")
 		}
-		ps, err := dc.Paths(ctx, dstIA, localIA, daemon.PathReqFlags{Refresh: true})
+		ps, err := cp.FetchPaths(ctx, dstIA)
 		if err != nil {
 			p.log.LogAttrs(ctx, slog.LevelInfo,
 				"failed to look up paths", slog.Any("to", dstIA), slog.Any("error", err))
@@ -58,20 +52,41 @@ func update(ctx context.Context, p *Pather, dc daemon.Connector, dstIAs []addr.I
 	}
 
 	p.mu.Lock()
-	p.localIA = localIA
 	p.paths = paths
 	p.mu.Unlock()
 }
 
-func StartPather(ctx context.Context, log *slog.Logger, daemonAddr string, dstIAs []addr.IA) *Pather {
-	p := &Pather{log: log}
-	dc := NewDaemonConnector(ctx, daemonAddr)
-	update(ctx, p, dc, dstIAs)
-	go func(ctx context.Context, p *Pather, dc daemon.Connector, dstIAs []addr.IA) {
+func StartPather(ctx context.Context, log *slog.Logger, cpc ControlPlaneConnector, dstIAs []addr.IA) (*Pather, error) {
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	localIA, err := cp.LocalIA(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := &Pather{
+		log:     log,
+		localIA: localIA,
+	}
+	update(ctx, p, cp, dstIAs)
+	go func(ctx context.Context, p *Pather, cp ControlPlane, dstIAs []addr.IA) {
 		ticker := time.NewTicker(pathRefreshPeriod)
 		for range ticker.C {
-			update(ctx, p, dc, dstIAs)
+			update(ctx, p, cp, dstIAs)
 		}
-	}(ctx, p, dc, dstIAs)
-	return p
+	}(ctx, p, cp, dstIAs)
+	return p, nil
+}
+
+func FetchPaths(ctx context.Context, cp ControlPlane, localIA, dstIA addr.IA, dstAddr *net.UDPAddr) ([]snet.Path, error) {
+	if dstIA == localIA {
+		return []snet.Path{path.Path{
+			Src:           localIA,
+			Dst:           dstIA,
+			DataplanePath: path.Empty{},
+			NextHop:       dstAddr,
+		}}, nil
+	}
+	return cp.FetchPaths(ctx, dstIA)
 }

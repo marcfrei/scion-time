@@ -25,7 +25,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/scionproto/scion/pkg/addr"
-	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
@@ -248,7 +247,7 @@ func (c *ntpReferenceClockIP) MeasureClockOffset(ctx context.Context) (
 }
 
 func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool,
-	daemonAddr string, localAddr, remoteAddr udp.UDPAddr, log *slog.Logger) {
+	cpc scion.ControlPlaneConnector, localAddr, remoteAddr udp.UDPAddr, log *slog.Logger) {
 	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to split NTS-KE host and port", slog.Any("error", err))
@@ -263,12 +262,12 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Port = ntskePort
 	c.Auth.NTSKEFetcher.Log = log
 	c.Auth.NTSKEFetcher.QUIC.Enabled = true
-	c.Auth.NTSKEFetcher.QUIC.DaemonAddr = daemonAddr
 	c.Auth.NTSKEFetcher.QUIC.LocalAddr = localAddr
 	c.Auth.NTSKEFetcher.QUIC.RemoteAddr = remoteAddr
+	c.Auth.NTSKEFetcher.QUIC.ControlPlaneConnector = cpc
 }
 
-func newNTPReferenceClockSCION(log *slog.Logger, daemonAddr string, localAddr, remoteAddr udp.UDPAddr, dscp uint8,
+func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector, localAddr, remoteAddr udp.UDPAddr, dscp uint8,
 	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		log:        log,
@@ -283,7 +282,7 @@ func newNTPReferenceClockSCION(log *slog.Logger, daemonAddr string, localAddr, r
 		}
 		c.ntpcs[i].Filter = client.NewNtimedFilter(log, filterSize, filterPick)
 		if slices.Contains(authModes, authModeNTS) {
-			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, daemonAddr, localAddr, remoteAddr, log)
+			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, cpc, localAddr, remoteAddr, log)
 		}
 	}
 	return c
@@ -492,6 +491,12 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		refClocks = append(refClocks, shm.NewReferenceClock(log, u))
 	}
 
+	var cpc scion.ControlPlaneConnector
+	daemonAddr := cfg.SCIONDaemonAddr
+	if daemonAddr != "" {
+		cpc = scion.NewDaemonConnector(daemonAddr)
+	}
+
 	var dstIAs []addr.IA
 	for _, s := range cfg.NTPReferenceClocks {
 		remoteAddr, err := snet.ParseUDPAddr(s)
@@ -501,28 +506,17 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		}
 		ntskeServer := ntskeServerFromRemoteAddr(s)
 		if !remoteAddr.IA.IsZero() {
-			refClocks = append(refClocks, newNTPReferenceClockSCION(
-				log,
-				cfg.SCIONDaemonAddr,
-				udp.UDPAddrFromSnet(localAddr),
-				udp.UDPAddrFromSnet(remoteAddr),
-				dscp,
-				filterSize, filterPick,
-				cfg.AuthModes,
-				ntskeServer,
-				cfg.NTSKEInsecureSkipVerify,
+			refClocks = append(refClocks, newNTPReferenceClockSCION(log, cpc,
+				udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
+				dscp, filterSize, filterPick,
+				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
 			dstIAs = append(dstIAs, remoteAddr.IA)
 		} else {
-			refClocks = append(refClocks, newNTPReferenceClockIP(
-				log,
-				localAddr.Host,
-				remoteAddr.Host,
-				dscp,
-				filterSize, filterPick,
-				cfg.AuthModes,
-				ntskeServer,
-				cfg.NTSKEInsecureSkipVerify,
+			refClocks = append(refClocks, newNTPReferenceClockIP(log,
+				localAddr.Host, remoteAddr.Host,
+				dscp, filterSize, filterPick,
+				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
 		}
 	}
@@ -536,36 +530,29 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			logbase.Fatal(slog.Default(), "unexpected peer address", slog.String("address", s), slog.Any("error", err))
 		}
 		ntskeServer := ntskeServerFromRemoteAddr(s)
-		peerClocks = append(peerClocks, newNTPReferenceClockSCION(
-			log,
-			cfg.SCIONDaemonAddr,
-			udp.UDPAddrFromSnet(localAddr),
-			udp.UDPAddrFromSnet(remoteAddr),
-			dscp,
-			filterSize, filterPick,
-			cfg.AuthModes,
-			ntskeServer,
-			cfg.NTSKEInsecureSkipVerify,
+		peerClocks = append(peerClocks, newNTPReferenceClockSCION(log, cpc,
+			udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
+			dscp, filterSize, filterPick,
+			cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 		))
 		dstIAs = append(dstIAs, remoteAddr.IA)
 	}
 
-	daemonAddr := cfg.SCIONDaemonAddr
-	if daemonAddr != "" {
+	if cpc != nil {
 		ctx := context.Background()
-		pather := scion.StartPather(ctx, log, daemonAddr, dstIAs)
-		var drkeyFetcher *scion.Fetcher
-		if slices.Contains(cfg.AuthModes, authModeSPAO) {
-			drkeyFetcher = scion.NewFetcher(scion.NewDaemonConnector(ctx, daemonAddr))
+		pather, err := scion.StartPather(ctx, log, cpc, dstIAs)
+		if err != nil {
+			logbase.Fatal(slog.Default(), "failed to start path discovery",
+				slog.Any("error", err))
 		}
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				if drkeyFetcher != nil {
+				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
-						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
 					}
 				}
 			}
@@ -574,10 +561,10 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				if drkeyFetcher != nil {
+				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
-						scionclk.ntpcs[i].Auth.DRKeyFetcher = drkeyFetcher
+						scionclk.ntpcs[i].Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
 					}
 				}
 			}
@@ -592,7 +579,6 @@ func runServer(configFile string) {
 	log := slog.Default()
 
 	cfg := loadConfig(configFile)
-	daemonAddr := cfg.SCIONDaemonAddr
 	localAddr := localAddress(cfg)
 
 	localAddr.Host.Port = 0
@@ -611,7 +597,8 @@ func runServer(configFile string) {
 
 	localAddr.Host.Port = ntp.ServerPortSCION
 	server.StartNTSKEServerSCION(ctx, log, udp.UDPAddrFromSnet(localAddr), tlsConfig, provider)
-	server.StartSCIONServer(ctx, log, daemonAddr, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
+	cpc := scion.NewDaemonConnector(cfg.SCIONDaemonAddr)
+	server.StartSCIONServer(ctx, log, cpc, snet.CopyUDPAddr(localAddr.Host), dscp, provider)
 
 	syncCfg := syncConfig(cfg)
 	kp, ki := piControllerConfig(cfg)
@@ -713,7 +700,6 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 
 func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr,
 	dscp uint8, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
-	var err error
 	ctx := context.Background()
 	log := slog.Default()
 
@@ -724,24 +710,18 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
-	dc := scion.NewDaemonConnector(ctx, daemonAddr)
+	cpc := scion.NewDaemonConnector(daemonAddr)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
+	}
 
-	var ps []snet.Path
-	if remoteAddr.IA == localAddr.IA {
-		ps = []snet.Path{path.Path{
-			Src:           localAddr.IA,
-			Dst:           remoteAddr.IA,
-			DataplanePath: path.Empty{},
-			NextHop:       remoteAddr.Host,
-		}}
-	} else {
-		ps, err = dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-		if err != nil {
-			logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
-		}
-		if len(ps) == 0 {
-			logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
-		}
+	ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
+	}
+	if len(ps) == 0 {
+		logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
 	}
 	log.LogAttrs(ctx, slog.LevelDebug,
 		"available paths",
@@ -758,10 +738,10 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 	}
 	if slices.Contains(authModes, authModeSPAO) {
 		c.Auth.Enabled = true
-		c.Auth.DRKeyFetcher = scion.NewFetcher(dc)
+		c.Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
 	}
 	if slices.Contains(authModes, authModeNTS) {
-		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, daemonAddr, laddr, raddr, log)
+		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, cpc, laddr, raddr, log)
 	}
 
 	for {
@@ -783,7 +763,6 @@ func runToolSCION(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet
 }
 
 func runPing(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPAddr) {
-	var err error
 	ctx := context.Background()
 	log := slog.Default()
 
@@ -795,24 +774,18 @@ func runPing(daemonAddr, dispatcherMode string, localAddr, remoteAddr *snet.UDPA
 			server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 		}
 
-		dc := scion.NewDaemonConnector(ctx, daemonAddr)
+		cpc := scion.NewDaemonConnector(daemonAddr)
+		cp, err := cpc.Connect(ctx)
+		if err != nil {
+			logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
+		}
 
-		var ps []snet.Path
-		if remoteAddr.IA == localAddr.IA {
-			ps = []snet.Path{path.Path{
-				Src:           localAddr.IA,
-				Dst:           remoteAddr.IA,
-				DataplanePath: path.Empty{},
-				NextHop:       remoteAddr.Host,
-			}}
-		} else {
-			ps, err = dc.Paths(ctx, remoteAddr.IA, localAddr.IA, daemon.PathReqFlags{Refresh: true})
-			if err != nil {
-				logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
-			}
-			if len(ps) == 0 {
-				logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
-			}
+		ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
+		if err != nil {
+			logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
+		}
+		if len(ps) == 0 {
+			logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
 		}
 
 		laddr := udp.UDPAddrFromSnet(localAddr)
@@ -847,7 +820,8 @@ func runBenchmark(configFile string) {
 	ntskeServer := ntskeServerFromRemoteAddr(cfg.RemoteAddr)
 
 	if !remoteAddr.IA.IsZero() {
-		runBenchmarkSCION(daemonAddr, localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
+		cpc := scion.NewDaemonConnector(daemonAddr)
+		runBenchmarkSCION(cpc, localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
 	} else {
 		if daemonAddr != "" {
 			exitWithUsage()
@@ -865,18 +839,23 @@ func runBenchmarkIP(localAddr, remoteAddr *snet.UDPAddr, authModes []string, nts
 	benchmark.RunIPBenchmark(localAddr.Host, remoteAddr.Host, authModes, ntskeServer, log)
 }
 
-func runBenchmarkSCION(daemonAddr string, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
+func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
 	lclk := clocks.NewSystemClock(
 		slog.New(slog.DiscardHandler),
 		clocks.UnknownDrift,
 	)
 	timebase.RegisterClock(lclk)
-	benchmark.RunSCIONBenchmark(daemonAddr, localAddr, remoteAddr, authModes, ntskeServer, log)
+	benchmark.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
 }
 
 func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
 	ctx := context.Background()
-	dc := scion.NewDaemonConnector(ctx, daemonAddr)
+	cpc := scion.NewDaemonConnector(daemonAddr)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error connecting to control plane:", err)
+		return
+	}
 
 	if serverMode {
 		hostASMeta := drkey.HostASMeta{
@@ -886,7 +865,7 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 			DstIA:    clientAddr.IA,
 			SrcHost:  serverAddr.Host.IP.String(),
 		}
-		hostASKey, err := scion.FetchHostASKey(ctx, dc, hostASMeta)
+		hostASKey, err := cp.FetchHostASKey(ctx, hostASMeta)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error fetching host-AS key:", err)
 			return
@@ -912,7 +891,7 @@ func runDRKeyDemo(daemonAddr string, serverMode bool, serverAddr, clientAddr *sn
 			DstHost:  clientAddr.Host.IP.String(),
 		}
 		t0 := time.Now().UTC()
-		clientKey, err := scion.FetchHostHostKey(ctx, dc, hostHostMeta)
+		clientKey, err := cp.FetchHostHostKey(ctx, hostHostMeta)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error fetching host-host key:", err)
 			return
