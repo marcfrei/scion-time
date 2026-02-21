@@ -1,5 +1,8 @@
 local_address = "1-ff00:0:111,10.1.1.11"
-scion_daemon_address = "10.1.1.11:30255"
+#scion_daemon_address = "10.1.1.11:30255"
+scion_topo_file = "testnet/gen-eh/ASff00_0_111/topology.json"
+scion_certs_dir = "testnet/gen-eh/ASff00_0_111/certs"
+scion_persist_trcs = true
 
 mbg_reference_clocks = ["/dev/mbgclock0"]
 shm_reference_clocks = ["ntpshm"]
