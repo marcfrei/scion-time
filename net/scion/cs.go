@@ -191,6 +191,8 @@ func (cp *csControlPlane) Close() error {
 	return nil
 }
 
+var _ ControlPlane = (*csControlPlane)(nil)
+
 func newCSControlPlane(topo *topology.Loader, trustDB storage.TrustDB) *csControlPlane {
 	dialer := &grpc.TCPDialer{
 		SvcResolver: func(dst addr.SVC) []resolver.Address {
@@ -290,3 +292,6 @@ func (c CSConnector) Connect(ctx context.Context) (ControlPlane, error) {
 
 	return newCSControlPlane(topo, trustDB), nil
 }
+
+var _ ControlPlaneConnector = (*CSConnector)(nil)
+

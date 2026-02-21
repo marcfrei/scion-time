@@ -49,6 +49,8 @@ func (cp *daemonControlPlane) Close() error {
 	return cp.dc.Close()
 }
 
+var _ ControlPlane = (*daemonControlPlane)(nil)
+
 type DaemonConnector struct {
 	Address string
 }
@@ -67,3 +69,5 @@ func (c DaemonConnector) Connect(ctx context.Context) (ControlPlane, error) {
 	}
 	return &daemonControlPlane{dc: dc}, nil
 }
+
+var _ ControlPlaneConnector = (*DaemonConnector)(nil)
