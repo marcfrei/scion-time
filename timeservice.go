@@ -802,42 +802,69 @@ func runPing(daemonAddr, topoFile, certsDir, dispatcherMode string,
 	lclk := clocks.NewSystemClock(log, clocks.UnknownDrift)
 	timebase.RegisterClock(lclk)
 
-	if !remoteAddr.IA.IsZero() {
-		if dispatcherMode == dispatcherModeInternal {
-			server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
-		}
-
-		cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
-		cp, err := cpc.Connect(ctx)
-		if err != nil {
-			logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
-		}
-
-		ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
-		if err != nil {
-			logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
-		}
-		if len(ps) == 0 {
-			logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
-		}
-
-		laddr := udp.UDPAddrFromSnet(localAddr)
-		raddr := udp.UDPAddrFromSnet(remoteAddr)
-
-		for _, p := range ps {
-			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-			defer cancel()
-			rtt, err := scion.SendPing(ctx, laddr, raddr, ps[0])
-			if err != nil {
-				logbase.Fatal(slog.Default(), "failed to send ping",
-					slog.Any("remote", remoteAddr),
-					slog.Any("via", p.Metadata().Fingerprint().String()),
-					slog.Any("error", err))
-			}
-			fmt.Printf("PING %s, rtt=%v, via %v\n", remoteAddr, rtt, p)
-		}
-	} else {
+	if remoteAddr.IA.IsZero() {
 		logbase.Fatal(slog.Default(), "ping subcommand only supports SCION addresses")
+	}
+
+	if dispatcherMode == dispatcherModeInternal {
+		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
+	}
+
+	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
+	}
+
+	ps, err := scion.FetchPaths(ctx, cp, localAddr.IA, remoteAddr.IA, remoteAddr.Host)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteAddr), slog.Any("error", err))
+	}
+	if len(ps) == 0 {
+		logbase.Fatal(slog.Default(), "no paths available", slog.Any("remote", remoteAddr))
+	}
+
+	laddr := udp.UDPAddrFromSnet(localAddr)
+	raddr := udp.UDPAddrFromSnet(remoteAddr)
+
+	for _, p := range ps {
+		ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		defer cancel()
+		rtt, err := scion.SendPing(ctx, laddr, raddr, ps[0])
+		if err != nil {
+			logbase.Fatal(slog.Default(), "failed to send ping",
+				slog.Any("remote", remoteAddr),
+				slog.Any("via", p.Metadata().Fingerprint().String()),
+				slog.Any("error", err))
+		}
+		fmt.Printf("rtt=%v, via %v\n", rtt, p)
+	}
+}
+
+func runShowPaths(daemonAddr, topoFile, certsDir string, remoteIA addr.IA) {
+	ctx := context.Background()
+
+	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
+	}
+
+	localIA, err := cp.LocalIA(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup local IA", slog.Any("error", err))
+	}
+	if remoteIA == localIA {
+		return
+	}
+
+	ps, err := cp.FetchPaths(ctx, remoteIA)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteIA), slog.Any("error", err))
+	}
+
+	for _, p := range ps {
+		fmt.Printf("%v\n",p)
 	}
 }
 
@@ -950,6 +977,7 @@ func main() {
 		certsDir                string
 		localAddr               snet.UDPAddr
 		remoteAddrStr           string
+		remoteIA                addr.IA
 		dispatcherMode          string
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
@@ -965,6 +993,7 @@ func main() {
 	clientFlags := flag.NewFlagSet("client", flag.ExitOnError)
 	toolFlags := flag.NewFlagSet("tool", flag.ExitOnError)
 	pingFlags := flag.NewFlagSet("ping", flag.ExitOnError)
+	showPathsFlags := flag.NewFlagSet("showpaths", flag.ExitOnError)
 	benchmarkFlags := flag.NewFlagSet("benchmark", flag.ExitOnError)
 	drkeyFlags := flag.NewFlagSet("drkey", flag.ExitOnError)
 
@@ -997,6 +1026,13 @@ func main() {
 	pingFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	pingFlags.Var(&localAddr, "local", "Local address")
 	pingFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
+
+	showPathsFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
+	showPathsFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
+	showPathsFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	showPathsFlags.StringVar(&topoFile, "topo", "", "Topology file")
+	showPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
+	showPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
 
 	benchmarkFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -1135,6 +1171,25 @@ func main() {
 		initLogger(logLevel())
 		runPing(daemonAddr, topoFile, certsDir, dispatcherMode,
 			&localAddr, &remoteAddr)
+	case showPathsFlags.Name():
+		err := showPathsFlags.Parse(os.Args[2:])
+		if err != nil || showPathsFlags.NArg() != 0 {
+			exitWithUsage()
+		}
+		if daemonAddr != "" {
+			if topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else {
+			if topoFile == "" {
+				exitWithUsage()
+			}
+		}
+		if remoteIA.IsZero() {
+			exitWithUsage()
+		}
+		initLogger(logLevel())
+		runShowPaths(daemonAddr, topoFile, certsDir, remoteIA)
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
 		if err != nil || benchmarkFlags.NArg() != 0 {
