@@ -74,6 +74,7 @@ type svcConfig struct {
 	LocalAddr               string   `toml:"local_address,omitempty"`
 	LocalMetricsAddr        string   `toml:"local_metrics_address,omitempty"`
 	SCIONDaemonAddr         string   `toml:"scion_daemon_address,omitempty"`
+	SCIONEndhostAPIAddr     string   `toml:"scion_endhost_api_address,omitempty"`
 	SCIONTopoFile           string   `toml:"scion_topo_file,omitempty"`
 	SCIONCertsDir           string   `toml:"scion_certs_dir,omitempty"`
 	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
@@ -448,9 +449,12 @@ func tlsConfig(cfg svcConfig) *tls.Config {
 	}
 }
 
-func controlPlaneConnector(daemonAddr, topoFile, certsDir string, persistTRCs bool) scion.ControlPlaneConnector {
+func controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir string, persistTRCs bool) scion.ControlPlaneConnector {
 	if daemonAddr != "" {
 		return scion.DaemonConnector{Address: daemonAddr}
+	}
+	if apiAddr != "" {
+		return scion.EndhostAPIConnector{Address: apiAddr}
 	}
 	return scion.CSConnector{
 		TopoFile:    topoFile,
@@ -461,6 +465,9 @@ func controlPlaneConnector(daemonAddr, topoFile, certsDir string, persistTRCs bo
 
 func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector {
 	if cfg.SCIONDaemonAddr != "" {
+		if cfg.SCIONEndhostAPIAddr != "" {
+			logbase.Fatal(slog.Default(), "unexpected endhost API specification in config")
+		}
 		if cfg.SCIONTopoFile != "" {
 			logbase.Fatal(slog.Default(), "unexpected topology file specification in config")
 		}
@@ -470,13 +477,21 @@ func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector 
 		if cfg.SCIONPersistTRCs {
 			logbase.Fatal(slog.Default(), "unexpected TRC persistence specification in config")
 		}
-	} else {
-		if cfg.SCIONTopoFile == "" {
-			logbase.Fatal(slog.Default(), "missing topology file specification in config")
+	} else if cfg.SCIONEndhostAPIAddr != "" {
+		if cfg.SCIONTopoFile != "" {
+			logbase.Fatal(slog.Default(), "unexpected topology file specification in config")
 		}
+		if cfg.SCIONCertsDir != "" {
+			logbase.Fatal(slog.Default(), "unexpected certificates directory specification in config")
+		}
+		if cfg.SCIONPersistTRCs {
+			logbase.Fatal(slog.Default(), "unexpected TRC persistence specification in config")
+		}
+	} else if cfg.SCIONTopoFile == "" {
+		logbase.Fatal(slog.Default(), "missing topology file specification in config")
 	}
 	return controlPlaneConnector(
-		cfg.SCIONDaemonAddr, cfg.SCIONTopoFile, cfg.SCIONCertsDir, cfg.SCIONPersistTRCs)
+		cfg.SCIONDaemonAddr, cfg.SCIONEndhostAPIAddr, cfg.SCIONTopoFile, cfg.SCIONCertsDir, cfg.SCIONPersistTRCs)
 }
 
 func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
@@ -729,7 +744,7 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	}
 }
 
-func runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode string,
+func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string,
 	localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
 	ctx := context.Background()
@@ -742,7 +757,7 @@ func runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode string,
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
-	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cpc := controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -794,7 +809,7 @@ func runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode string,
 	}
 }
 
-func runPing(daemonAddr, topoFile, certsDir, dispatcherMode string,
+func runPing(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string,
 	localAddr, remoteAddr *snet.UDPAddr) {
 	ctx := context.Background()
 	log := slog.Default()
@@ -810,7 +825,7 @@ func runPing(daemonAddr, topoFile, certsDir, dispatcherMode string,
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
 	}
 
-	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cpc := controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -841,10 +856,10 @@ func runPing(daemonAddr, topoFile, certsDir, dispatcherMode string,
 	}
 }
 
-func runShowPaths(daemonAddr, topoFile, certsDir string, remoteIA addr.IA) {
+func runShowPaths(daemonAddr, apiAddr, topoFile, certsDir string, remoteIA addr.IA) {
 	ctx := context.Background()
 
-	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cpc := controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -864,7 +879,7 @@ func runShowPaths(daemonAddr, topoFile, certsDir string, remoteIA addr.IA) {
 	}
 
 	for _, p := range ps {
-		fmt.Printf("%v\n",p)
+		fmt.Printf("%v\n", p)
 	}
 }
 
@@ -904,10 +919,10 @@ func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *s
 	benchmark.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
 }
 
-func runDRKeyDemo(daemonAddr, topoFile, certsDir string,
+func runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir string,
 	serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
 	ctx := context.Background()
-	cpc := controlPlaneConnector(daemonAddr, topoFile, certsDir, false /* persistTRCs */)
+	cpc := controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir, false /* persistTRCs */)
 	cp, err := cpc.Connect(ctx)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
@@ -973,6 +988,7 @@ func main() {
 		verbose                 bool
 		configFile              string
 		daemonAddr              string
+		apiAddr                 string
 		topoFile                string
 		certsDir                string
 		localAddr               snet.UDPAddr
@@ -1008,6 +1024,7 @@ func main() {
 	toolFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	toolFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	toolFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	toolFlags.StringVar(&apiAddr, "api", "", "Endhost API base URL")
 	toolFlags.StringVar(&topoFile, "topo", "", "Topology file")
 	toolFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
@@ -1021,6 +1038,7 @@ func main() {
 	pingFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	pingFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	pingFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	pingFlags.StringVar(&apiAddr, "api", "", "Endhost API base URL")
 	pingFlags.StringVar(&topoFile, "topo", "", "Topology file")
 	pingFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	pingFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
@@ -1030,6 +1048,7 @@ func main() {
 	showPathsFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	showPathsFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	showPathsFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	showPathsFlags.StringVar(&apiAddr, "api", "", "Endhost API base URL")
 	showPathsFlags.StringVar(&topoFile, "topo", "", "Topology file")
 	showPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	showPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
@@ -1041,6 +1060,7 @@ func main() {
 	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	drkeyFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	drkeyFlags.StringVar(&apiAddr, "api", "", "Endhost API base URL")
 	drkeyFlags.StringVar(&topoFile, "topo", "", "Topology file")
 	drkeyFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	drkeyFlags.StringVar(&drkeyMode, "mode", "", "Mode")
@@ -1110,6 +1130,10 @@ func main() {
 		}
 		if !remoteAddr.IA.IsZero() {
 			if daemonAddr != "" {
+				if apiAddr != "" || topoFile != "" || certsDir != "" {
+					exitWithUsage()
+				}
+			} else if apiAddr != "" {
 				if topoFile != "" || certsDir != "" {
 					exitWithUsage()
 				}
@@ -1126,11 +1150,11 @@ func main() {
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
 			initLogger(logLevel())
-			runToolSCION(daemonAddr, topoFile, certsDir, dispatcherMode,
+			runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode,
 				&localAddr, &remoteAddr, uint8(dscp),
 				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		} else {
-			if daemonAddr != "" || topoFile != "" || certsDir != "" {
+			if daemonAddr != "" || apiAddr != "" || topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
 			if dispatcherMode != "" {
@@ -1147,6 +1171,10 @@ func main() {
 			exitWithUsage()
 		}
 		if daemonAddr != "" {
+			if apiAddr != "" || topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else if apiAddr != "" {
 			if topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
@@ -1169,7 +1197,7 @@ func main() {
 			}
 		}
 		initLogger(logLevel())
-		runPing(daemonAddr, topoFile, certsDir, dispatcherMode,
+		runPing(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode,
 			&localAddr, &remoteAddr)
 	case showPathsFlags.Name():
 		err := showPathsFlags.Parse(os.Args[2:])
@@ -1177,6 +1205,10 @@ func main() {
 			exitWithUsage()
 		}
 		if daemonAddr != "" {
+			if apiAddr != "" || topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else if apiAddr != "" {
 			if topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
@@ -1189,7 +1221,7 @@ func main() {
 			exitWithUsage()
 		}
 		initLogger(logLevel())
-		runShowPaths(daemonAddr, topoFile, certsDir, remoteIA)
+		runShowPaths(daemonAddr, apiAddr, topoFile, certsDir, remoteIA)
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
 		if err != nil || benchmarkFlags.NArg() != 0 {
@@ -1206,6 +1238,10 @@ func main() {
 			exitWithUsage()
 		}
 		if daemonAddr != "" {
+			if apiAddr != "" || topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else if apiAddr != "" {
 			if topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
@@ -1219,7 +1255,7 @@ func main() {
 		}
 		serverMode := drkeyMode == "server"
 		initLogger(logLevel())
-		runDRKeyDemo(daemonAddr, topoFile, certsDir,
+		runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir,
 			serverMode, &drkeyServerAddr, &drkeyClientAddr)
 	case "t":
 		runT()
