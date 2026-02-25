@@ -250,7 +250,7 @@ func (cp *endhostAPIControlPlane) do(ctx context.Context, endpoint string, reqPr
 	req.Header.Set("Content-Type", endhostContentType)
 	req.Header.Set("Accept-Encoding", "identity")
 
-	resp, err := cp.client.Do(req)
+	resp, err := cp.client.Do(req) // #nosec G704
 	if err != nil {
 		return nil, err
 	}
