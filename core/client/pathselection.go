@@ -3,7 +3,6 @@ package client
 import (
 	crand "crypto/rand"
 	mrand "math/rand/v2"
-	"sort"
 	"sync"
 
 	"github.com/scionproto/scion/pkg/snet"
@@ -42,30 +41,8 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 		return candidates
 	}
 	selected := make([]snet.Path, 0, k)
-	if k == 0 {
-		return selected
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		mi := candidates[i].Metadata()
-		mj := candidates[j].Metadata()
-		li := len(mi.Interfaces)
-		lj := len(mj.Interfaces)
-		if li != lj {
-			return li < lj
-		}
-		return mi.Fingerprint().String() < mj.Fingerprint().String()
-	})
 
 	covered := make(map[snet.PathInterface]struct{})
-
-	// First pick: shortest path
-	p := candidates[0]
-	selected = append(selected, p)
-	for _, iface := range p.Metadata().Interfaces {
-		covered[iface] = struct{}{}
-	}
-	candidates = candidates[1:]
 
 	for len(selected) < k && len(candidates) > 0 {
 		selIdx := -1
@@ -83,18 +60,29 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 				}
 			}
 
-			// Subsequent picks: max new coverage, break ties by shorter path
 			pick := false
-			if newCount > selNewCount {
-				pick = true
-				tieCount = 1
-			} else if newCount == selNewCount {
-				if pathLen < selPathLen {
+			if len(selected) == 0 {
+				// First pick: shortest path, break ties randomly.
+				if selIdx == -1 || pathLen < selPathLen {
 					pick = true
 					tieCount = 1
 				} else if pathLen == selPathLen {
 					tieCount++
 					pick = randIntN(tieCount) == 0
+				}
+			} else {
+				// Subsequent picks: max new coverage, break ties by shorter path then randomly.
+				if newCount > selNewCount {
+					pick = true
+					tieCount = 1
+				} else if newCount == selNewCount {
+					if pathLen < selPathLen {
+						pick = true
+						tieCount = 1
+					} else if pathLen == selPathLen {
+						tieCount++
+						pick = randIntN(tieCount) == 0
+					}
 				}
 			}
 			if pick {
@@ -104,7 +92,7 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 			}
 		}
 
-		p = candidates[selIdx]
+		p := candidates[selIdx]
 		selected = append(selected, p)
 		for _, iface := range p.Metadata().Interfaces {
 			covered[iface] = struct{}{}
