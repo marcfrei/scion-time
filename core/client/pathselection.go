@@ -43,7 +43,7 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 	}
 	selected := make([]snet.Path, 0, k)
 
-	covered := make(map[snet.PathInterface]struct{})
+	coveredIfaces := make(map[snet.PathInterface]int)
 
 	for len(selected) < k && len(candidates) > 0 {
 		selIdx := -1
@@ -72,14 +72,20 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 			} else {
 				// Subsequent picks: maximize score and break ties randomly.
 				const pathLengthPenalty = 0.5
+				const pathOverlapPenalty = 0.25
 				const scoreEps = 1e-9
-				newIfaceCount := 0
+				pathCoverage := 0
+				pathOverlap := 0
 				for _, iface := range ifaces {
-					if _, ok := covered[iface]; !ok {
-						newIfaceCount++
+					c := coveredIfaces[iface]
+					if c == 0 {
+						pathCoverage++
 					}
+					pathOverlap += c
 				}
-				score := float64(newIfaceCount) - pathLengthPenalty*float64(pathLen)
+				score := float64(pathCoverage) -
+					pathLengthPenalty*float64(pathLen) -
+					pathOverlapPenalty*float64(pathOverlap)
 				if selIdx == -1 || score > selScore+scoreEps {
 					pick = true
 					tieCount = 1
@@ -97,7 +103,7 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 		p := candidates[selIdx]
 		selected = append(selected, p)
 		for _, iface := range p.Metadata().Interfaces {
-			covered[iface] = struct{}{}
+			coveredIfaces[iface]++
 		}
 		candidates[selIdx] = candidates[len(candidates)-1]
 		candidates = candidates[:len(candidates)-1]
