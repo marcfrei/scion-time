@@ -2,14 +2,15 @@ package client
 
 import (
 	crand "crypto/rand"
-	mrand "math/rand/v2"
+	"math"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/scionproto/scion/pkg/snet"
 )
 
 var rng struct {
-	gen *mrand.Rand
+	gen *rand.Rand
 	mu  sync.Mutex
 }
 
@@ -21,8 +22,8 @@ func init() {
 	}
 	// ChaCha8 is a ChaCha8-based cryptographically strong random number generator.
 	// See https://pkg.go.dev/math/rand/v2#ChaCha8
-	src := mrand.NewChaCha8(seed)
-	rng.gen = mrand.New(src) // #nosec G404
+	src := rand.NewChaCha8(seed)
+	rng.gen = rand.New(src) // #nosec G404
 }
 
 func randIntN(n int) int {
@@ -46,19 +47,13 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 
 	for len(selected) < k && len(candidates) > 0 {
 		selIdx := -1
-		selPathLen := -1
-		selNewCount := -1
+		selPathLen := 0
+		selScore := 0.0
 		tieCount := 0
 
 		for i, p := range candidates {
 			ifaces := p.Metadata().Interfaces
 			pathLen := len(ifaces)
-			newCount := 0
-			for _, iface := range ifaces {
-				if _, ok := covered[iface]; !ok {
-					newCount++
-				}
-			}
 
 			pick := false
 			if len(selected) == 0 {
@@ -70,25 +65,32 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 					tieCount++
 					pick = randIntN(tieCount) == 0
 				}
+				if pick {
+					selIdx = i
+					selPathLen = pathLen
+				}
 			} else {
-				// Subsequent picks: max new coverage, break ties by shorter path then randomly.
-				if newCount > selNewCount {
-					pick = true
-					tieCount = 1
-				} else if newCount == selNewCount {
-					if pathLen < selPathLen {
-						pick = true
-						tieCount = 1
-					} else if pathLen == selPathLen {
-						tieCount++
-						pick = randIntN(tieCount) == 0
+				// Subsequent picks: maximize score and break ties randomly.
+				const pathLengthPenalty = 0.5
+				const scoreEps = 1e-9
+				newIfaceCount := 0
+				for _, iface := range ifaces {
+					if _, ok := covered[iface]; !ok {
+						newIfaceCount++
 					}
 				}
-			}
-			if pick {
-				selIdx = i
-				selPathLen = pathLen
-				selNewCount = newCount
+				score := float64(newIfaceCount) - pathLengthPenalty*float64(pathLen)
+				if selIdx == -1 || score > selScore+scoreEps {
+					pick = true
+					tieCount = 1
+				} else if math.Abs(score-selScore) <= scoreEps {
+					tieCount++
+					pick = randIntN(tieCount) == 0
+				}
+				if pick {
+					selIdx = i
+					selScore = score
+				}
 			}
 		}
 
