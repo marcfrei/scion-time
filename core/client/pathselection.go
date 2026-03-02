@@ -2,11 +2,13 @@ package client
 
 import (
 	crand "crypto/rand"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"sync"
 
 	"github.com/scionproto/scion/pkg/snet"
+	"github.com/scionproto/scion/pkg/snet/path"
 )
 
 var rng struct {
@@ -32,16 +34,33 @@ func randIntN(n int) int {
 	return rng.gen.IntN(n)
 }
 
+func pathInterfaces(p snet.Path) []snet.PathInterface {
+	if p == nil {
+		return nil
+	}
+	if pp, ok := p.(path.Path); ok {
+		return pp.Meta.Interfaces
+	}
+	if pp, ok := p.(*path.Path); ok {
+		if pp == nil {
+			return nil
+		}
+		return pp.Meta.Interfaces
+	}
+	md := p.Metadata()
+	if md != nil {
+		return md.Interfaces
+	}
+	return nil
+}
+
 func SelectPaths(ps []snet.Path, k int) []snet.Path {
 	if k < 0 {
 		panic("invalid argument: k must be non-negative")
 	}
 
 	candidates := append([]snet.Path(nil), ps...)
-	if len(candidates) <= k {
-		return candidates
-	}
-	selected := make([]snet.Path, 0, k)
+	selected := make([]snet.Path, 0, min(k, len(candidates)))
 
 	coveredIfaces := make(map[snet.PathInterface]int)
 
@@ -52,8 +71,11 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 		tieCount := 0
 
 		for i, p := range candidates {
-			ifaces := p.Metadata().Interfaces
+			ifaces := pathInterfaces(p)
 			pathLen := len(ifaces)
+			if pathLen < 2 {
+				panic(fmt.Sprintf("unexpected path (type=%T, ifaces=%d)", p, pathLen))
+			}
 
 			pick := false
 			if len(selected) == 0 {
@@ -101,10 +123,10 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 		}
 
 		p := candidates[selIdx]
-		selected = append(selected, p)
-		for _, iface := range p.Metadata().Interfaces {
+		for _, iface := range pathInterfaces(p) {
 			coveredIfaces[iface]++
 		}
+		selected = append(selected, p)
 		candidates[selIdx] = candidates[len(candidates)-1]
 		candidates = candidates[:len(candidates)-1]
 	}
