@@ -10,8 +10,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/snet"
 
-	"example.com/scion-time/base/crypto"
-
 	"example.com/scion-time/core/measurements"
 	"example.com/scion-time/core/timebase"
 
@@ -134,20 +132,15 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			}
 		}
 	}
-	n, err := crypto.Sample(ctx, len(sps)-nsps, len(ps), func(dst, src int) {
-		ps[dst] = ps[src]
-	})
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-	if nsps+n == 0 {
+	sel := SelectPaths(ps, len(sps)-nsps)
+	if nsps+len(sel) == 0 {
 		return time.Time{}, 0, errNoPath
 	}
-	for i, j := 0, 0; j != n; j++ {
+	for i, j := 0, 0; j != len(sel); j++ {
 		for sps[i] != nil {
 			i++
 		}
-		sps[i] = ps[j]
+		sps[i] = sel[j]
 		nsps++
 	}
 

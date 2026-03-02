@@ -883,6 +883,35 @@ func runShowPaths(daemonAddr, apiAddr, topoFile, certsDir string, remoteIA addr.
 	}
 }
 
+func runSelectPaths(daemonAddr, apiAddr, topoFile, certsDir string, remoteIA addr.IA, k int) {
+	ctx := context.Background()
+
+	cpc := controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir, false /* persistTRCs */)
+	cp, err := cpc.Connect(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to connect to control plane", slog.Any("error", err))
+	}
+
+	localIA, err := cp.LocalIA(ctx)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup local IA", slog.Any("error", err))
+	}
+	if remoteIA == localIA {
+		return
+	}
+
+	ps, err := cp.FetchPaths(ctx, remoteIA)
+	if err != nil {
+		logbase.Fatal(slog.Default(), "failed to lookup paths", slog.Any("remote", remoteIA), slog.Any("error", err))
+	}
+
+	sel := client.SelectPaths(ps, k)
+
+	for _, p := range sel {
+		fmt.Printf("%v\n", p)
+	}
+}
+
 func runBenchmark(configFile string) {
 	cfg := loadConfig(configFile)
 	log := slog.Default()
@@ -1002,6 +1031,7 @@ func main() {
 		authModesStr            string
 		ntskeInsecureSkipVerify bool
 		periodic                bool
+		selectK                 int
 	)
 
 	infoFlags := flag.NewFlagSet("info", flag.ExitOnError)
@@ -1010,6 +1040,7 @@ func main() {
 	toolFlags := flag.NewFlagSet("tool", flag.ExitOnError)
 	pingFlags := flag.NewFlagSet("ping", flag.ExitOnError)
 	showPathsFlags := flag.NewFlagSet("showpaths", flag.ExitOnError)
+	selectPathsFlags := flag.NewFlagSet("selectpaths", flag.ExitOnError)
 	benchmarkFlags := flag.NewFlagSet("benchmark", flag.ExitOnError)
 	drkeyFlags := flag.NewFlagSet("drkey", flag.ExitOnError)
 
@@ -1052,6 +1083,15 @@ func main() {
 	showPathsFlags.StringVar(&topoFile, "topo", "", "Topology file")
 	showPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	showPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
+
+	selectPathsFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
+	selectPathsFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
+	selectPathsFlags.StringVar(&daemonAddr, "daemon", "", "Daemon address")
+	selectPathsFlags.StringVar(&apiAddr, "api", "", "Endhost API base URL")
+	selectPathsFlags.StringVar(&topoFile, "topo", "", "Topology file")
+	selectPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
+	selectPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
+	selectPathsFlags.IntVar(&selectK, "k", 7, "Number of paths to select")
 
 	benchmarkFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -1222,6 +1262,32 @@ func main() {
 		}
 		initLogger(logLevel())
 		runShowPaths(daemonAddr, apiAddr, topoFile, certsDir, remoteIA)
+	case selectPathsFlags.Name():
+		err := selectPathsFlags.Parse(os.Args[2:])
+		if err != nil || selectPathsFlags.NArg() != 0 {
+			exitWithUsage()
+		}
+		if daemonAddr != "" {
+			if apiAddr != "" || topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else if apiAddr != "" {
+			if topoFile != "" || certsDir != "" {
+				exitWithUsage()
+			}
+		} else {
+			if topoFile == "" {
+				exitWithUsage()
+			}
+		}
+		if remoteIA.IsZero() {
+			exitWithUsage()
+		}
+		if selectK < 0 {
+			exitWithUsage()
+		}
+		initLogger(logLevel())
+		runSelectPaths(daemonAddr, apiAddr, topoFile, certsDir, remoteIA, selectK)
 	case benchmarkFlags.Name():
 		err := benchmarkFlags.Parse(os.Args[2:])
 		if err != nil || benchmarkFlags.NArg() != 0 {
