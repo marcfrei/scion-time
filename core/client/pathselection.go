@@ -23,7 +23,7 @@ func init() {
 	// ChaCha8 is a ChaCha8-based cryptographically strong random number generator.
 	// See https://pkg.go.dev/math/rand/v2#ChaCha8
 	src := mrand.NewChaCha8(seed)
-	rng.gen = mrand.New(src)
+	rng.gen = mrand.New(src) // #nosec G404
 }
 
 func randIntN(n int) int {
