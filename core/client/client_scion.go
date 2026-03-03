@@ -190,6 +190,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	}
 
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
+	pathFingerprint := snet.Fingerprint(pathInterfaces(path)).String()
 
 	var txid uint32
 	buf := make([]byte, scion.MTU)
@@ -590,7 +591,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
 				slog.Time("at", cRxTime),
 				slog.String("from", reference),
-				slog.String("via", path.Metadata().Fingerprint().String()),
+				slog.String("via", pathFingerprint),
 				slog.Bool("interleaved", interleavedResp),
 				slog.Duration("clock offset", off),
 				slog.Duration("round trip delay", rtd),
@@ -598,7 +599,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 			if c.InterleavedMode {
 				c.prev.reference = reference
-				c.prev.path = path.Metadata().Fingerprint().String()
+				c.prev.path = pathFingerprint
 				c.prev.interleaved = interleavedResp
 				c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
 				c.prev.cRxTime = ntp.Time64FromTime(cRxTime)

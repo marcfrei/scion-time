@@ -76,6 +76,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	var n int
 
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
+	pathFingerprint := snet.Fingerprint(pathInterfaces(path)).String()
 
 	var reqmsg csptp.Message
 	var reqtlv csptp.RequestTLV
@@ -600,7 +601,7 @@ rxloop:
 	c.Log.LogAttrs(ctx, slog.LevelDebug, "evaluated response",
 		slog.Time("at", cRxTime1),
 		slog.String("from", reference),
-		slog.String("via", path.Metadata().Fingerprint().String()),
+		slog.String("via", pathFingerprint),
 		slog.Duration("C2S delay", c2sDelay),
 		slog.Duration("S2C delay", s2cDelay),
 		slog.Duration("clock offset", clockOffset),

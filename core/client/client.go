@@ -116,7 +116,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 		if c.InInterleavedMode() {
 			pf := c.InterleavedModePath()
 			for j := range len(ps) {
-				if p := ps[j]; p.Metadata().Fingerprint().String() == pf {
+				if p := ps[j]; snet.Fingerprint(pathInterfaces(p)).String() == pf {
 					ps[j] = ps[len(ps)-1]
 					ps = ps[:len(ps)-1]
 					sps[i] = p
@@ -156,9 +156,10 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			var ts time.Time
 			var off time.Duration
 			var nerr, n int
+			via := snet.Fingerprint(pathInterfaces(p)).String()
 			log.LogAttrs(ctx, slog.LevelDebug, "measuring clock offset",
 				slog.Any("to", remoteAddr),
-				slog.Any("via", p.Metadata().Fingerprint().String()),
+				slog.String("via", via),
 				slog.Any("path", p),
 			)
 			if ntpc.InterleavedMode {
@@ -180,7 +181,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 					nerr++
 					log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
 						slog.Any("to", remoteAddr),
-						slog.Any("via", p.Metadata().Fingerprint().String()),
+						slog.String("via", via),
 						slog.Any("error", e),
 					)
 				}
