@@ -132,7 +132,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			}
 		}
 	}
-	sel := SelectPaths(ps, len(sps)-nsps)
+	sel := SelectPaths(ps, len(sps)-nsps, sps...)
 	if nsps+len(sel) == 0 {
 		return time.Time{}, 0, errNoPath
 	}

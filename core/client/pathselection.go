@@ -54,7 +54,7 @@ func pathInterfaces(p snet.Path) []snet.PathInterface {
 	return nil
 }
 
-func SelectPaths(ps []snet.Path, k int) []snet.Path {
+func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {
 	if k < 0 {
 		panic("invalid argument: k must be non-negative")
 	}
@@ -63,6 +63,21 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 	selected := make([]snet.Path, 0, min(k, len(candidates)))
 
 	coveredIfaces := make(map[snet.PathInterface]int)
+	numSelected := 0
+	for _, p := range preselected {
+		if p == nil {
+			continue
+		}
+		ifaces := pathInterfaces(p)
+		pathLen := len(ifaces)
+		if pathLen < 2 {
+			panic(fmt.Sprintf("unexpected path (type=%T, ifaces=%d)", p, pathLen))
+		}
+		for _, iface := range ifaces {
+			coveredIfaces[iface]++
+		}
+		numSelected++
+	}
 
 	for len(selected) < k && len(candidates) > 0 {
 		selIdx := -1
@@ -78,7 +93,7 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 			}
 
 			pick := false
-			if len(selected) == 0 {
+			if numSelected == 0 {
 				// First pick: shortest path, break ties randomly.
 				if selIdx == -1 || pathLen < selPathLen {
 					pick = true
@@ -127,6 +142,7 @@ func SelectPaths(ps []snet.Path, k int) []snet.Path {
 			coveredIfaces[iface]++
 		}
 		selected = append(selected, p)
+		numSelected++
 		candidates[selIdx] = candidates[len(candidates)-1]
 		candidates = candidates[:len(candidates)-1]
 	}
