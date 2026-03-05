@@ -110,38 +110,45 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 	time.Time, time.Duration, error) {
 	mtrcs := scionMetrics.Load()
 
+	const maxFailures = 3
+
+	prevps := make([]snet.Path, len(ntpcs))
 	sps := make([]snet.Path, len(ntpcs))
 	nsps := 0
 	for i, c := range ntpcs {
-		if c.InInterleavedMode() {
-			pf := c.InterleavedModePath()
-			for j := range len(ps) {
-				if p := ps[j]; snet.Fingerprint(pathInterfaces(p)).String() == pf {
-					ps[j] = ps[len(ps)-1]
-					ps = ps[:len(ps)-1]
-					sps[i] = p
-					nsps++
-					break
-				}
+		pfp := c.Path()
+		if pfp == "" {
+			continue
+		}
+		for j := range len(ps) {
+			if p := ps[j]; snet.Fingerprint(pathInterfaces(p)).String() == pfp {
+				ps[j] = ps[len(ps)-1]
+				ps = ps[:len(ps)-1]
+				prevps[i] = p
+				break
 			}
 		}
-		if sps[i] == nil {
-			c.ResetInterleavedMode()
-			if c.Filter != nil {
-				c.Filter.Reset()
-			}
+		if prevps[i] != nil && c.Failures() <= maxFailures {
+			sps[i] = prevps[i]
+			nsps++
 		}
 	}
 	sel := SelectPaths(ps, len(sps)-nsps, sps...)
-	if nsps+len(sel) == 0 {
-		return time.Time{}, 0, errNoPath
-	}
 	for i, j := 0, 0; j != len(sel); j++ {
 		for sps[i] != nil {
 			i++
 		}
 		sps[i] = sel[j]
 		nsps++
+	}
+	for i := range len(ntpcs) {
+		if sps[i] == nil && prevps[i] != nil {
+			sps[i] = prevps[i]
+			nsps++
+		}
+	}
+	if nsps == 0 {
+		return time.Time{}, 0, errNoPath
 	}
 
 	ms := make([]measurements.Measurement, nsps)
