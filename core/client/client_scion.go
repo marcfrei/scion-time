@@ -97,8 +97,12 @@ func newSCIONClientMetrics() *scionClientMetrics {
 	}
 }
 
+const interleavedModeExpiry = 3*time.Second
+
 func (c *SCIONClient) InInterleavedMode() bool {
-	return c.InterleavedMode && c.prev.reference != "" && c.prev.interleaved
+	now := timebase.Now()
+	return c.InterleavedMode && c.prev.reference != "" && c.prev.interleaved &&
+		now.Sub(ntp.TimeFromTime64(c.prev.cTxTime, now)) < interleavedModeExpiry
 }
 
 func (c *SCIONClient) InterleavedModeReference() string {
@@ -203,7 +207,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		ntpreq.SetVersion(ntp.VersionMax)
 		ntpreq.SetMode(ntp.ModeClient)
 		if c.InterleavedMode && reference == c.prev.reference &&
-			cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) < 3*time.Second {
+			cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) < interleavedModeExpiry {
 			interleavedReq = true
 			ntpreq.OriginTime = c.prev.sRxTime
 			ntpreq.ReceiveTime = c.prev.cRxTime
