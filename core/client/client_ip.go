@@ -112,8 +112,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	}
 	conn := pconn.(*net.UDPConn)
 	defer func() { _ = conn.Close() }()
-	deadline, deadlineIsSet := ctx.Deadline()
-	if deadlineIsSet {
+	deadline, deadlineSet := ctx.Deadline()
+	if deadlineSet {
 		err = conn.SetDeadline(deadline)
 		if err != nil {
 			return time.Time{}, 0, err
@@ -205,7 +205,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			oob = oob[:cap(oob)]
 			n, oobn, flags, srcAddr, err := conn.ReadMsgUDPAddrPort(buf, oob)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 					numRetries++
 					continue
@@ -214,7 +214,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			}
 			if flags != 0 {
 				err = errUnexpectedPacketFlags
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
 					numRetries++
 					continue
@@ -232,7 +232,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 
 			if compareAddrs(srcAddr.Addr(), remoteAddr.AddrPort().Addr()) != 0 {
 				err = errUnexpectedPacketSource
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
 					numRetries++
 					continue
@@ -243,7 +243,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			var ntpresp ntp.Packet
 			err = ntp.DecodePacket(&ntpresp, buf)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 					numRetries++
 					continue
@@ -256,7 +256,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			if c.Auth.Enabled {
 				err = nts.DecodePacket(&ntsresp, buf)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -266,7 +266,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 
 				err = nts.ProcessResponse(buf, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -283,7 +283,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 				interleavedResp = true
 			} else if ntpresp.OriginTime != ntpreq.TransmitTime {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue

@@ -145,8 +145,8 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	}
 	conn := pconn.(*net.UDPConn)
 	defer func() { _ = conn.Close() }()
-	deadline, deadlineIsSet := ctx.Deadline()
-	if deadlineIsSet {
+	deadline, deadlineSet := ctx.Deadline()
+	if deadlineSet {
 		err = conn.SetDeadline(deadline)
 		if err != nil {
 			return time.Time{}, 0, err
@@ -371,7 +371,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			oob = oob[:cap(oob)]
 			n, oobn, flags, lastHop, err := conn.ReadMsgUDPAddrPort(buf, oob)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 					numRetries++
 					continue
@@ -381,7 +381,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			}
 			if flags != 0 {
 				err = errUnexpectedPacketFlags
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
 					numRetries++
 					continue
@@ -410,7 +410,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			decoded := make([]gopacket.LayerType, 4)
 			err = parser.DecodeLayers(buf, &decoded)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
 					numRetries++
 					continue
@@ -422,7 +422,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
 			if !validType {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
 					numRetries++
 					continue
@@ -436,7 +436,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					slog.String("cause", "unexpected SCMP message type"),
 					slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
 					slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					numRetries++
 					continue
 				}
@@ -445,7 +445,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			}
 			if len(buf) < int(udpLayer.Length) {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue
@@ -459,7 +459,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
 			if !validSrc || !validDst {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					if !validSrc {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
 					}
@@ -505,7 +505,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 							authenticated = subtle.ConstantTimeCompare(scion.PacketAuthOptMAC(authOpt), c.Auth.mac) != 0
 							if !authenticated {
 								err = errInvalidPacketAuthenticator
-								if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+								if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 									c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to authenticate packet", slog.Any("error", err))
 									numRetries++
 									continue
@@ -522,7 +522,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			var ntpresp ntp.Packet
 			err = ntp.DecodePacket(&ntpresp, udpLayer.Payload)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 					numRetries++
 					continue
@@ -536,7 +536,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			if c.Auth.NTSEnabled {
 				err = nts.DecodePacket(&ntsresp, udpLayer.Payload)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -547,7 +547,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 				err = nts.ProcessResponse(udpLayer.Payload, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -563,7 +563,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				interleavedResp = true
 			} else if ntpresp.OriginTime != ntpreq.TransmitTime {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineIsSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue
