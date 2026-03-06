@@ -119,7 +119,7 @@ func (c *SCIONClient) InInterleavedMode() bool {
 }
 
 func incFailures(c *SCIONClient) {
-	if c.prev.failures < math.MaxInt { 
+	if c.prev.failures < math.MaxInt {
 		c.prev.failures++
 	}
 }
@@ -635,6 +635,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				c.prev.timestamps.set = true
 				c.prev.interleaved = interleavedResp
 			}
+			c.prev.failures = 0
 
 			if c.Histogram != nil {
 				err := c.Histogram.RecordValue(rtd.Microseconds())
@@ -650,7 +651,6 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				}
 			}
 
-			c.prev.failures = 0
 			return cRxTime, off, nil
 		}
 	}
