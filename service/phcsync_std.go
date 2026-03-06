@@ -8,7 +8,7 @@ import (
 )
 
 func StartPHCSync(log *slog.Logger, config string) {
-	if spec != "" {
+	if config != "" {
 		log.LogAttrs(context.Background(), slog.LevelInfo, "PHC sync not supported on this platform")
 	}
 }
