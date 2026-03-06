@@ -33,11 +33,14 @@ type IPClient struct {
 	Filter    measurements.Filter
 	Histogram *hdrhistogram.Histogram
 	prev      struct {
-		reference   string
+		reference  string
+		timestamps struct {
+			cTx ntp.Time64
+			cRx ntp.Time64
+			sRx ntp.Time64
+			set bool
+		}
 		interleaved bool
-		cTxTime     ntp.Time64
-		cRxTime     ntp.Time64
-		sRxTime     ntp.Time64
 	}
 }
 
@@ -83,19 +86,12 @@ func compareAddrs(x, y netip.Addr) int {
 	return x.Unmap().Compare(y.Unmap())
 }
 
-func (c *IPClient) InInterleavedMode() bool {
-	return c.InterleavedMode && c.prev.reference != "" && c.prev.interleaved
-}
-
-func (c *IPClient) InterleavedModeReference() string {
-	if !c.InInterleavedMode() {
-		return ""
-	}
+func (c *IPClient) Reference() string {
 	return c.prev.reference
 }
 
-func (c *IPClient) ResetInterleavedMode() {
-	c.prev.reference = ""
+func (c *IPClient) InInterleavedMode() bool {
+	return c.InterleavedMode && c.prev.interleaved
 }
 
 func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetrics,
@@ -145,6 +141,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 
 	reference := remoteAddr.String()
 
+	if reference != c.prev.reference {
+		if c.Filter != nil {
+			c.Filter.Reset()
+		}
+		c.prev.reference = reference
+		c.prev.timestamps.set = false
+		c.prev.interleaved = false
+	}
+
 	var txid uint32
 	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
@@ -155,12 +160,11 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 		ntpreq := ntp.Packet{}
 		ntpreq.SetVersion(ntp.VersionMax)
 		ntpreq.SetMode(ntp.ModeClient)
-		if c.InterleavedMode && reference == c.prev.reference &&
-			cTxTime0.Sub(ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)) <= 3*time.Second {
+		if c.InterleavedMode && c.prev.timestamps.set {
 			interleavedReq = true
-			ntpreq.OriginTime = c.prev.sRxTime
-			ntpreq.ReceiveTime = c.prev.cRxTime
-			ntpreq.TransmitTime = c.prev.cTxTime
+			ntpreq.OriginTime = c.prev.timestamps.sRx
+			ntpreq.ReceiveTime = c.prev.timestamps.cRx
+			ntpreq.TransmitTime = c.prev.timestamps.cTx
 		} else {
 			ntpreq.TransmitTime = ntp.Time64FromTime(cTxTime0)
 		}
@@ -308,10 +312,10 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 
 			var t0, t1, t2, t3 time.Time
 			if interleavedResp {
-				t0 = ntp.TimeFromTime64(c.prev.cTxTime, cTxTime0)
-				t1 = ntp.TimeFromTime64(c.prev.sRxTime, cTxTime0)
+				t0 = ntp.TimeFromTime64(c.prev.timestamps.cTx, cTxTime0)
+				t1 = ntp.TimeFromTime64(c.prev.timestamps.sRx, cTxTime0)
 				t2 = sTxTime
-				t3 = ntp.TimeFromTime64(c.prev.cRxTime, cTxTime0)
+				t3 = ntp.TimeFromTime64(c.prev.timestamps.cRx, cTxTime0)
 			} else {
 				t0 = cTxTime1
 				t1 = sRxTime
@@ -340,11 +344,11 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			)
 
 			if c.InterleavedMode {
-				c.prev.reference = reference
+				c.prev.timestamps.cTx = ntp.Time64FromTime(cTxTime1)
+				c.prev.timestamps.cRx = ntp.Time64FromTime(cRxTime)
+				c.prev.timestamps.sRx = ntpresp.ReceiveTime
+				c.prev.timestamps.set = true
 				c.prev.interleaved = interleavedResp
-				c.prev.cTxTime = ntp.Time64FromTime(cTxTime1)
-				c.prev.cRxTime = ntp.Time64FromTime(cRxTime)
-				c.prev.sRxTime = ntpresp.ReceiveTime
 			}
 
 			if c.Histogram != nil {
