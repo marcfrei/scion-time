@@ -32,7 +32,7 @@ import (
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/base/timemath"
 
-	"example.com/scion-time/benchmark"
+	"example.com/scion-time/bench"
 
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/server"
@@ -936,7 +936,7 @@ func runBenchmarkIP(localAddr, remoteAddr *snet.UDPAddr, authModes []string, nts
 		clocks.UnknownDrift,
 	)
 	timebase.RegisterClock(lclk)
-	benchmark.RunIPBenchmark(localAddr.Host, remoteAddr.Host, authModes, ntskeServer, log)
+	bench.RunIPBenchmark(localAddr.Host, remoteAddr.Host, authModes, ntskeServer, log)
 }
 
 func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
@@ -945,7 +945,7 @@ func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *s
 		clocks.UnknownDrift,
 	)
 	timebase.RegisterClock(lclk)
-	benchmark.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
+	bench.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
 }
 
 func runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir string,

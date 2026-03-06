@@ -1,4 +1,4 @@
-package benchmark
+package bench
 
 import (
 	"context"
