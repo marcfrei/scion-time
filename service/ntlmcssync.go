@@ -88,12 +88,17 @@ func (c *ntlMCSCalculator) Do(tss []ntl.CrossTimestamp, target int) (ntlMCSAdjus
 		return ntlMCSAdjustment{}, errNoValidTimestamps
 	}
 
-	off := sum / int64(n)
-	rem := sum % int64(n)
-	if rem >= int64(n)/2 {
-		off++
-	} else if rem <= -int64(n)/2 {
-		off--
+	n64 := int64(n)
+	off := sum / n64
+	rem := sum % n64
+	if rem > 0 {
+		if 2*rem >= n64 {
+			off++
+		}
+	} else if rem < 0 {
+		if -2*rem >= n64 {
+			off--
+		}
 	}
 
 	adj := ntlMCSAdjustment{
@@ -168,6 +173,12 @@ func ntlMCSConfig(log *slog.Logger, config string) (phcDev, ctsDev string, targe
 		if err != nil {
 			logbase.Fatal(log, "unexpected NTL MCS sync initial drift",
 				slog.String("config", config), slog.Any("error", err))
+		}
+		if initialDriftPPB < -ntlMCSMaxDriftPPB || initialDriftPPB > ntlMCSMaxDriftPPB {
+			logbase.Fatal(log, "NTL MCS initial drift out of range",
+				slog.String("config", config),
+				slog.Int64("initialDriftPPB", initialDriftPPB),
+				slog.Int64("maxDriftPPB", ntlMCSMaxDriftPPB))
 		}
 	}
 
