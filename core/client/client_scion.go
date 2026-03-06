@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"log/slog"
+	"math"
 	"net"
 	"net/netip"
 	"time"
@@ -115,6 +116,12 @@ func (c *SCIONClient) Failures() int {
 
 func (c *SCIONClient) InInterleavedMode() bool {
 	return c.InterleavedMode && c.prev.interleaved
+}
+
+func incFailures(c *SCIONClient) {
+	if c.prev.failures < math.MaxInt { 
+		c.prev.failures++
+	}
 }
 
 func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionClientMetrics,
@@ -332,11 +339,11 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 		n, err := conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 		if err != nil {
-			c.prev.failures++
+			incFailures(c)
 			return time.Time{}, 0, err
 		}
 		if n != len(buffer.Bytes()) {
-			c.prev.failures++
+			incFailures(c)
 			return time.Time{}, 0, errWrite
 		}
 		cTxTime1, id, err := udp.ReadTXTimestamp(conn, txid)
@@ -369,7 +376,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			if flags != 0 {
@@ -379,7 +386,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			oob = oob[:oobn]
@@ -408,7 +415,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			validType := len(decoded) >= 2 && (decoded[len(decoded)-1] == slayers.LayerTypeSCIONUDP ||
@@ -420,7 +427,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			if decoded[len(decoded)-1] == slayers.LayerTypeSCMP {
@@ -433,7 +440,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			if len(buf) < int(udpLayer.Length) {
@@ -443,7 +450,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 			validSrc := scionLayer.SrcIA == remoteAddr.IA &&
@@ -462,7 +469,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 
@@ -503,7 +510,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 									numRetries++
 									continue
 								}
-								c.prev.failures++
+								incFailures(c)
 								return time.Time{}, 0, err
 							}
 							mtrcs.pktsAuthenticated.Inc()
@@ -520,7 +527,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 
@@ -534,7 +541,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 						numRetries++
 						continue
 					}
-					c.prev.failures++
+					incFailures(c)
 					return time.Time{}, 0, err
 				}
 
@@ -545,7 +552,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 						numRetries++
 						continue
 					}
-					c.prev.failures++
+					incFailures(c)
 					return time.Time{}, 0, err
 				}
 				ntsAuthenticated = true
@@ -561,13 +568,13 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					numRetries++
 					continue
 				}
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 
 			err = ntp.ValidateResponseMetadata(&ntpresp)
 			if err != nil {
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 
@@ -601,7 +608,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 			err = ntp.ValidateResponseTimestamps(t0, t1, t2, t3)
 			if err != nil {
-				c.prev.failures++
+				incFailures(c)
 				return time.Time{}, 0, err
 			}
 
