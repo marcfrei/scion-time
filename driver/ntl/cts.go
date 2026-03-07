@@ -224,7 +224,7 @@ func (c *CrossTimestamper) Timestamp(index int) (CrossTimestamp, error) {
 	}
 
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(c.fd),
-		uintptr(ioctlRequest(ioctlRead|ioctlWrite, int(unsafe.Sizeof(ts)), ntlCTSIOCTLMagic, 2)),
+		uintptr(ioctlRequest(ioctlRead|ioctlWrite, 4, ntlCTSIOCTLMagic, 2)),
 		uintptr(unsafe.Pointer(&ts)),
 	)
 	if errno != 0 {
