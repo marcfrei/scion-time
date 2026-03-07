@@ -456,11 +456,14 @@ func controlPlaneConnector(daemonAddr, apiAddr, topoFile, certsDir string, persi
 	if apiAddr != "" {
 		return scion.EndhostAPIConnector{Address: apiAddr}
 	}
-	return scion.CSConnector{
-		TopoFile:    topoFile,
-		CertsDir:    certsDir,
-		PersistTRCs: persistTRCs,
+	if topoFile != "" {
+		return scion.CSConnector{
+			TopoFile:    topoFile,
+			CertsDir:    certsDir,
+			PersistTRCs: persistTRCs,
+		}
 	}
+	return nil
 }
 
 func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector {
@@ -487,8 +490,6 @@ func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector 
 		if cfg.SCIONPersistTRCs {
 			logbase.Fatal(slog.Default(), "unexpected TRC persistence specification in config")
 		}
-	} else if cfg.SCIONTopoFile == "" {
-		logbase.Fatal(slog.Default(), "missing topology file specification in config")
 	}
 	return controlPlaneConnector(
 		cfg.SCIONDaemonAddr, cfg.SCIONEndhostAPIAddr, cfg.SCIONTopoFile, cfg.SCIONCertsDir, cfg.SCIONPersistTRCs)
