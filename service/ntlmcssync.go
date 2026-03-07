@@ -252,6 +252,8 @@ func StartNTLMCSSync(log *slog.Logger, config string) {
 	)
 
 	go func() {
+		tss := make([]ntl.CrossTimestamp, n)
+
 		for {
 			time.Sleep(interval)
 
@@ -262,7 +264,7 @@ func StartNTLMCSSync(log *slog.Logger, config string) {
 				continue
 			}
 
-			tss := make([]ntl.CrossTimestamp, n)
+			tss = tss[:cap(tss)]
 			ok := true
 			for i := range tss {
 				ts, err := cts.Timestamp(i)

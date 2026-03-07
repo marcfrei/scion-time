@@ -255,25 +255,3 @@ func (c *CrossTimestamper) Timestamp(index int) (CrossTimestamp, error) {
 
 	return t, nil
 }
-
-func (c *CrossTimestamper) Sample() ([]CrossTimestamp, error) {
-	n, err := c.NumSources()
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.Trigger()
-	if err != nil {
-		return nil, err
-	}
-
-	ctss := make([]CrossTimestamp, n)
-	for i := range ctss {
-		cts, err := c.Timestamp(i)
-		if err != nil {
-			return nil, err
-		}
-		ctss[i] = cts
-	}
-	return ctss, nil
-}
