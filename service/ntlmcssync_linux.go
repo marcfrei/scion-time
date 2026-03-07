@@ -31,8 +31,6 @@ const (
 
 	ntlMCSMaxDriftPPB int64 = 50_000_000
 
-	ntlMCSClockFD = 3
-
 	ntlMCSModeAll      = 0x1
 	ntlMCSModeInSync   = 0x2
 	ntlMCSModeHoldover = 0x4
@@ -122,10 +120,6 @@ func (c *ntlMCSCalculator) Do(tss []ntl.CrossTimestamp, target int) (ntlMCSAdjus
 	c.drift = adj.drift
 
 	return adj, nil
-}
-
-func ntlMCSClockID(fd int) int32 {
-	return (^int32(fd) << 3) | ntlMCSClockFD
 }
 
 func ntlMCSSetOffset(clockID int32, offset time.Duration) error {
@@ -239,7 +233,7 @@ func StartNTLMCSSync(log *slog.Logger, config string) {
 			slog.Int("count", n))
 	}
 
-	clockID := ntlMCSClockID(fd)
+	clockID := (^int32(fd) << 3) | 3
 	calc := newNTLMCSCalculator(initialDriftPPB)
 
 	log.LogAttrs(context.Background(), slog.LevelInfo,
