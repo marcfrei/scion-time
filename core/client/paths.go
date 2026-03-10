@@ -34,6 +34,37 @@ func randIntN(n int) int {
 	return rng.gen.IntN(n)
 }
 
+func pathIsEmpty(p snet.Path) bool {
+	switch pp := p.(type) {
+	case nil:
+		return false
+	case path.Path:
+		switch pp.DataplanePath.(type) {
+		case path.Empty, *path.Empty:
+			return true
+		default:
+			return false
+		}
+	case *path.Path:
+		if pp == nil {
+			return false
+		}
+		switch pp.DataplanePath.(type) {
+		case path.Empty, *path.Empty:
+			return true
+		default:
+			return false
+		}
+	default:
+		switch p.Dataplane().(type) {
+		case path.Empty, *path.Empty:
+			return true
+		default:
+			return false
+		}
+	}
+}
+
 func pathInterfaces(p snet.Path) []snet.PathInterface {
 	if p == nil {
 		return nil
@@ -59,6 +90,22 @@ func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {
 		panic("invalid argument: k must be non-negative")
 	}
 
+	numPreselected := 0
+	for _, p := range preselected {
+		if p == nil {
+			continue
+		}
+		numPreselected++
+	}
+	numCandidates := 0
+	for i, p := range ps {
+		if p == nil {
+			panic(fmt.Sprintf("unexpected candidate path (ps[%d]=%v", i, p))
+		}
+		numCandidates++
+	}
+	numPaths := numPreselected + numCandidates
+
 	candidates := append([]snet.Path(nil), ps...)
 	selected := make([]snet.Path, 0, min(k, len(candidates)))
 
@@ -70,7 +117,7 @@ func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {
 		}
 		ifaces := pathInterfaces(p)
 		pathLen := len(ifaces)
-		if pathLen < 2 {
+		if pathLen < 2 && (!pathIsEmpty(p) || numPaths != 1) {
 			panic(fmt.Sprintf("unexpected path (type=%T, ifaces=%d)", p, pathLen))
 		}
 		for _, iface := range ifaces {
@@ -88,7 +135,7 @@ func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {
 		for i, p := range candidates {
 			ifaces := pathInterfaces(p)
 			pathLen := len(ifaces)
-			if pathLen < 2 {
+			if pathLen < 2 && (!pathIsEmpty(p) || numPaths != 1) {
 				panic(fmt.Sprintf("unexpected path (type=%T, ifaces=%d)", p, pathLen))
 			}
 
