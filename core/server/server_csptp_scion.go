@@ -131,7 +131,9 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 		if err != nil {
 			oob = oob[:0]
 			rxt = timebase.Now()
-			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp",
+				slog.Any("local_addr", conn.c.LocalAddr()),
+				slog.Any("error", err))
 		}
 		buf = buf[:n]
 
@@ -368,6 +370,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			if err != nil {
 				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+					slog.Any("local_addr", syncCtx.conn.c.LocalAddr()),
 					slog.Any("error", err))
 			} else if id != syncCtx.conn.txid {
 				txTime0 = timebase.Now()
@@ -491,6 +494,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			if err != nil {
 				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+					slog.Any("local_addr", followUpCtx.conn.c.LocalAddr()),
 					slog.Any("error", err))
 			} else if id != followUpCtx.conn.txid {
 				txTime1 = timebase.Now()
