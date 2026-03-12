@@ -138,8 +138,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	if !ok {
 		panic(errUnexpectedAddrType)
 	}
+	lport := uint16(localAddr.Host.Port)
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, 0).String())
+	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, lport).String())
 	if err != nil {
 		return time.Time{}, 0, err
 	}

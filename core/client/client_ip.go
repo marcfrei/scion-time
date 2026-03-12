@@ -101,8 +101,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	if !ok {
 		panic(errUnexpectedAddrType)
 	}
+	lport := uint16(localAddr.Port)
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, 0).String())
+	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, lport).String())
 	if err != nil {
 		return time.Time{}, 0, err
 	}
