@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/core/sync/adjustments"
 	"example.com/scion-time/driver/phc"
@@ -45,18 +43,10 @@ func StartPHCSync(log *slog.Logger, config string) {
 	offset := time.Duration(o) * time.Second
 	interval := time.Duration(math.Pow(2, float64(i)) * float64(time.Second))
 
-	fd, err := unix.Open(dev, unix.O_RDWR, 0)
-	if err != nil {
-		logbase.Fatal(log, "failed to open PHC device",
-			slog.String("dev", dev), slog.Any("error", err))
-	}
-
-	clockID := (^int32(fd) << 3) | 3
-
 	refClk := phc.NewReferenceClock(log, dev, offset)
 
 	adj := &adjustments.PIController{
-		ClockID:       clockID,
+		Clock:         dev,
 		KP:            0.05,
 		KI:            0.15,
 		StepThreshold: 250 * time.Nanosecond,

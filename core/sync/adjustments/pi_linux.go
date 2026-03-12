@@ -49,28 +49,6 @@ import (
 	"example.com/scion-time/base/unixutil"
 )
 
-type PIController struct {
-	// Clock ID of the clock to be adjusted. A value of 0 defaults to
-	// CLOCK_REALTIME.
-	ClockID int32
-
-	// Ratio (gain factor) of the proportional control output value (applied to
-	// the measured offset).
-	KP float64
-
-	// Ratio of the integral control output value. The integral value is applied
-	// by reverting only a part of the previous adjustment. This ratio defines the
-	// part of the previous adjustment that is to be kept. That means, that the
-	// size of the integral control output depends on both of the configurable
-	// ratios of the PI controller.
-	KI float64
-
-	// Offset threshold indicating that, if raeched, a clock step is to be applied
-	StepThreshold time.Duration
-
-	p, i, freq, freqAddend float64
-}
-
 var _ Adjustment = (*PIController)(nil)
 
 var (
@@ -78,17 +56,36 @@ var (
 	linuxMaxFreqAdj = unixutil.FreqFromScaledPPM(32768000)
 )
 
+func (c *PIController) openClock() error {
+	if c.Clock == "" {
+		c.clockID = unix.CLOCK_REALTIME
+		return nil
+	}
+	if c.clockID != 0 {
+		return nil
+	}
+
+	var err error
+	c.clockFD, err = unix.Open(c.Clock, unix.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	c.clockID = int((^int32(c.clockFD) << 3) | 3)
+	return nil
+}
+
 func (c *PIController) Do(offset time.Duration) {
 	ctx := context.Background()
 	log := slog.Default()
 
-	cid := int32(unix.CLOCK_REALTIME)
-	if c.ClockID != 0 {
-		cid = c.ClockID
+	err := c.openClock()
+	if err != nil {
+		logbase.Fatal(log, "failed to open clock device",
+			slog.String("dev", c.Clock), slog.Any("error", err))
 	}
 
 	tx := unix.Timex{}
-	_, err := unix.ClockAdjtime(cid, &tx)
+	_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
 	if err != nil {
 		logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 	}
@@ -114,7 +111,7 @@ func (c *PIController) Do(offset time.Duration) {
 			Modes: unix.ADJ_SETOFFSET | unix.ADJ_NANO,
 			Time:  unixutil.TimevalFromNsec(offset.Nanoseconds()),
 		}
-		_, err = unix.ClockAdjtime(cid, &tx)
+		_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
 		if err != nil {
 			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 		}
@@ -135,7 +132,7 @@ func (c *PIController) Do(offset time.Duration) {
 			Modes: unix.ADJ_FREQUENCY,
 			Freq:  unixutil.ScaledPPMFromFreq(freq),
 		}
-		_, err = unix.ClockAdjtime(cid, &tx)
+		_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
 		if err != nil {
 			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
 		}

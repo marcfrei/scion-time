@@ -8,12 +8,6 @@ import (
 	"time"
 )
 
-type PIController struct {
-	KP            float64
-	KI            float64
-	StepThreshold time.Duration
-}
-
 var _ Adjustment = (*PIController)(nil)
 
 func (a *PIController) Do(offset time.Duration) {

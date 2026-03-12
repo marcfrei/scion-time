@@ -95,6 +95,7 @@ type svcConfig struct {
 	FilterPick              int      `toml:"filter_pick,omitempty"`
 	PIControllerKP          float64  `toml:"pi_controller_kp,omitempty"`
 	PIControllerKI          float64  `toml:"pi_controller_ki,omitempty"`
+	SyncClock               string   `toml:"sync_clock,omitempty"`
 	ClockDrift              float64  `toml:"clock_drift,omitempty"`
 	ReferenceClockImpact    float64  `toml:"reference_clock_impact,omitempty"`
 	PeerClockImpact         float64  `toml:"peer_clock_impact,omitempty"`
@@ -651,6 +652,7 @@ func runServer(configFile string) {
 	kp, ki := piControllerConfig(cfg)
 
 	adj := &adjustments.PIController{
+		Clock:         cfg.SyncClock,
 		KP:            kp,
 		KI:            ki,
 		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
@@ -697,6 +699,7 @@ func runClient(configFile string) {
 	kp, ki := piControllerConfig(cfg)
 
 	adj := &adjustments.PIController{
+		Clock:         cfg.SyncClock,
 		KP:            kp,
 		KI:            ki,
 		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
