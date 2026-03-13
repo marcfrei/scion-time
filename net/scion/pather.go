@@ -43,6 +43,9 @@ func update(ctx context.Context, p *Pather, cp ControlPlane, dstIAs []addr.IA) {
 		if dstIA.IsWildcard() {
 			panic("unexpected destination IA: wildcard.")
 		}
+		if dstIA == p.localIA {
+			continue
+		}
 		ps, err := cp.FetchPaths(ctx, dstIA)
 		if err != nil {
 			p.log.LogAttrs(ctx, slog.LevelInfo,
