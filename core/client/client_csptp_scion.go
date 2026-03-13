@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/gopacket/gopacket"
@@ -26,36 +27,330 @@ type CSPTPClientSCION struct {
 	sequenceID uint16
 }
 
+type csptpReplySCION struct {
+	msg csptp.Message
+	tlv csptp.ResponseTLV
+	rxt time.Time
+	ok  bool
+}
+
+type csptpRepliesSCION struct {
+	mu       sync.Mutex
+	sync     csptpReplySCION
+	followUp csptpReplySCION
+}
+
+func (c *CSPTPClientSCION) readCSPTPReplySCION(ctx context.Context,
+	conn *net.UDPConn, localAddr, remoteAddr udp.UDPAddr, deadline time.Time, deadlineSet bool,
+	sequenceID uint16, messageType uint8, replies *csptpRepliesSCION) error {
+	buf := make([]byte, scion.MTU)
+	oob := make([]byte, udp.TimestampLen())
+
+	const maxNumRetries = 3
+rxloop:
+	for numRetries := 0; ; numRetries++ {
+		buf = buf[:cap(buf)]
+		oob = oob[:cap(oob)]
+		n, oobn, flags, _, err := conn.ReadMsgUDPAddrPort(buf, oob)
+		if err != nil {
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
+				continue
+			}
+			return err
+		}
+		if flags != 0 {
+			err = errUnexpectedPacketFlags
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
+				continue
+			}
+			return err
+		}
+		oob = oob[:oobn]
+		rxt, err := udp.TimestampFromOOBData(oob)
+		if err != nil {
+			rxt = timebase.Now()
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+		}
+		buf = buf[:n]
+
+		var (
+			scionLayer slayers.SCION
+			hbhLayer   slayers.HopByHopExtnSkipper
+			e2eLayer   slayers.EndToEndExtn
+			udpLayer   slayers.UDP
+			scmpLayer  slayers.SCMP
+		)
+		parser := gopacket.NewDecodingLayerParser(
+			slayers.LayerTypeSCION, &scionLayer, &hbhLayer, &e2eLayer, &udpLayer, &scmpLayer,
+		)
+		parser.IgnoreUnsupported = true
+		decoded := make([]gopacket.LayerType, 4)
+		err = parser.DecodeLayers(buf, &decoded)
+		if err != nil {
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
+				continue
+			}
+			return err
+		}
+		validType := len(decoded) >= 2 && (decoded[len(decoded)-1] == slayers.LayerTypeSCIONUDP ||
+			decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
+		if !validType {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
+				continue
+			}
+			return err
+		}
+		if decoded[len(decoded)-1] == slayers.LayerTypeSCMP {
+			err = errUnexpectedPacket
+			c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to handle packet",
+				slog.String("cause", "unexpected SCMP message type"),
+				slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
+				slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				continue
+			}
+			return err
+		}
+		if len(buf) < int(udpLayer.Length) {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
+				continue
+			}
+			return err
+		}
+		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
+			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
+		validDst := scionLayer.DstIA == localAddr.IA &&
+			ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
+		if !validSrc || !validDst {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if !validSrc {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
+				}
+				if !validDst {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet to unexpected destination")
+				}
+				continue
+			}
+			return err
+		}
+
+		var respmsg csptp.Message
+		err = csptp.DecodeMessage(&respmsg, udpLayer.Payload)
+		if err != nil {
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
+				continue
+			}
+			return err
+		}
+
+		if len(udpLayer.Payload) != int(respmsg.MessageLength) {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+				continue
+			}
+			return err
+		}
+
+		if respmsg.SequenceID != sequenceID || respmsg.MessageType() != messageType {
+			err = errUnexpectedPacket
+			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+				continue
+			}
+			return err
+		}
+
+		reply := csptpReplySCION{msg: respmsg, rxt: rxt, ok: true}
+
+		switch messageType {
+		case csptp.MessageTypeSync:
+			if udpLayer.SrcPort != csptp.EventPortSCION {
+				err = errUnexpectedPacketSource
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
+					continue
+				}
+				return err
+			}
+
+			tlvbuf := udpLayer.Payload[csptp.MinMessageLength:]
+			for len(tlvbuf) >= csptp.MinTLVLength {
+				var tlvhdr csptp.TLVHeader
+				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return err
+				}
+				if len(tlvbuf) < int(tlvhdr.Length) {
+					err = errUnexpectedPacket
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return err
+				}
+				tlvbuf = tlvbuf[tlvhdr.Length:]
+			}
+			if len(tlvbuf) != 0 {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+					continue
+				}
+				return err
+			}
+
+			if respmsg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")
+					continue
+				}
+				return err
+			}
+
+			replies.mu.Lock()
+			replies.sync = reply
+			replies.mu.Unlock()
+			return nil
+		case csptp.MessageTypeFollowUp:
+			if udpLayer.SrcPort != csptp.GeneralPortSCION {
+				err = errUnexpectedPacketSource
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
+					continue
+				}
+				return err
+			}
+
+			var resptlvOk bool
+			tlvbuf := udpLayer.Payload[csptp.MinMessageLength:]
+			for len(tlvbuf) >= csptp.MinTLVLength {
+				var tlvhdr csptp.TLVHeader
+				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
+				if err != nil {
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return err
+				}
+				if len(tlvbuf) < int(tlvhdr.Length) {
+					err = errUnexpectedPacket
+					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+						continue rxloop
+					}
+					return err
+				}
+				if tlvhdr.Type == csptp.TLVTypeOrganizationExtension {
+					var tlv csptp.ResponseTLV
+					err := csptp.DecodeResponseTLV(&tlv, tlvbuf)
+					if err != nil {
+						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+							c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
+							continue rxloop
+						}
+						return err
+					}
+					if tlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
+						tlv.OrganizationID[1] != csptp.OrganizationIDMeinberg1 ||
+						tlv.OrganizationID[2] != csptp.OrganizationIDMeinberg2 ||
+						tlv.OrganizationSubType[0] != csptp.OrganizationSubTypeResponse0 ||
+						tlv.OrganizationSubType[1] != csptp.OrganizationSubTypeResponse1 ||
+						tlv.OrganizationSubType[2] != csptp.OrganizationSubTypeResponse2 {
+						err = errUnexpectedPacket
+						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+							c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+							continue rxloop
+						}
+						return err
+					}
+					reply.tlv, resptlvOk = tlv, true
+				}
+				tlvbuf = tlvbuf[tlvhdr.Length:]
+			}
+			if len(tlvbuf) != 0 {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+					continue
+				}
+				return err
+			}
+			if !resptlvOk {
+				err = errUnexpectedPacket
+				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
+					continue
+				}
+				return err
+			}
+
+			replies.mu.Lock()
+			replies.followUp = reply
+			replies.mu.Unlock()
+			return nil
+		default:
+			panic("unexpected CSPTP message type")
+		}
+	}
+}
+
 func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
 	timestamp time.Time, offset time.Duration, err error) {
 	laddr, ok := netip.AddrFromSlice(localAddr.Host.IP)
 	if !ok {
 		panic(errUnexpectedAddrType)
 	}
+	deadline, deadlineSet := ctx.Deadline()
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, 0).String())
+	openConn := func(port uint16) (*net.UDPConn, error) {
+		pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, port).String())
+		if err != nil {
+			return nil, err
+		}
+		conn := pconn.(*net.UDPConn)
+		if deadlineSet {
+			err = conn.SetDeadline(deadline)
+			if err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+		}
+		err = udp.EnableTimestamping(conn, localAddr.Host.Zone, -1 /* index */)
+		if err != nil {
+			c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
+		}
+		err = udp.SetDSCP(conn, c.DSCP)
+		if err != nil {
+			c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
+		}
+		return conn, nil
+	}
+	econn, err := openConn(csptp.EventPortSCION)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
-	conn := pconn.(*net.UDPConn)
-	defer func() { _ = conn.Close() }()
-	deadline, deadlineSet := ctx.Deadline()
-	if deadlineSet {
-		err = conn.SetDeadline(deadline)
-		if err != nil {
-			return time.Time{}, 0, err
-		}
-	}
-	err = udp.EnableTimestamping(conn, localAddr.Host.Zone, -1 /* index */)
+	defer func() { _ = econn.Close() }()
+	gconn, err := openConn(csptp.GeneralPortSCION)
 	if err != nil {
-		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
+		return time.Time{}, 0, err
 	}
-	err = udp.SetDSCP(conn, c.DSCP)
-	if err != nil {
-		c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
-	}
-
-	localPort := conn.LocalAddr().(*net.UDPAddr).Port
+	defer func() { _ = gconn.Close() }()
 
 	ip4 := remoteAddr.Host.IP.To4()
 	if ip4 != nil {
@@ -70,7 +365,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 			nextHop.Port())
 	}
 
-	var cTxTime0, cTxTime1, cRxTime0, cRxTime1 time.Time
+	var cTxTime0, cTxTime1 time.Time
 
 	buf := make([]byte, scion.MTU)
 	var n int
@@ -133,7 +428,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	scionLayer.NextHdr = slayers.L4UDP
 
 	var udpLayer slayers.UDP
-	udpLayer.SrcPort = uint16(localPort)
+	udpLayer.SrcPort = csptp.EventPortSCION
 	udpLayer.DstPort = csptp.EventPortSCION
 	udpLayer.SetNetworkLayerForChecksum(&scionLayer)
 
@@ -166,14 +461,14 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	if remoteAddr.IA == localAddr.IA {
 		nextHop = netip.AddrPortFrom(nextHop.Addr(), csptp.EventPortSCION)
 	}
-	n, err = conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
+	n, err = econn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
 	if n != len(buffer.Bytes()) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime0, id, err := udp.ReadTXTimestamp(conn, 0)
+	cTxTime0, id, err := udp.ReadTXTimestamp(econn, 0)
 	if err != nil || id != 0 {
 		cTxTime0 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
@@ -247,7 +542,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	}
 	scionLayer.NextHdr = slayers.L4UDP
 
-	udpLayer.SrcPort = uint16(localPort)
+	udpLayer.SrcPort = csptp.GeneralPortSCION
 	udpLayer.DstPort = csptp.GeneralPortSCION
 	udpLayer.SetNetworkLayerForChecksum(&scionLayer)
 
@@ -279,303 +574,56 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	if remoteAddr.IA == localAddr.IA {
 		nextHop = netip.AddrPortFrom(nextHop.Addr(), csptp.GeneralPortSCION)
 	}
-	n, err = conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
+	n, err = gconn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
 	if n != len(buffer.Bytes()) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime1, id, err = udp.ReadTXTimestamp(conn, 1)
-	if err != nil || id != 1 {
+	cTxTime1, id, err = udp.ReadTXTimestamp(gconn, 0)
+	if err != nil || id != 0 {
 		cTxTime1 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
 	}
 	_ = cTxTime1
 
-	oob := make([]byte, udp.TimestampLen())
-	var oobn, flags int
-	var lastHop netip.AddrPort
-
-	var respmsg0, respmsg1 csptp.Message
-	var resptlv csptp.ResponseTLV
-	var respmsg0Ok, respmsg1Ok bool
-
-	const maxNumRetries = 3
-rxloop:
-	for numRetries := 0; ; numRetries++ {
-		buf = buf[:cap(buf)]
-		oob = oob[:cap(oob)]
-		n, oobn, flags, lastHop, err = conn.ReadMsgUDPAddrPort(buf, oob)
+	var replies csptpRepliesSCION
+	rxerrch := make(chan error, 2)
+	go func() {
+		rxerrch <- c.readCSPTPReplySCION(
+			ctx, econn, localAddr, remoteAddr, deadline, deadlineSet,
+			c.sequenceID, csptp.MessageTypeSync, &replies)
+	}()
+	go func() {
+		rxerrch <- c.readCSPTPReplySCION(
+			ctx, gconn, localAddr, remoteAddr, deadline, deadlineSet,
+			c.sequenceID, csptp.MessageTypeFollowUp, &replies)
+	}()
+	for range 2 {
+		err = <-rxerrch
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
-				continue
-			}
 			return time.Time{}, 0, err
-		}
-		if flags != 0 {
-			err = errUnexpectedPacketFlags
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		oob = oob[:oobn]
-		rxt, err := udp.TimestampFromOOBData(oob)
-		if err != nil {
-			rxt = timebase.Now()
-			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
-		}
-		buf = buf[:n]
-
-		var (
-			hbhLayer  slayers.HopByHopExtnSkipper
-			e2eLayer  slayers.EndToEndExtn
-			scmpLayer slayers.SCMP
-		)
-		parser := gopacket.NewDecodingLayerParser(
-			slayers.LayerTypeSCION, &scionLayer, &hbhLayer, &e2eLayer, &udpLayer, &scmpLayer,
-		)
-		parser.IgnoreUnsupported = true
-		decoded := make([]gopacket.LayerType, 4)
-		err = parser.DecodeLayers(buf, &decoded)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		validType := len(decoded) >= 2 && (decoded[len(decoded)-1] == slayers.LayerTypeSCIONUDP ||
-			decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
-		if !validType {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if decoded[len(decoded)-1] == slayers.LayerTypeSCMP {
-			err = errUnexpectedPacket
-			c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to handle packet",
-				slog.String("cause", "unexpected SCMP message type"),
-				slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
-				slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		if len(buf) < int(udpLayer.Length) {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
-			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
-		validDst := scionLayer.DstIA == localAddr.IA &&
-			ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
-		if !validSrc || !validDst {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				if !validSrc {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
-				}
-				if !validDst {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet to unexpected destination")
-				}
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		var respmsg csptp.Message
-		err = csptp.DecodeMessage(&respmsg, udpLayer.Payload)
-		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		if len(udpLayer.Payload) != int(respmsg.MessageLength) {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		if respmsg.SequenceID != c.sequenceID {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		if respmsg.MessageType() == csptp.MessageTypeSync {
-			respmsg0Ok = false
-
-			if udpLayer.SrcPort != csptp.EventPortSCION {
-				err = errUnexpectedPacketSource
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			tlvbuf := udpLayer.Payload[csptp.MinMessageLength:]
-			for len(tlvbuf) >= csptp.MinTLVLength {
-				var tlvhdr csptp.TLVHeader
-				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
-				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-						continue rxloop
-					}
-					return time.Time{}, 0, err
-				}
-				if len(tlvbuf) < int(tlvhdr.Length) {
-					err = errUnexpectedPacket
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-						continue rxloop
-					}
-					return time.Time{}, 0, err
-				}
-				tlvbuf = tlvbuf[tlvhdr.Length:]
-			}
-			if len(tlvbuf) != 0 {
-				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			if respmsg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
-				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			cRxTime0 = rxt
-			respmsg0, respmsg0Ok = respmsg, true
-		} else if respmsg.MessageType() == csptp.MessageTypeFollowUp {
-			respmsg1Ok = false
-
-			if udpLayer.SrcPort != csptp.GeneralPortSCION {
-				err = errUnexpectedPacketSource
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			var resptlvOk bool
-			tlvbuf := udpLayer.Payload[csptp.MinMessageLength:]
-			for len(tlvbuf) >= csptp.MinTLVLength {
-				var tlvhdr csptp.TLVHeader
-				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
-				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-						continue rxloop
-					}
-					return time.Time{}, 0, err
-				}
-				if len(tlvbuf) < int(tlvhdr.Length) {
-					err = errUnexpectedPacket
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-						c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-						continue rxloop
-					}
-					return time.Time{}, 0, err
-				}
-				if tlvhdr.Type == csptp.TLVTypeOrganizationExtension {
-					var tlv csptp.ResponseTLV
-					err := csptp.DecodeResponseTLV(&tlv, tlvbuf)
-					if err != nil {
-						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-							c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
-							continue rxloop
-						}
-						return time.Time{}, 0, err
-					}
-					if tlv.OrganizationID[0] != csptp.OrganizationIDMeinberg0 ||
-						tlv.OrganizationID[1] != csptp.OrganizationIDMeinberg1 ||
-						tlv.OrganizationID[2] != csptp.OrganizationIDMeinberg2 ||
-						tlv.OrganizationSubType[0] != csptp.OrganizationSubTypeResponse0 ||
-						tlv.OrganizationSubType[1] != csptp.OrganizationSubTypeResponse1 ||
-						tlv.OrganizationSubType[2] != csptp.OrganizationSubTypeResponse2 {
-						err = errUnexpectedPacket
-						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-							c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-							continue rxloop
-						}
-						return time.Time{}, 0, err
-					}
-					resptlv, resptlvOk = tlv, true
-				}
-				tlvbuf = tlvbuf[tlvhdr.Length:]
-			}
-			if len(tlvbuf) != 0 {
-				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			if !resptlvOk {
-				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-					c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-					continue
-				}
-				return time.Time{}, 0, err
-			}
-
-			cRxTime1 = rxt
-			respmsg1, respmsg1Ok = respmsg, true
-		} else {
-			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
-				c.Log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
-				continue
-			}
-			return time.Time{}, 0, err
-		}
-
-		if respmsg0Ok && respmsg1Ok {
-			break
 		}
 	}
 
-	dscp := scionLayer.TrafficClass >> 2
+	replies.mu.Lock()
+	syncReply := replies.sync
+	followUpReply := replies.followUp
+	replies.mu.Unlock()
+	if !syncReply.ok || !followUpReply.ok {
+		return time.Time{}, 0, errUnexpectedPacket
+	}
+
+	respmsg0 := syncReply.msg
+	cRxTime0 := syncReply.rxt
+	respmsg1 := followUpReply.msg
+	resptlv := followUpReply.tlv
+	cRxTime1 := followUpReply.rxt
 
 	c.Log.LogAttrs(ctx, slog.LevelDebug, "received response",
 		slog.Time("at", cRxTime1),
 		slog.String("from", reference),
-		slog.Any("via", lastHop),
-		slog.Uint64("DSCP", uint64(dscp)),
 		slog.Any("respmsg0", &respmsg0),
 		slog.Any("respmsg1", &respmsg1),
 		slog.Any("resptlv", &resptlv),
