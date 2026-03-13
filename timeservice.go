@@ -103,6 +103,7 @@ type svcConfig struct {
 	SyncTimeout             float64  `toml:"sync_timeout,omitempty"`
 	SyncInterval            float64  `toml:"sync_interval,omitempty"`
 	PHCSync                 string   `toml:"phc_sync,omitempty"`
+	NTLCTSOff               string   `toml:"ntl_ctsoff,omitempty"`
 }
 
 type ntpReferenceClockIP struct {
@@ -661,6 +662,7 @@ func runServer(configFile string) {
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
+	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
 
 	runMonitor(cfg)
 }
@@ -708,6 +710,7 @@ func runClient(configFile string) {
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
+	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
 
 	runMonitor(cfg)
 }
