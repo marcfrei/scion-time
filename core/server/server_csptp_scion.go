@@ -46,7 +46,7 @@ var (
 	csptpClntsSCION  = make(map[string]*csptpClientSCION)
 	csptpClntsQSCION = make(csptpClientQueueSCION, 0, csptpClientCap)
 
-	csptpMuSCION sync.Mutex
+	csptpSrvrMuSCION sync.Mutex
 
 	csptpSyncClntSCION, csptpFollowUpClntSCION csptpClientSCION
 )
@@ -251,7 +251,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			sequenceComplete     bool
 		)
 
-		csptpMuSCION.Lock()
+		csptpSrvrMuSCION.Lock()
 		// maintain CSPTP client data structure
 		_ = len(csptpClntsSCION)
 		_ = len(csptpClntsQSCION)
@@ -284,7 +284,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			csptpSyncClntSCION.key = ""
 			csptpFollowUpClntSCION.key = ""
 		}
-		csptpMuSCION.Unlock()
+		csptpSrvrMuSCION.Unlock()
 
 		if sequenceComplete {
 			var msg csptp.Message
