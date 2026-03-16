@@ -22,7 +22,7 @@ func init() {
 	if err != nil || n != len(seed) {
 		panic("secure random seed generation failed")
 	}
-	// ChaCha8 is a ChaCha8-based cryptographically strong random number generator.
+	// ChaCha8 is a cryptographically strong random number generator.
 	// See https://pkg.go.dev/math/rand/v2#ChaCha8
 	src := rand.NewChaCha8(seed)
 	rng.gen = rand.New(src) // #nosec G404
