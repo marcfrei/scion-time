@@ -73,7 +73,12 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 	fetcher *scion.DRKeyFetcher, provider *ntske.Provider) {
 	defer func() { _ = conn.Close() }()
 
-	localConnPort := conn.LocalAddr().(*net.UDPAddr).Port
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	localIP, ok := netip.AddrFromSlice(localAddr.IP)
+	if !ok {
+		panic("unexpected local IP address byte slice")
+	}
+	localConnPort := localAddr.Port
 
 	index := -1
 	if t := strings.Split(localHostIface, "%"); len(t) == 2 {
@@ -306,10 +311,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 		if !ok {
 			panic("unexpected IP address byte slice")
 		}
-		dstAddr, ok := netip.AddrFromSlice(scionLayer.RawDstAddr)
-		if !ok {
-			panic("unexpected IP address byte slice")
-		}
+		dstAddr := localIP
 
 		if int(udpLayer.DstPort) != localHostPort {
 			if localConnPort != scion.EndhostPort || udpLayer.DstPort == scion.EndhostPort {

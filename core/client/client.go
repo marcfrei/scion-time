@@ -106,7 +106,7 @@ loop:
 }
 
 func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
-	ntpcs []*SCIONClient, localAddr, remoteAddr udp.UDPAddr, ps []snet.Path) (
+	ntpcs []*SCIONClient, localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, ps []snet.Path) (
 	time.Time, time.Duration, error) {
 	mtrcs := scionMetrics.Load()
 
@@ -158,7 +158,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			continue
 		}
 		go func(ctx context.Context, log *slog.Logger, mtrcs *scionClientMetrics,
-			ntpc *SCIONClient, localAddr, remoteAddr udp.UDPAddr, p snet.Path) {
+			ntpc *SCIONClient, localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, p snet.Path) {
 			var err error
 			var ts time.Time
 			var off time.Duration
@@ -175,7 +175,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 				n = 1
 			}
 			for j := range n {
-				t, o, e := ntpc.measureClockOffsetSCION(ctx, mtrcs, localAddr, remoteAddr, p)
+				t, o, e := ntpc.measureClockOffsetSCION(ctx, mtrcs, localAddr, remoteAddr, publicIP, p)
 				if e == nil {
 					ts, off, err = t, o, e
 					if ntpc.InInterleavedMode() {
@@ -198,7 +198,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 				Offset:    off,
 				Error:     err,
 			}
-		}(ctx, log, mtrcs, ntpcs[i], localAddr, remoteAddr, sps[i])
+		}(ctx, log, mtrcs, ntpcs[i], localAddr, remoteAddr, publicIP, sps[i])
 	}
 	collectMeasurements(ctx, ms, msc)
 	m := measurements.FaultTolerantMidpoint(ms)

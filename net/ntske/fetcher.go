@@ -28,6 +28,7 @@ type Fetcher struct {
 		Enabled               bool
 		LocalAddr             udp.UDPAddr
 		RemoteAddr            udp.UDPAddr
+		PublicIP              net.IP
 		ControlPlaneConnector scion.ControlPlaneConnector
 	}
 	data Data
@@ -47,7 +48,7 @@ func logData(ctx context.Context, log *slog.Logger, data Data) {
 
 func (f *Fetcher) exchangeKeys(ctx context.Context) error {
 	if f.QUIC.Enabled {
-		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.ControlPlaneConnector,
+		conn, _, err := dialQUIC(f.Log, f.QUIC.LocalAddr, f.QUIC.RemoteAddr, f.QUIC.PublicIP, f.QUIC.ControlPlaneConnector,
 			&f.TLSConfig)
 		if err != nil {
 			return err

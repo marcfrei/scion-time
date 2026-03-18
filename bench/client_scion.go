@@ -97,7 +97,7 @@ func RunSCIONBenchmark(
 			ntpcs := []*client.SCIONClient{c}
 			for range numRequestPerClient {
 				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-				_, _, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, ps)
+				_, _, err = client.MeasureClockOffsetSCION(ctx, log, ntpcs, laddr, raddr, nil, ps)
 				if err != nil {
 					log.LogAttrs(ctx, slog.LevelInfo,
 						"failed to measure clock offset",

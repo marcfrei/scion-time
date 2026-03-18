@@ -15,7 +15,8 @@ import (
 
 var errNoPath = errors.New("failed to dial QUIC connection: no path")
 
-func dialQUIC(log *slog.Logger, localAddr, remoteAddr udp.UDPAddr, cpc scion.ControlPlaneConnector, config *tls.Config) (*scion.QUICConnection, Data, error) {
+func dialQUIC(log *slog.Logger, localAddr, remoteAddr udp.UDPAddr, publicIP net.IP,
+	cpc scion.ControlPlaneConnector, config *tls.Config) (*scion.QUICConnection, Data, error) {
 	config.NextProtos = []string{alpn}
 	ctx := context.Background()
 
@@ -46,7 +47,7 @@ func dialQUIC(log *slog.Logger, localAddr, remoteAddr udp.UDPAddr, cpc scion.Con
 	sp := ps[0]
 	log.LogAttrs(ctx, slog.LevelDebug, "selected path", slog.Any("remote", remoteAddr), slog.Any("via", sp))
 
-	conn, err := scion.DialQUIC(ctx, localAddr, remoteAddr, sp,
+	conn, err := scion.DialQUIC(ctx, localAddr, remoteAddr, publicIP, sp,
 		"" /* host*/, config, nil /* quicCfg */)
 	if err != nil {
 		return nil, Data{}, err

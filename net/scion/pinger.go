@@ -24,12 +24,13 @@ var (
 
 func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
 	time.Duration, error) {
-	laddr, ok := netip.AddrFromSlice(localAddr.Host.IP)
-	if !ok {
-		panic(errUnexpectedAddrType)
+	listenAddr := net.UDPAddr{
+		IP:   localAddr.Host.IP,
+		Port: 0,
+		Zone: localAddr.Host.Zone,
 	}
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, 0).String())
+	pconn, err := lc.ListenPacket(ctx, "udp", listenAddr.String())
 	if err != nil {
 		return 0, err
 	}

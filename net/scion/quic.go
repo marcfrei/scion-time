@@ -338,17 +338,24 @@ func (c *clientConn) Close() error {
 	return c.baseConn.Close()
 }
 
-func dialUDP(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.Path) (net.PacketConn, error) {
-	raw, err := net.ListenUDP("udp", &net.UDPAddr{IP: localAddr.Host.IP})
+func dialUDP(localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, path snet.Path) (net.PacketConn, error) {
+	raw, err := net.ListenUDP("udp", localAddr.Host)
 	if err != nil {
 		return nil, err
 	}
-	localAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
+	scionLocalAddr := udp.UDPAddr{
+		IA:   localAddr.IA,
+		Host: snet.CopyUDPAddr(localAddr.Host),
+	}
+	if publicIP != nil {
+		scionLocalAddr.Host.IP = publicIP
+	}
+	scionLocalAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
 	nextHop := path.UnderlayNextHop()
 	return &clientConn{
 		baseConn: baseConn{
 			raw:       raw,
-			localAddr: localAddr,
+			localAddr: scionLocalAddr,
 		},
 		remoteAddr: remoteAddr.String(),
 		path:       path.Dataplane(),
@@ -367,9 +374,9 @@ func (c *QUICConnection) CloseWithError(code quic.ApplicationErrorCode, desc str
 	return err
 }
 
-func DialQUIC(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.Path,
+func DialQUIC(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, path snet.Path,
 	host string, tlsCfg *tls.Config, quicCfg *quic.Config) (*QUICConnection, error) {
-	conn, err := dialUDP(ctx, localAddr, remoteAddr, path)
+	conn, err := dialUDP(localAddr, remoteAddr, publicIP, path)
 	if err != nil {
 		return nil, err
 	}

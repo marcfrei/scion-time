@@ -79,6 +79,7 @@ type svcConfig struct {
 	SCIONCertsDir           string   `toml:"scion_certs_dir,omitempty"`
 	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
 	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
+	SCIONPublicAddr         string   `toml:"scion_public_address,omitempty"`
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	PHCReferenceClocks      []string `toml:"phc_reference_clocks,omitempty"`
@@ -118,6 +119,7 @@ type ntpReferenceClockSCION struct {
 	ntpcs      [scionRefClockNumClient]*client.SCIONClient
 	localAddr  udp.UDPAddr
 	remoteAddr udp.UDPAddr
+	publicIP   net.IP
 	pather     *scion.Pather
 }
 
@@ -251,7 +253,7 @@ func (c *ntpReferenceClockIP) MeasureClockOffset(ctx context.Context) (
 }
 
 func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeInsecureSkipVerify bool,
-	cpc scion.ControlPlaneConnector, localAddr, remoteAddr udp.UDPAddr, log *slog.Logger) {
+	cpc scion.ControlPlaneConnector, localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, log *slog.Logger) {
 	ntskeHost, ntskePort, err := net.SplitHostPort(ntskeServer)
 	if err != nil {
 		logbase.Fatal(slog.Default(), "failed to split NTS-KE host and port", slog.Any("error", err))
@@ -268,15 +270,18 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.QUIC.Enabled = true
 	c.Auth.NTSKEFetcher.QUIC.LocalAddr = localAddr
 	c.Auth.NTSKEFetcher.QUIC.RemoteAddr = remoteAddr
+	c.Auth.NTSKEFetcher.QUIC.PublicIP = publicIP
 	c.Auth.NTSKEFetcher.QUIC.ControlPlaneConnector = cpc
 }
 
-func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector, localAddr, remoteAddr udp.UDPAddr, dscp uint8,
+func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector,
+	localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, dscp uint8,
 	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		log:        log,
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
+		publicIP:   publicIP,
 	}
 	for i := range len(c.ntpcs) {
 		c.ntpcs[i] = &client.SCIONClient{
@@ -286,7 +291,8 @@ func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector
 		}
 		c.ntpcs[i].Filter = client.NewNtimedFilter(log, filterSize, filterPick)
 		if slices.Contains(authModes, authModeNTS) {
-			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify, cpc, localAddr, remoteAddr, log)
+			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify,
+				cpc, localAddr, remoteAddr, publicIP, log)
 		}
 	}
 	return c
@@ -305,7 +311,8 @@ func (c *ntpReferenceClockSCION) MeasureClockOffset(ctx context.Context) (
 	} else {
 		ps = c.pather.Paths(c.remoteAddr.IA)
 	}
-	return client.MeasureClockOffsetSCION(ctx, c.log, c.ntpcs[:], c.localAddr, c.remoteAddr, ps)
+	return client.MeasureClockOffsetSCION(
+		ctx, c.log, c.ntpcs[:], c.localAddr, c.remoteAddr, c.publicIP, ps)
 }
 
 func loadConfig(configFile string) svcConfig {
@@ -343,6 +350,20 @@ func remoteAddress(cfg svcConfig) *snet.UDPAddr {
 		logbase.Fatal(slog.Default(), "failed to parse remote address")
 	}
 	return &remoteAddr
+}
+
+func scionPublicIP(publicAddr string) net.IP {
+	if publicAddr == "" {
+		return nil
+	}
+	ip := net.ParseIP(publicAddr)
+	if ip == nil {
+		logbase.Fatal(slog.Default(), "failed to parse SCION public address")
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4
+	}
+	return ip
 }
 
 func dispatcherMode(cfg svcConfig) string {
@@ -499,8 +520,17 @@ func controlPlaneConnectorFromConfig(cfg svcConfig) scion.ControlPlaneConnector 
 
 func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 	refClocks, peerClocks []client.ReferenceClock) {
+	publicIP := scionPublicIP(cfg.SCIONPublicAddr)
+
 	dscp := dscp(cfg)
 	filterSize, filterPick := filterConfig(cfg)
+	ipLocalAddr := &net.UDPAddr{
+		IP:   localAddr.Host.IP,
+		Port: localAddr.Host.Port,
+		Zone: localAddr.Host.Zone,
+	}
+	scionLocalAddr := localAddr.Copy()
+	scionLocalAddr.Host.Port = 0
 
 	for _, s := range cfg.MBGReferenceClocks {
 		refClocks = append(refClocks, mbg.NewReferenceClock(log, s))
@@ -552,14 +582,14 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		if !remoteAddr.IA.IsZero() {
 			refClocks = append(refClocks, newNTPReferenceClockSCION(log,
 				controlPlaneConnectorFromConfig(cfg),
-				udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
+				udp.UDPAddrFromSnet(scionLocalAddr), udp.UDPAddrFromSnet(remoteAddr), publicIP,
 				dscp, filterSize, filterPick,
 				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
 			dstIAs = append(dstIAs, remoteAddr.IA)
 		} else {
 			refClocks = append(refClocks, newNTPReferenceClockIP(log,
-				localAddr.Host, remoteAddr.Host,
+				ipLocalAddr, remoteAddr.Host,
 				dscp, filterSize, filterPick,
 				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
@@ -577,7 +607,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		ntskeServer := ntskeServerFromRemoteAddr(s)
 		peerClocks = append(peerClocks, newNTPReferenceClockSCION(log,
 			controlPlaneConnectorFromConfig(cfg),
-			udp.UDPAddrFromSnet(localAddr), udp.UDPAddrFromSnet(remoteAddr),
+			udp.UDPAddrFromSnet(scionLocalAddr), udp.UDPAddrFromSnet(remoteAddr), publicIP,
 			dscp, filterSize, filterPick,
 			cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 		))
@@ -674,7 +704,6 @@ func runClient(configFile string) {
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
 
-	localAddr.Host.Port = 0
 	refClocks, peerClocks := createClocks(cfg, localAddr, log)
 
 	if len(peerClocks) != 0 {
@@ -752,7 +781,7 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 }
 
 func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string,
-	localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
+	localAddr, remoteAddr *snet.UDPAddr, publicIP net.IP, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
 	ctx := context.Background()
 	log := slog.Default()
@@ -795,12 +824,14 @@ func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string
 		c.Auth.DRKeyFetcher = scion.NewDRKeyFetcher(cpc)
 	}
 	if slices.Contains(authModes, authModeNTS) {
-		configureSCIONClientNTS(c, ntskeServer, ntskeInsecureSkipVerify, cpc, laddr, raddr, log)
+		configureSCIONClientNTS(
+			c, ntskeServer, ntskeInsecureSkipVerify, cpc, laddr, raddr, publicIP, log)
 	}
 
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-		ts, off, err := client.MeasureClockOffsetSCION(ctx, log, []*client.SCIONClient{c}, laddr, raddr, ps)
+		ts, off, err := client.MeasureClockOffsetSCION(ctx, log,
+			[]*client.SCIONClient{c}, laddr, raddr, publicIP, ps)
 		if err != nil {
 			log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
 				slog.Any("remote", raddr), slog.Any("error", err))
@@ -1030,6 +1061,7 @@ func main() {
 		localAddr               snet.UDPAddr
 		remoteAddrStr           string
 		remoteIA                addr.IA
+		scionPublicAddr         string
 		dispatcherMode          string
 		drkeyMode               string
 		drkeyServerAddr         snet.UDPAddr
@@ -1068,6 +1100,7 @@ func main() {
 	toolFlags.StringVar(&dispatcherMode, "dispatcher", "", "Dispatcher mode")
 	toolFlags.Var(&localAddr, "local", "Local address")
 	toolFlags.StringVar(&remoteAddrStr, "remote", "", "Remote address")
+	toolFlags.StringVar(&scionPublicAddr, "scion-public", "", "Public SCION host address")
 	toolFlags.UintVar(&dscp, "dscp", 0, "Differentiated services codepoint, must be in range [0, 63]")
 	toolFlags.StringVar(&authModesStr, "auth", "", "Authentication modes")
 	toolFlags.BoolVar(&ntskeInsecureSkipVerify, "ntske-insecure-skip-verify", false, "Skip NTSKE verification")
@@ -1196,15 +1229,19 @@ func main() {
 				exitWithUsage()
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)
+			publicIP := scionPublicIP(scionPublicAddr)
 			initLogger(logLevel())
 			runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode,
-				&localAddr, &remoteAddr, uint8(dscp),
+				&localAddr, &remoteAddr, publicIP, uint8(dscp),
 				authModes, ntskeServer, ntskeInsecureSkipVerify, periodic)
 		} else {
 			if daemonAddr != "" || apiAddr != "" || topoFile != "" || certsDir != "" {
 				exitWithUsage()
 			}
 			if dispatcherMode != "" {
+				exitWithUsage()
+			}
+			if scionPublicAddr != "" {
 				exitWithUsage()
 			}
 			ntskeServer := ntskeServerFromRemoteAddr(remoteAddrStr)

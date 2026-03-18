@@ -125,7 +125,7 @@ func incFailures(c *SCIONClient) {
 }
 
 func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionClientMetrics,
-	localAddr, remoteAddr udp.UDPAddr, path snet.Path) (
+	localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, path snet.Path) (
 	timestamp time.Time, offset time.Duration, err error) {
 	if c.Auth.Enabled && c.Auth.opt == nil {
 		c.Auth.opt = &slayers.EndToEndOption{}
@@ -134,13 +134,8 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		c.Auth.mac = make([]byte, scion.PacketAuthMACLen)
 	}
 
-	laddr, ok := netip.AddrFromSlice(localAddr.Host.IP)
-	if !ok {
-		panic(errUnexpectedAddrType)
-	}
-	lport := uint16(localAddr.Host.Port)
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, lport).String())
+	pconn, err := lc.ListenPacket(ctx, "udp", localAddr.Host.String())
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -163,6 +158,10 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	}
 
 	localPort := conn.LocalAddr().(*net.UDPAddr).Port
+	localIP := localAddr.Host.IP
+	if publicIP != nil {
+		localIP = publicIP
+	}
 
 	var ntskeData ntske.Data
 	if c.Auth.NTSEnabled {
@@ -239,7 +238,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		var scionLayer slayers.SCION
 		scionLayer.TrafficClass = c.DSCP << 2
 		scionLayer.SrcIA = localAddr.IA
-		srcAddrIP, ok := netip.AddrFromSlice(localAddr.Host.IP)
+		srcAddrIP, ok := netip.AddrFromSlice(localIP)
 		if !ok {
 			panic(errUnexpectedAddrType)
 		}
@@ -295,7 +294,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				SrcIA:    remoteAddr.IA,
 				DstIA:    localAddr.IA,
 				SrcHost:  remoteAddr.Host.IP.String(),
-				DstHost:  localAddr.Host.IP.String(),
+				DstHost:  localIP.String(),
 			})
 			if err != nil {
 				c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to fetch DRKey level 3: host-host key", slog.Any("error", err))
@@ -457,7 +456,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			validSrc := scionLayer.SrcIA == remoteAddr.IA &&
 				ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
 			validDst := scionLayer.DstIA == localAddr.IA &&
-				ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
+				ip.CompareIPs(scionLayer.RawDstAddr, localIP) == 0
 			if !validSrc || !validDst {
 				err = errUnexpectedPacket
 				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
