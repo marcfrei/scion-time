@@ -28,13 +28,8 @@ type csptpReplies struct {
 func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 	localAddr netip.Addr, localZone string, localPort uint16, deadline time.Time, deadlineSet bool) (
 	*net.UDPConn, error) {
-	listenAddr := net.UDPAddr{
-		IP:   localAddr.AsSlice(),
-		Port: int(localPort),
-		Zone: localZone,
-	}
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", listenAddr.String())
+	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(localAddr, localPort).String())
 	if err != nil {
 		return nil, err
 	}

@@ -97,8 +97,13 @@ func (c *IPClient) InInterleavedMode() bool {
 func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetrics,
 	localAddr, remoteAddr *net.UDPAddr) (
 	timestamp time.Time, offset time.Duration, err error) {
+	laddr, ok := netip.AddrFromSlice(localAddr.IP)
+	if !ok {
+		panic(errUnexpectedAddrType)
+	}
+	lport := uint16(localAddr.Port)
 	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", localAddr.String())
+	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, lport).String())
 	if err != nil {
 		return time.Time{}, 0, err
 	}

@@ -343,19 +343,15 @@ func dialUDP(localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, path snet.Path)
 	if err != nil {
 		return nil, err
 	}
-	scionLocalAddr := udp.UDPAddr{
-		IA:   localAddr.IA,
-		Host: snet.CopyUDPAddr(localAddr.Host),
-	}
 	if publicIP != nil {
-		scionLocalAddr.Host.IP = publicIP
+		localAddr.Host.IP = publicIP
 	}
-	scionLocalAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
+	localAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
 	nextHop := path.UnderlayNextHop()
 	return &clientConn{
 		baseConn: baseConn{
 			raw:       raw,
-			localAddr: scionLocalAddr,
+			localAddr: localAddr,
 		},
 		remoteAddr: remoteAddr.String(),
 		path:       path.Dataplane(),
