@@ -332,6 +332,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			syncCtx.udpLayer.DstPort, syncCtx.udpLayer.SrcPort =
 				syncCtx.udpLayer.SrcPort, syncCtx.udpLayer.DstPort
+			syncCtx.udpLayer.SetNetworkLayerForChecksum(&syncCtx.scionLayer)
 
 			payload := gopacket.Payload(buf)
 
@@ -456,6 +457,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			followUpCtx.udpLayer.DstPort, followUpCtx.udpLayer.SrcPort =
 				followUpCtx.udpLayer.SrcPort, followUpCtx.udpLayer.DstPort
+			followUpCtx.udpLayer.SetNetworkLayerForChecksum(&followUpCtx.scionLayer)
 
 			payload = gopacket.Payload(buf)
 
