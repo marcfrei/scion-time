@@ -12,7 +12,7 @@ require (
 	github.com/quic-go/quic-go v0.59.0
 	github.com/scionproto/scion v0.14.0
 	golang.org/x/sys v0.42.0
-	google.golang.org/grpc v1.79.3
+	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
 
