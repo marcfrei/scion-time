@@ -31,9 +31,34 @@ import (
 )
 
 func main() {
-	var limit float64
+	var limit, lmin, lmax float64
 	flag.Float64Var(&limit, "l", 0.0, "limit")
+	flag.Float64Var(&lmin, "min", 0.0, "minimum")
+	flag.Float64Var(&lmax, "max", 0.0, "maximum")
 	flag.Parse()
+
+	var limitSet bool
+	var minSet bool
+	var maxSet bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "l":
+			limitSet = true
+		case "min":
+			minSet = true
+		case "max":
+			maxSet = true
+		}
+	})
+	if limitSet && (minSet || maxSet) {
+		log.Fatal("flags -l and -min/-max are mutually exclusive")
+	}
+	if minSet != maxSet {
+		log.Fatal("flags -min and -max must be provided together")
+	}
+	if minSet && lmin > lmax {
+		log.Fatal("flag -min must not be greater than -max")
+	}
 
 	fn0 := flag.Arg(0)
 	f0, err := os.Open(fn0)
@@ -133,12 +158,15 @@ func main() {
 	}
 	p.Add(line)
 
-	if limit != 0.0 {
+	if limitSet {
 		p.Y.Max = math.Abs(limit)
 		p.Y.Min = -math.Abs(limit)
+	} else if minSet {
+		p.Y.Min = lmin
+		p.Y.Max = lmax
 	}
 
-	c := vgpdf.New(8.5*vg.Inch, 3*vg.Inch)
+	c := vgpdf.New(8.5*vg.Inch, 1.75*vg.Inch)
 	c.EmbedFonts(true)
 	dc := draw.New(c)
 	dc = draw.Crop(dc, 1*vg.Millimeter, -1*vg.Millimeter, 1*vg.Millimeter, -1*vg.Millimeter)
