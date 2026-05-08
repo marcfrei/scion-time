@@ -9,7 +9,6 @@ import (
 
 	"google.golang.org/grpc/resolver"
 
-	kgrpc "github.com/scionproto/scion/daemon/drkey/grpc"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/grpc"
@@ -17,6 +16,7 @@ import (
 	"github.com/scionproto/scion/pkg/segment"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
+	kgrpc "github.com/scionproto/scion/private/drkey/grpc"
 	"github.com/scionproto/scion/private/path/combinator"
 	"github.com/scionproto/scion/private/segment/segfetcher"
 	sgrpc "github.com/scionproto/scion/private/segment/segfetcher/grpc"

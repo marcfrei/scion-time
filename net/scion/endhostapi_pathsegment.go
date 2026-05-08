@@ -200,7 +200,7 @@ func decodeSignedMessage(raw []byte) (*crypto.SignedMessage, []byte, error) {
 	if len(headerAndBody) == 0 {
 		return nil, nil, errors.New("missing SignedMessage.header_and_body")
 	}
-	body, err := decodeHeaderAndBodyInternalBody(headerAndBody)
+	body, err := decodeHeaderAndBodyBody(headerAndBody)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -210,9 +210,9 @@ func decodeSignedMessage(raw []byte) (*crypto.SignedMessage, []byte, error) {
 	}, body, nil
 }
 
-func decodeHeaderAndBodyInternalBody(raw []byte) ([]byte, error) {
+func decodeHeaderAndBodyBody(raw []byte) ([]byte, error) {
 	if len(raw) == 0 {
-		return nil, errors.New("empty HeaderAndBodyInternal message")
+		return nil, errors.New("empty HeaderAndBody message")
 	}
 	var (
 		body []byte
@@ -229,7 +229,7 @@ func decodeHeaderAndBodyInternalBody(raw []byte) ([]byte, error) {
 		}
 		v, ok := fc.Bytes()
 		if !ok {
-			return nil, fmt.Errorf("invalid HeaderAndBodyInternal.body field")
+			return nil, fmt.Errorf("invalid HeaderAndBody.body field")
 		}
 		body = v
 	}

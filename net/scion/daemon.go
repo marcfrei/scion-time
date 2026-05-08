@@ -6,6 +6,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
+	"github.com/scionproto/scion/pkg/daemon/types"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/snet"
 )
@@ -34,7 +35,7 @@ func (cp *daemonControlPlane) FetchPaths(ctx context.Context, dst addr.IA) ([]sn
 	if err != nil {
 		return nil, err
 	}
-	return cp.dc.Paths(ctx, dst, localIA, daemon.PathReqFlags{Refresh: true})
+	return cp.dc.Paths(ctx, dst, localIA, types.PathReqFlags{Refresh: true})
 }
 
 func (cp *daemonControlPlane) FetchHostASKey(ctx context.Context, meta drkey.HostASMeta) (drkey.HostASKey, error) {

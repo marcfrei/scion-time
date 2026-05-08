@@ -124,12 +124,12 @@ func mustEncodePathSegmentFixture(t *testing.T, invalidDiscovery bool) []byte {
 	if err != nil {
 		t.Fatalf("marshal Header: %v", err)
 	}
-	headerAndBodyRaw, err := proto.Marshal(&cryptopb.HeaderAndBodyInternal{
+	headerAndBodyRaw, err := proto.Marshal(&cryptopb.HeaderAndBody{
 		Header: headerRaw,
 		Body:   bodyRaw,
 	})
 	if err != nil {
-		t.Fatalf("marshal HeaderAndBodyInternal: %v", err)
+		t.Fatalf("marshal HeaderAndBody: %v", err)
 	}
 
 	segmentInfoRaw, err := proto.Marshal(&cppb.SegmentInformation{
