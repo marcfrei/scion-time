@@ -9,7 +9,7 @@ require (
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/quic-go/quic-go v0.59.1
+	github.com/quic-go/quic-go v0.60.0
 	github.com/scionproto/scion v0.15.0
 	golang.org/x/sys v0.45.0
 	google.golang.org/grpc v1.81.1
