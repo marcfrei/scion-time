@@ -3,6 +3,7 @@
 package scion
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -72,7 +73,7 @@ func decodeSegmentInfo(raw []byte) (segment.Info, error) {
 	if len(raw) == 0 {
 		return segment.Info{}, errors.New("empty segment info")
 	}
-	rawCopy := cloneBytes(raw)
+	rawCopy := bytes.Clone(raw)
 	var (
 		timestamp int64
 		segmentID uint32
@@ -205,8 +206,8 @@ func decodeSignedMessage(raw []byte) (*crypto.SignedMessage, []byte, error) {
 		return nil, nil, err
 	}
 	return &crypto.SignedMessage{
-		HeaderAndBody: cloneBytes(headerAndBody),
-		Signature:     cloneBytes(signature),
+		HeaderAndBody: bytes.Clone(headerAndBody),
+		Signature:     bytes.Clone(signature),
 	}, body, nil
 }
 
@@ -233,7 +234,7 @@ func decodeHeaderAndBodyBody(raw []byte) ([]byte, error) {
 		}
 		body = v
 	}
-	return cloneBytes(body), nil
+	return bytes.Clone(body), nil
 }
 
 func decodeASEntrySignedBody(raw []byte) (decodedASEntryBody, error) {
@@ -1096,13 +1097,4 @@ func decodeEPICDetachedExtension(raw []byte) (*epic.Detached, error) {
 		AuthHopEntry:    hop,
 		AuthPeerEntries: peers,
 	}, nil
-}
-
-func cloneBytes(src []byte) []byte {
-	if src == nil {
-		return nil
-	}
-	dst := make([]byte, len(src))
-	copy(dst, src)
-	return dst
 }

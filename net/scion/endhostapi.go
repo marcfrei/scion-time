@@ -219,7 +219,7 @@ func (cp *endhostAPIControlPlane) convertPath(cpath combinator.Path) (snet.Path,
 		Dst:           cpath.Metadata.Interfaces[len(cpath.Metadata.Interfaces)-1].IA,
 		DataplanePath: cpath.SCIONPath,
 		NextHop: &net.UDPAddr{
-			IP:   append([]byte(nil), nextHop.IP...),
+			IP:   bytes.Clone(nextHop.IP),
 			Port: nextHop.Port,
 			Zone: nextHop.Zone,
 		},
@@ -498,7 +498,7 @@ func parseUDPEndpoint(endpoint string) (*net.UDPAddr, error) {
 	addr := ap.Addr()
 	ip := addr.AsSlice()
 	return &net.UDPAddr{
-		IP:   append([]byte(nil), ip...),
+		IP:   bytes.Clone(ip),
 		Port: int(ap.Port()),
 		Zone: addr.Zone(),
 	}, nil
