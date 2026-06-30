@@ -152,11 +152,12 @@ func main() {
 
 	p.Add(plotter.NewGrid())
 
-	line, err := plotter.NewLine(data)
+	scatter, err := plotter.NewScatter(data)
 	if err != nil {
 		log.Fatalf("error during plot: %s", err)
 	}
-	p.Add(line)
+	scatter.GlyphStyle.Radius = vg.Points(0.01)
+	p.Add(scatter)
 
 	if limitSet {
 		p.Y.Max = math.Abs(limit)
