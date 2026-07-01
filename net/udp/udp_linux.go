@@ -1,9 +1,10 @@
 package udp
 
 import (
+	"sync"
 	"unsafe"
 
-	"net"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -110,7 +111,24 @@ func initNetworkInterface(fd int, ifname string, filter int32) error {
 	return nil
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
+func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {
+	return configureTimestamping(conn, iface, index, false)
+}
+
+func EnableTimestamping(conn syscall.Conn, iface string, index int) error {
+	if c, ok := conn.(interface {
+		enableTimestamping(string, int) error
+	}); ok {
+		return c.enableTimestamping(iface, index)
+	}
+	return enableTimestamping(conn, iface, index)
+}
+
+func enableTimestamping(conn syscall.Conn, iface string, index int) error {
+	return configureTimestamping(conn, iface, index, true)
+}
+
+func configureTimestamping(conn syscall.Conn, iface string, index int, tx bool) error {
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return err
@@ -131,13 +149,18 @@ func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 		}
 	}
 
-	sockopts := unix.SOF_TIMESTAMPING_OPT_ID |
-		unix.SOF_TIMESTAMPING_OPT_TSONLY
+	var sockopts int
+	if tx {
+		sockopts |= unix.SOF_TIMESTAMPING_OPT_ID |
+			unix.SOF_TIMESTAMPING_OPT_TSONLY
+	}
 
 	if iface != "" {
 		sockopts |= unix.SOF_TIMESTAMPING_RAW_HARDWARE |
-			unix.SOF_TIMESTAMPING_RX_HARDWARE |
-			unix.SOF_TIMESTAMPING_TX_HARDWARE
+			unix.SOF_TIMESTAMPING_RX_HARDWARE
+		if tx {
+			sockopts |= unix.SOF_TIMESTAMPING_TX_HARDWARE
+		}
 
 		err = sconn.Control(func(fd uintptr) {
 			res.err = initNetworkInterface(int(fd), iface, HWTSTAMP_FILTER_ALL)
@@ -150,8 +173,10 @@ func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
 		}
 	} else {
 		sockopts |= unix.SOF_TIMESTAMPING_SOFTWARE |
-			unix.SOF_TIMESTAMPING_RX_SOFTWARE |
-			unix.SOF_TIMESTAMPING_TX_SOFTWARE
+			unix.SOF_TIMESTAMPING_RX_SOFTWARE
+		if tx {
+			sockopts |= unix.SOF_TIMESTAMPING_TX_SOFTWARE
+		}
 	}
 
 	ts := soTimestamping{
@@ -241,7 +266,17 @@ func timestampFromOOBData(oob []byte) (time.Time, uint32, error) {
 	return ts, id, nil
 }
 
-func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
+func ReadTXTimestamp(conn syscall.Conn, id uint32) (time.Time, uint32, error) {
+	if c, ok := conn.(interface {
+		readTXTimestamp(uint32) (time.Time, uint32, error)
+	}); ok {
+		return c.readTXTimestamp(id)
+	}
+	return readTXTimestamp(conn, id, nil)
+}
+
+func readTXTimestamp(conn syscall.Conn, id uint32, locker sync.Locker) (time.Time, uint32, error) {
+	const pollTimeout = 10 * time.Millisecond
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return time.Time{}, 0, err
@@ -252,13 +287,22 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 		err error
 	}
 	err = sconn.Control(func(fd uintptr) {
-		for range 8192 {
-			pollFds := []unix.PollFd{
-				{Fd: int32(fd), Events: unix.POLLPRI},
+		pollFds := []unix.PollFd{
+			{Fd: int32(fd), Events: unix.POLLPRI},
+		}
+		buf := make([]byte, 0)
+		oob := make([]byte, 128)
+		deadline := time.Now().Add(pollTimeout)
+		for {
+			dt := time.Until(deadline)
+			if dt <= 0 {
+				res.err = errTimestampNotFound
+				return
 			}
+			timeout := int((dt + time.Millisecond - 1) / time.Millisecond)
 			var n int
 			for {
-				n, err = unix.Poll(pollFds, 0)
+				n, err = unix.Poll(pollFds, timeout)
 				if err == unix.EINTR {
 					continue
 				}
@@ -268,15 +312,20 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				res.err = err
 				return
 			}
-			if n != len(pollFds) {
-				continue
+			if n == 0 {
+				res.err = errTimestampNotFound
+				return
 			}
-			buf := make([]byte, 0)
-			oob := make([]byte, 128)
 			var oobn, flags int
 			var srcAddr unix.Sockaddr
 			for {
+				if locker != nil {
+					locker.Lock()
+				}
 				n, oobn, flags, srcAddr, err = unix.Recvmsg(int(fd), buf, oob, unix.MSG_ERRQUEUE)
+				if locker != nil {
+					locker.Unlock()
+				}
 				if err == unix.EINTR {
 					continue
 				}
@@ -303,12 +352,11 @@ func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
 				res.err = err
 				return
 			}
-			if resid >= id {
+			if id == resid || seqLess(id, resid) {
 				res.ts, res.id = rests, resid
 				return
 			}
 		}
-		res.err = errTimestampNotFound
 	})
 	if err != nil {
 		return time.Time{}, 0, err

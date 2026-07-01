@@ -1,10 +1,11 @@
 package udp
 
 import (
+	"sync"
 	"unsafe"
 
 	"errors"
-	"net"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -32,10 +33,32 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	return time.Time{}, errTimestampNotFound
 }
 
-func EnableTimestamping(conn *net.UDPConn, iface string, index int) error {
+func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {
 	return errUnsupportedOperation
 }
 
-func ReadTXTimestamp(conn *net.UDPConn, id uint32) (time.Time, uint32, error) {
+func EnableTimestamping(conn syscall.Conn, iface string, index int) error {
+	if c, ok := conn.(interface {
+		enableTimestamping(string, int) error
+	}); ok {
+		return c.enableTimestamping(iface, index)
+	}
+	return enableTimestamping(conn, iface, index)
+}
+
+func enableTimestamping(conn syscall.Conn, iface string, index int) error {
+	return errUnsupportedOperation
+}
+
+func ReadTXTimestamp(conn syscall.Conn, id uint32) (time.Time, uint32, error) {
+	if c, ok := conn.(interface {
+		readTXTimestamp(uint32) (time.Time, uint32, error)
+	}); ok {
+		return c.readTXTimestamp(id)
+	}
+	return readTXTimestamp(conn, id, nil)
+}
+
+func readTXTimestamp(conn syscall.Conn, id uint32, locker sync.Locker) (time.Time, uint32, error) {
 	return time.Time{}, 0, errUnsupportedOperation
 }

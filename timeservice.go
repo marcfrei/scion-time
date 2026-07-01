@@ -268,7 +268,9 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.Port = ntskePort
 	c.Auth.NTSKEFetcher.Log = log
 	c.Auth.NTSKEFetcher.QUIC.Enabled = true
-	c.Auth.NTSKEFetcher.QUIC.LocalAddr = localAddr
+	ntskeLocalAddr := localAddr.Clone()
+	ntskeLocalAddr.Host.Port = 0
+	c.Auth.NTSKEFetcher.QUIC.LocalAddr = ntskeLocalAddr
 	c.Auth.NTSKEFetcher.QUIC.RemoteAddr = remoteAddr
 	c.Auth.NTSKEFetcher.QUIC.PublicIP = publicIP
 	c.Auth.NTSKEFetcher.QUIC.ControlPlaneConnector = cpc
@@ -526,11 +528,10 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 	filterSize, filterPick := filterConfig(cfg)
 	ipLocalAddr := &net.UDPAddr{
 		IP:   localAddr.Host.IP,
-		Port: localAddr.Host.Port,
+		Port: 0,
 		Zone: localAddr.Host.Zone,
 	}
 	scionLocalAddr := localAddr.Copy()
-	scionLocalAddr.Host.Port = 0
 
 	for _, s := range cfg.MBGReferenceClocks {
 		refClocks = append(refClocks, mbg.NewReferenceClock(log, s))
@@ -768,13 +769,12 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 		if err != nil {
 			log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
 				slog.Any("remote", raddr), slog.Any("error", err))
+		} else {
+			fmt.Printf("%s,%+.9f,%t\n", ts.UTC().Format(time.RFC3339), off.Seconds(), c.InInterleavedMode())
 		}
 		cancel()
 		if !periodic {
 			break
-		}
-		if err == nil {
-			fmt.Printf("%s,%+.9f,%t\n", ts.UTC().Format(time.RFC3339), off.Seconds(), c.InInterleavedMode())
 		}
 		lclk.Sleep(8 * time.Second)
 	}
@@ -835,13 +835,12 @@ func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string
 		if err != nil {
 			log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
 				slog.Any("remote", raddr), slog.Any("error", err))
+		} else {
+			fmt.Printf("%s,%+.9f,%t\n", ts.UTC().Format(time.RFC3339), off.Seconds(), c.InInterleavedMode())
 		}
 		cancel()
 		if !periodic {
 			break
-		}
-		if err == nil {
-			fmt.Printf("%s,%+.9f,%t\n", ts.UTC().Format(time.RFC3339), off.Seconds(), c.InInterleavedMode())
 		}
 		lclk.Sleep(1 * time.Second)
 	}

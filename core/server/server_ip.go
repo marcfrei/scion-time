@@ -193,18 +193,18 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 			log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 			continue
 		}
-		txt1, id, err := udp.ReadTXTimestamp(conn, txid)
+		xtxid := txid
+		txid++
+		txt1, id, err := udp.ReadTXTimestamp(conn, xtxid)
 		if err != nil {
 			txt1 = txt0
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 				slog.Any("error", err))
-		} else if id != txid {
+		} else if id != xtxid {
 			txt1 = txt0
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
+				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
 			txid = id + 1
-		} else {
-			txid++
 		}
 		updateTXTimestamp(clientID, rxt, &txt1)
 

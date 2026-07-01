@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"syscall"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -21,11 +22,24 @@ var (
 	errUnexpectedData    = errors.New("failed to read out of band data")
 )
 
+func seqLess(x, y uint32) bool {
+	return int32(x-y) < 0
+}
+
 var _ net.Addr = (*UDPAddr)(nil)
 
 type UDPAddr struct {
 	IA   addr.IA
 	Host *net.UDPAddr
+}
+
+func (a UDPAddr) Clone() UDPAddr {
+	host := *a.Host
+	host.IP = slices.Clone(a.Host.IP)
+	return UDPAddr{
+		IA:   a.IA,
+		Host: &host,
+	}
 }
 
 func (a UDPAddr) Network() string {
@@ -71,11 +85,56 @@ func SetsockoptReuseAddrPort(network, address string, c syscall.RawConn) error {
 	return res.err
 }
 
-func SetDSCP(conn *net.UDPConn, dscp uint8) error {
+func SetDSCP(conn syscall.Conn, dscp uint8) error {
 	// Based on Meta's time libraries at https://github.com/facebook/time
 	if dscp > 63 {
 		panic("invalid argument: dscp must not be greater than 63")
 	}
+	if c, ok := conn.(interface{ setDSCP(uint8) error }); ok {
+		return c.setDSCP(dscp)
+	}
+	return setDSCP(conn, dscp)
+}
+
+func getDSCP(conn syscall.Conn) (uint8, error) {
+	sconn, err := conn.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var res struct {
+		dscp uint8
+		err  error
+	}
+	err = sconn.Control(func(fd uintptr) {
+		var level, opt int
+		sa, err := unix.Getsockname(int(fd))
+		if err != nil {
+			res.err = err
+			return
+		}
+		switch sa.(type) {
+		case *unix.SockaddrInet4:
+			level, opt = unix.IPPROTO_IP, unix.IP_TOS
+		case *unix.SockaddrInet6:
+			level, opt = unix.IPPROTO_IPV6, unix.IPV6_TCLASS
+		default:
+			res.err = fmt.Errorf("unexpected socket address type %T", sa)
+			return
+		}
+		value, err := unix.GetsockoptInt(int(fd), level, opt)
+		if err != nil {
+			res.err = err
+			return
+		}
+		res.dscp = uint8(value >> 2)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return res.dscp, res.err
+}
+
+func setDSCP(conn syscall.Conn, dscp uint8) error {
 	sconn, err := conn.SyscallConn()
 	if err != nil {
 		return err
@@ -84,12 +143,22 @@ func SetDSCP(conn *net.UDPConn, dscp uint8) error {
 		err error
 	}
 	err = sconn.Control(func(fd uintptr) {
-		ip := conn.LocalAddr().(*net.UDPAddr).IP
-		if ip.To4() == nil {
-			res.err = unix.SetsockoptInt(int(fd), unix.IPPROTO_IPV6, unix.IPV6_TCLASS, int(dscp<<2))
-		} else {
-			res.err = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_TOS, int(dscp<<2))
+		var level, opt int
+		sa, err := unix.Getsockname(int(fd))
+		if err != nil {
+			res.err = err
+			return
 		}
+		switch sa.(type) {
+		case *unix.SockaddrInet4:
+			level, opt = unix.IPPROTO_IP, unix.IP_TOS
+		case *unix.SockaddrInet6:
+			level, opt = unix.IPPROTO_IPV6, unix.IPV6_TCLASS
+		default:
+			res.err = fmt.Errorf("unexpected socket address type %T", sa)
+			return
+		}
+		res.err = unix.SetsockoptInt(int(fd), level, opt, int(dscp<<2))
 	})
 	if err != nil {
 		return err

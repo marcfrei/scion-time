@@ -134,17 +134,10 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		c.Auth.mac = make([]byte, scion.PacketAuthMACLen)
 	}
 
-	laddr, ok := netip.AddrFromSlice(localAddr.Host.IP)
-	if !ok {
-		panic(errUnexpectedAddrType)
-	}
-	lport := uint16(localAddr.Host.Port)
-	var lc net.ListenConfig
-	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(laddr, lport).String())
+	conn, err := udp.OpenUDPMuxConn(ctx, localAddr.Host)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
-	conn := pconn.(*net.UDPConn)
 	defer func() { _ = conn.Close() }()
 	deadline, deadlineSet := ctx.Deadline()
 	if deadlineSet {
@@ -198,6 +191,17 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			netip.AddrFrom4(nextHopAddr.As4()),
 			nextHop.Port())
 	}
+	conn.SetReadMatcher(scion.MatchUDP(
+		udp.UDPAddr{
+			IA: localAddr.IA,
+			Host: &net.UDPAddr{
+				IP:   localIP,
+				Port: localPort,
+			},
+		},
+		remoteAddr,
+		path,
+	))
 
 	reference := remoteAddr.IA.String() + "," + remoteAddr.Host.String()
 	pathFingerprint := snet.Fingerprint(pathInterfaces(path)).String()
@@ -351,18 +355,18 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			incFailures(c)
 			return time.Time{}, 0, errWrite
 		}
-		cTxTime1, id, err := udp.ReadTXTimestamp(conn, txid)
+		xtxid := txid
+		txid++
+		cTxTime1, id, err := udp.ReadTXTimestamp(conn, xtxid)
 		if err != nil {
 			cTxTime1 = cTxTime0
 			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 				slog.Any("error", err))
-		} else if id != txid {
+		} else if id != xtxid {
 			cTxTime1 = cTxTime0
 			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
+				slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
 			txid = id + 1
-		} else {
-			txid++
 		}
 		mtrcs.reqsSent.Inc()
 		if interleavedReq {
@@ -395,10 +399,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				return time.Time{}, 0, err
 			}
 			oob = oob[:oobn]
-			cRxTime, err := udp.TimestampFromOOBData(oob)
-			if err != nil {
+			cRxTime, rxtsErr := udp.TimestampFromOOBData(oob)
+			if rxtsErr != nil {
 				cRxTime = timebase.Now()
-				c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
 			}
 			buf = buf[:n]
 			mtrcs.pktsReceived.Inc()
@@ -483,9 +486,12 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				decoded[len(decoded)-2] == slayers.LayerTypeEndToEndExtn {
 				tsOpt, err := e2eLayer.FindOption(scion.OptTypeTimestamp)
 				if err == nil {
-					cRxTime0, err := udp.TimestampFromOOBData(tsOpt.OptData)
-					if err == nil {
+					cRxTime0, tsErr := udp.TimestampFromOOBData(tsOpt.OptData)
+					if tsErr == nil {
 						cRxTime = cRxTime0
+						rxtsErr = nil
+					} else if rxtsErr != nil {
+						rxtsErr = tsErr
 					}
 				}
 				if authKey != nil {
@@ -522,6 +528,10 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 						}
 					}
 				}
+			}
+			if rxtsErr != nil {
+				c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp",
+					slog.Any("error", rxtsErr))
 			}
 
 			var ntpresp ntp.Packet

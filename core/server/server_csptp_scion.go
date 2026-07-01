@@ -367,19 +367,19 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				syncCtx.conn.mu.Unlock()
 				continue
 			}
-			txTime0, id, err := udp.ReadTXTimestamp(syncCtx.conn.c, syncCtx.conn.txid)
+			xtxid := syncCtx.conn.txid
+			syncCtx.conn.txid++
+			txTime0, id, err := udp.ReadTXTimestamp(syncCtx.conn.c, xtxid)
 			if err != nil {
 				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Any("local_addr", syncCtx.conn.c.LocalAddr()),
 					slog.Any("error", err))
-			} else if id != syncCtx.conn.txid {
+			} else if id != xtxid {
 				txTime0 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(syncCtx.conn.txid)))
+					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
 				syncCtx.conn.txid = id + 1
-			} else {
-				syncCtx.conn.txid++
 			}
 			syncCtx.conn.mu.Unlock()
 
@@ -492,19 +492,19 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				followUpCtx.conn.mu.Unlock()
 				continue
 			}
-			txTime1, id, err := udp.ReadTXTimestamp(followUpCtx.conn.c, followUpCtx.conn.txid)
+			xtxid = followUpCtx.conn.txid
+			followUpCtx.conn.txid++
+			txTime1, id, err := udp.ReadTXTimestamp(followUpCtx.conn.c, xtxid)
 			if err != nil {
 				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Any("local_addr", followUpCtx.conn.c.LocalAddr()),
 					slog.Any("error", err))
-			} else if id != followUpCtx.conn.txid {
+			} else if id != xtxid {
 				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(followUpCtx.conn.txid)))
+					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
 				followUpCtx.conn.txid = id + 1
-			} else {
-				followUpCtx.conn.txid++
 			}
 			_ = txTime1
 			followUpCtx.conn.mu.Unlock()

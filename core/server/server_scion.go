@@ -87,7 +87,13 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 			localHostIface, index = t[0], i
 		}
 	}
-	err := udp.EnableTimestamping(conn, localHostIface, index)
+	txTimestamping := localHostPort != scion.EndhostPort
+	var err error
+	if txTimestamping {
+		err = udp.EnableTimestamping(conn, localHostIface, index)
+	} else {
+		err = udp.EnableRXTimestamping(conn, localHostIface, index)
+	}
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
@@ -217,15 +223,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 					log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 					continue
 				}
-				_, id, err := udp.ReadTXTimestamp(conn, txid)
-				if err != nil {
-					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-						slog.Any("error", err))
-				} else if id != txid {
-					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-						slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
-					txid = id + 1
-				} else {
+				if txTimestamping {
 					txid++
 				}
 				mtrcs.pktsForwarded.Inc()
@@ -287,16 +285,18 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 				continue
 			}
-			_, id, err := udp.ReadTXTimestamp(conn, txid)
-			if err != nil {
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Any("error", err))
-			} else if id != txid {
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
-				txid = id + 1
-			} else {
+			if txTimestamping {
+				xtxid := txid
 				txid++
+				_, id, err := udp.ReadTXTimestamp(conn, xtxid)
+				if err != nil {
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.Any("error", err))
+				} else if id != xtxid {
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
+					txid = id + 1
+				}
 			}
 
 			continue
@@ -377,15 +377,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 				continue
 			}
-			_, id, err := udp.ReadTXTimestamp(conn, txid)
-			if err != nil {
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Any("error", err))
-			} else if id != txid {
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
-				txid = id + 1
-			} else {
+			if txTimestamping {
 				txid++
 			}
 
@@ -621,18 +613,22 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				log.LogAttrs(ctx, slog.LevelError, "failed to write packet", slog.Any("error", err))
 				continue
 			}
-			txt1, id, err := udp.ReadTXTimestamp(conn, txid)
-			if err != nil {
-				txt1 = txt0
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Any("error", err))
-			} else if id != txid {
-				txt1 = txt0
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(txid)))
-				txid = id + 1
-			} else {
+			txt1 := txt0
+			if txTimestamping {
+				xtxid := txid
 				txid++
+				var id uint32
+				txt1, id, err = udp.ReadTXTimestamp(conn, xtxid)
+				if err != nil {
+					txt1 = txt0
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.Any("error", err))
+				} else if id != xtxid {
+					txt1 = txt0
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
+					txid = id + 1
+				}
 			}
 			updateTXTimestamp(clientID, rxt, &txt1)
 
