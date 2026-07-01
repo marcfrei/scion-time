@@ -113,6 +113,42 @@ func main() {
 			off = float64(y) / 1e9
 			ok = true
 			n++
+		} else if strings.Contains(l, `msg="NTL CTS offset"`) {
+			var found bool
+			var x string
+			found = false
+			for _, t := range ts {
+				if v, ok := strings.CutPrefix(t, "time="); ok {
+					x = v
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Fatalf("timestamp missing on line: %s", l)
+			}
+			t, err = time.Parse(time.RFC3339, x)
+			if err != nil {
+				log.Fatalf("failed to parse timestamp on line: %s, %s", l, err)
+			}
+			var y string
+			found = false
+			for _, t := range ts {
+				if v, ok := strings.CutPrefix(t, "offset="); ok {
+					y = v
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Fatalf("offset missing on line: %s", l)
+			}
+			off, err = strconv.ParseFloat(y, 64)
+			if err != nil {
+				log.Fatalf("failed to parse offset on line: %s, %s", l, err)
+			}
+			ok = true
+			n++
 		} else if len(ts) > 0 {
 			r := csv.NewReader(strings.NewReader(ts[len(ts)-1]))
 			rs, err := r.ReadAll()
