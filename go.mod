@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.2.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
-	github.com/gopacket/gopacket v1.6.1
+	github.com/gopacket/gopacket v1.7.0
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
 	github.com/pelletier/go-toml/v2 v2.4.2
 	github.com/prometheus/client_golang v1.23.2
