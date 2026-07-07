@@ -3,7 +3,7 @@ module example.com/scion-time
 go 1.26.4
 
 require (
-	github.com/HdrHistogram/hdrhistogram-go v1.2.0
+	github.com/HdrHistogram/hdrhistogram-go v1.3.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/gopacket/gopacket v1.6.1
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
