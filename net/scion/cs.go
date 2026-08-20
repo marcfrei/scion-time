@@ -210,17 +210,15 @@ func newCSControlPlane(topo *topology.Loader, trustDB storage.TrustDB) *csContro
 	var verifier *segVerifier
 	if trustDB != nil {
 		verifier = &segVerifier{
-			Verifier: trust.Verifier{
-				Engine: trust.FetchingProvider{
-					DB: trustDB,
-					Fetcher: tgrpc.Fetcher{
-						IA:     topo.IA(),
-						Dialer: dialer,
-					},
-					Recurser: trust.LocalOnlyRecurser{},
-					Router: trust.LocalRouter{
-						IA: topo.IA(),
-					},
+			Engine: trust.FetchingProvider{
+				DB: trustDB,
+				Fetcher: tgrpc.Fetcher{
+					IA:     topo.IA(),
+					Dialer: dialer,
+				},
+				Recurser: trust.LocalOnlyRecurser{},
+				Router: trust.LocalRouter{
+					IA: topo.IA(),
 				},
 			},
 		}

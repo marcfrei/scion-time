@@ -263,10 +263,8 @@ func listenUDP(ctx context.Context, localAddr udp.UDPAddr) (net.PacketConn, erro
 	}
 	localAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
 	conn := &serverConn{
-		baseConn: baseConn{
-			raw:       raw,
-			localAddr: localAddr,
-		},
+		raw:       raw,
+		localAddr: localAddr,
 	}
 	return conn, nil
 }
@@ -349,10 +347,8 @@ func dialUDP(localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, path snet.Path)
 	localAddr.Host.Port = raw.LocalAddr().(*net.UDPAddr).Port
 	nextHop := path.UnderlayNextHop()
 	return &clientConn{
-		baseConn: baseConn{
-			raw:       raw,
-			localAddr: localAddr,
-		},
+		raw:        raw,
+		localAddr:  localAddr,
 		remoteAddr: remoteAddr.String(),
 		path:       path.Dataplane(),
 		nextHop:    nextHop,

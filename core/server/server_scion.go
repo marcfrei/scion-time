@@ -351,8 +351,8 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				tsOpt.ActualLength = 0
 
 				if scionLayer.NextHdr != slayers.End2EndClass {
-					e2eLayer = slayers.EndToEndExtn{}
-					e2eLayer.NextHdr = slayers.L4UDP
+					e2eLayer = slayers.EndToEndExtn{
+						NextHdr: slayers.L4UDP}
 					scionLayer.NextHdr = slayers.End2EndClass
 				}
 				e2eLayer.Options = append(e2eLayer.Options, tsOpt)
@@ -589,9 +589,9 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 					panic(err)
 				}
 
-				e2eExtn := slayers.EndToEndExtn{}
-				e2eExtn.NextHdr = scionLayer.NextHdr
-				e2eExtn.Options = []*slayers.EndToEndOption{authOpt}
+				e2eExtn := slayers.EndToEndExtn{
+					NextHdr: scionLayer.NextHdr,
+					Options: []*slayers.EndToEndOption{authOpt}}
 
 				err = e2eExtn.SerializeTo(buffer, options)
 				if err != nil {

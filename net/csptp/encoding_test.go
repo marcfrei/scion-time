@@ -1572,9 +1572,8 @@ func TestCSPTPRequestTLVRequestFlagsRoundTrip(t *testing.T) {
 func TestCompleteCSPTPRequestTLVRoundTrip(t *testing.T) {
 	tlv0 := csptp.CSPTPRequestTLV{
 		Type:         csptp.TLVTypeCSPTPRequest,
-		RequestFlags: csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale,
-	}
-	tlv0.Length = uint16(csptp.CSPTPRequestTLVLength) - 4
+		Length:       uint16(csptp.CSPTPRequestTLVLength) - 4,
+		RequestFlags: csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale}
 
 	b := make([]byte, csptp.CSPTPRequestTLVLength)
 	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
@@ -1753,15 +1752,14 @@ func TestCSPTPResponseTLVReqCorrectionFieldRoundTrip(t *testing.T) {
 func TestCompleteCSPTPResponseTLVRoundTrip(t *testing.T) {
 	tlv0 := csptp.CSPTPResponseTLV{
 		Type:                csptp.TLVTypeCSPTPResponse,
+		Length:              uint16(csptp.CSPTPResponseTLVLength) - 4,
 		OrganizationID:      [3]uint8{0xAA, 0xBB, 0xCC},
 		OrganizationSubType: [3]uint8{0xDD, 0xEE, 0xFF},
 		ReqIngressTimestamp: csptp.Timestamp{
 			Seconds:     [6]uint8{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
 			Nanoseconds: 0x77777777,
 		},
-		ReqCorrectionField: 0x123456789ABCDEF,
-	}
-	tlv0.Length = uint16(csptp.CSPTPResponseTLVLength) - 4
+		ReqCorrectionField: 0x123456789ABCDEF}
 
 	b := make([]byte, csptp.CSPTPResponseTLVLength)
 	csptp.EncodeCSPTPResponseTLV(b, &tlv0)

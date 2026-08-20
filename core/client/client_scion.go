@@ -326,9 +326,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 					panic(err)
 				}
 
-				e2eExtn := slayers.EndToEndExtn{}
-				e2eExtn.NextHdr = scionLayer.NextHdr
-				e2eExtn.Options = []*slayers.EndToEndOption{c.Auth.opt}
+				e2eExtn := slayers.EndToEndExtn{
+					NextHdr: scionLayer.NextHdr,
+					Options: []*slayers.EndToEndOption{c.Auth.opt}}
 
 				err = e2eExtn.SerializeTo(buffer, options)
 				if err != nil {
