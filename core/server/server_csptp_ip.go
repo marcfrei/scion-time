@@ -27,11 +27,12 @@ type udpConn struct {
 }
 
 type csptpContextIP struct {
-	conn       *udpConn
-	srcPort    uint16
-	rxTime     time.Time
-	sequenceID uint16
-	correction int64
+	conn         *udpConn
+	srcPort      uint16
+	rxTime       time.Time
+	sequenceID   uint16
+	domainNumber uint8
+	correction   int64
 }
 
 //lint:ignore U1000 work in progress
@@ -209,6 +210,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			clnt.ctxts[0].srcPort = srcAddr.Port()
 			clnt.ctxts[0].rxTime = rxt
 			clnt.ctxts[0].sequenceID = reqmsg.SequenceID
+			clnt.ctxts[0].domainNumber = reqmsg.DomainNumber
 			clnt.ctxts[0].correction = reqmsg.CorrectionField
 			clnt.len = 1
 		}
@@ -232,12 +234,12 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.SdoID,
+					csptp.CSPTPSdoID,
 					csptp.MessageTypeSync,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        csptp.DomainNumber,
+				DomainNumber:        syncCtx.domainNumber,
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 				CorrectionField:     0,
@@ -247,7 +249,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					Port:    1,
 				},
 				SequenceID:         syncCtx.sequenceID,
-				ControlField:       csptp.ControlSync,
+				ControlField:       csptp.ControlField,
 				LogMessageInterval: csptp.LogMessageInterval,
 				Timestamp:          csptp.Timestamp{},
 			}
@@ -284,12 +286,12 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.SdoID,
+					csptp.CSPTPSdoID,
 					csptp.MessageTypeFollowUp,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        csptp.DomainNumber,
+				DomainNumber:        syncCtx.domainNumber,
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagUnicast,
 				CorrectionField:     0,
@@ -299,7 +301,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					Port:    1,
 				},
 				SequenceID:         followUpCtx.sequenceID,
-				ControlField:       csptp.ControlFollowUp,
+				ControlField:       csptp.ControlField,
 				LogMessageInterval: csptp.LogMessageInterval,
 				Timestamp:          csptp.TimestampFromTime(txTime0),
 			}

@@ -22,7 +22,7 @@ const (
 
 	PTPVersion = 0x12
 
-	DomainNumber = 0
+	DomainNumber = 128
 
 	MinorSdoID = 0
 
@@ -31,9 +31,7 @@ const (
 	FlagTwoStep               = 1 << 9
 	FlagUnicast               = 1 << 10
 
-	ControlSync     = 0
-	ControlFollowUp = 2
-	ControlOther    = 5
+	ControlField = 0
 
 	LogMessageInterval = 0x7f
 
@@ -55,8 +53,8 @@ const (
 	OrganizationSubTypeResponse2 = 0x73
 
 	TLVFlagServerStateDS = 1 << 0
-	TLVFlagStatus        = 1 << 0
-	TLVFlagAltTimescale  = 1 << 1
+	TLVFlagStatus        = 1 << 24
+	TLVFlagAltTimescale  = 1 << 25
 
 	ErrorTxTimestampInvalid = 1
 )
@@ -134,8 +132,6 @@ type CSPTPRequestTLV struct {
 type CSPTPResponseTLV struct {
 	Type                uint16
 	Length              uint16
-	OrganizationID      [3]uint8
-	OrganizationSubType [3]uint8
 	ReqIngressTimestamp Timestamp
 	ReqCorrectionField  int64
 }
@@ -155,8 +151,6 @@ type PortAddress struct {
 type CSPTPStatusTLV struct {
 	Type                    uint16
 	Length                  uint16
-	OrganizationID          [3]uint8
-	OrganizationSubType     [3]uint8
 	GrandmasterPriority1    uint8
 	GrandmasterClockQuality ClockQuality
 	GrandmasterPriority2    uint8
@@ -193,7 +187,7 @@ func DurationFromTimeInterval(i int64) time.Duration {
 }
 
 const MinMessageLength = 44
-const MaxMessageLength = 98
+const MaxMessageLength = 108
 
 func EncodeMessage(b []byte, msg *Message) {
 	_ = b[43]
@@ -491,24 +485,18 @@ func DecodeResponseTLV(tlv *ResponseTLV, b []byte) error {
 	return nil
 }
 
-const CSPTPRequestTLVLength = 14
+const CSPTPRequestTLVLength = 8
 
 func EncodeCSPTPRequestTLV(b []byte, tlv *CSPTPRequestTLV) {
-	_ = b[13]
+	_ = b[7]
 	b[0] = byte(tlv.Type >> 8)
 	b[1] = byte(tlv.Type)
 	b[2] = byte(tlv.Length >> 8)
 	b[3] = byte(tlv.Length)
-	b[4] = 0
-	b[5] = 0
-	b[6] = 0
-	b[7] = 0
-	b[8] = 0
-	b[9] = 0
-	b[10] = byte(tlv.RequestFlags >> 24)
-	b[11] = byte(tlv.RequestFlags >> 16)
-	b[12] = byte(tlv.RequestFlags >> 8)
-	b[13] = byte(tlv.RequestFlags)
+	b[4] = byte(tlv.RequestFlags >> 24)
+	b[5] = byte(tlv.RequestFlags >> 16)
+	b[6] = byte(tlv.RequestFlags >> 8)
+	b[7] = byte(tlv.RequestFlags)
 }
 
 var (
@@ -516,49 +504,43 @@ var (
 )
 
 func DecodeCSPTPRequestTLV(tlv *CSPTPRequestTLV, b []byte) error {
-	if len(b) < 14 {
+	if len(b) < CSPTPRequestTLVLength {
 		return errUnexpectedCSPTPRequestTLVSize
 	}
-	_ = b[13]
+	_ = b[7]
 	tlv.Type = uint16(b[0])<<8 | uint16(b[1])
 	tlv.Length = uint16(b[2])<<8 | uint16(b[3])
-	tlv.RequestFlags = uint32(b[10])<<24 | uint32(b[11])<<16 | uint32(b[12])<<8 | uint32(b[13])
+	tlv.RequestFlags = uint32(b[4])<<24 | uint32(b[5])<<16 | uint32(b[6])<<8 | uint32(b[7])
 
 	return nil
 }
 
-const CSPTPResponseTLVLength = 28
+const CSPTPResponseTLVLength = 22
 
 func EncodeCSPTPResponseTLV(b []byte, tlv *CSPTPResponseTLV) {
-	_ = b[27]
+	_ = b[21]
 	b[0] = byte(tlv.Type >> 8)
 	b[1] = byte(tlv.Type)
 	b[2] = byte(tlv.Length >> 8)
 	b[3] = byte(tlv.Length)
-	b[4] = byte(tlv.OrganizationID[0])
-	b[5] = byte(tlv.OrganizationID[1])
-	b[6] = byte(tlv.OrganizationID[2])
-	b[7] = byte(tlv.OrganizationSubType[0])
-	b[8] = byte(tlv.OrganizationSubType[1])
-	b[9] = byte(tlv.OrganizationSubType[2])
-	b[10] = byte(tlv.ReqIngressTimestamp.Seconds[0])
-	b[11] = byte(tlv.ReqIngressTimestamp.Seconds[1])
-	b[12] = byte(tlv.ReqIngressTimestamp.Seconds[2])
-	b[13] = byte(tlv.ReqIngressTimestamp.Seconds[3])
-	b[14] = byte(tlv.ReqIngressTimestamp.Seconds[4])
-	b[15] = byte(tlv.ReqIngressTimestamp.Seconds[5])
-	b[16] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 24)
-	b[17] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 16)
-	b[18] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 8)
-	b[19] = byte(tlv.ReqIngressTimestamp.Nanoseconds)
-	b[20] = byte(uint64(tlv.ReqCorrectionField) >> 56)
-	b[21] = byte(uint64(tlv.ReqCorrectionField) >> 48)
-	b[22] = byte(uint64(tlv.ReqCorrectionField) >> 40)
-	b[23] = byte(uint64(tlv.ReqCorrectionField) >> 32)
-	b[24] = byte(uint64(tlv.ReqCorrectionField) >> 24)
-	b[25] = byte(uint64(tlv.ReqCorrectionField) >> 16)
-	b[26] = byte(uint64(tlv.ReqCorrectionField) >> 8)
-	b[27] = byte(uint64(tlv.ReqCorrectionField))
+	b[4] = byte(tlv.ReqIngressTimestamp.Seconds[0])
+	b[5] = byte(tlv.ReqIngressTimestamp.Seconds[1])
+	b[6] = byte(tlv.ReqIngressTimestamp.Seconds[2])
+	b[7] = byte(tlv.ReqIngressTimestamp.Seconds[3])
+	b[8] = byte(tlv.ReqIngressTimestamp.Seconds[4])
+	b[9] = byte(tlv.ReqIngressTimestamp.Seconds[5])
+	b[10] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 24)
+	b[11] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 16)
+	b[12] = byte(tlv.ReqIngressTimestamp.Nanoseconds >> 8)
+	b[13] = byte(tlv.ReqIngressTimestamp.Nanoseconds)
+	b[14] = byte(uint64(tlv.ReqCorrectionField) >> 56)
+	b[15] = byte(uint64(tlv.ReqCorrectionField) >> 48)
+	b[16] = byte(uint64(tlv.ReqCorrectionField) >> 40)
+	b[17] = byte(uint64(tlv.ReqCorrectionField) >> 32)
+	b[18] = byte(uint64(tlv.ReqCorrectionField) >> 24)
+	b[19] = byte(uint64(tlv.ReqCorrectionField) >> 16)
+	b[20] = byte(uint64(tlv.ReqCorrectionField) >> 8)
+	b[21] = byte(uint64(tlv.ReqCorrectionField))
 }
 
 var (
@@ -566,26 +548,24 @@ var (
 )
 
 func DecodeCSPTPResponseTLV(tlv *CSPTPResponseTLV, b []byte) error {
-	if len(b) < 28 {
+	if len(b) < CSPTPResponseTLVLength {
 		return errUnexpectedCSPTPResponseTLVSize
 	}
-	_ = b[27]
+	_ = b[21]
 	tlv.Type = uint16(b[0])<<8 | uint16(b[1])
 	tlv.Length = uint16(b[2])<<8 | uint16(b[3])
-	tlv.OrganizationID = [3]uint8{b[4], b[5], b[6]}
-	tlv.OrganizationSubType = [3]uint8{b[7], b[8], b[9]}
-	tlv.ReqIngressTimestamp.Seconds = [6]uint8{b[10], b[11], b[12], b[13], b[14], b[15]}
-	tlv.ReqIngressTimestamp.Nanoseconds = uint32(b[16])<<24 | uint32(b[17])<<16 | uint32(b[18])<<8 | uint32(b[19])
-	tlv.ReqCorrectionField = int64(uint64(b[20])<<56 | uint64(b[21])<<48 | uint64(b[22])<<40 | uint64(b[23])<<32 |
-		uint64(b[24])<<24 | uint64(b[25])<<16 | uint64(b[26])<<8 | uint64(b[27]))
+	tlv.ReqIngressTimestamp.Seconds = [6]uint8{b[4], b[5], b[6], b[7], b[8], b[9]}
+	tlv.ReqIngressTimestamp.Nanoseconds = uint32(b[10])<<24 | uint32(b[11])<<16 | uint32(b[12])<<8 | uint32(b[13])
+	tlv.ReqCorrectionField = int64(uint64(b[14])<<56 | uint64(b[15])<<48 | uint64(b[16])<<40 | uint64(b[17])<<32 |
+		uint64(b[18])<<24 | uint64(b[19])<<16 | uint64(b[20])<<8 | uint64(b[21]))
 
 	return nil
 }
 
-const MinCSPTPStatusTLVLength = 32
+const MinCSPTPStatusTLVLength = 26
 
 func CSPTPStatusTLVLength(tlv *CSPTPStatusTLV) int {
-	len := 32 + int(tlv.ParentAddress.AddressLength)
+	len := MinCSPTPStatusTLVLength + int(tlv.ParentAddress.AddressLength)
 	if int(tlv.ParentAddress.AddressLength)%2 != 0 {
 		len++
 	}
@@ -598,39 +578,33 @@ func EncodeCSPTPStatusTLV(b []byte, tlv *CSPTPStatusTLV) {
 	b[1] = byte(tlv.Type)
 	b[2] = byte(tlv.Length >> 8)
 	b[3] = byte(tlv.Length)
-	b[4] = byte(tlv.OrganizationID[0])
-	b[5] = byte(tlv.OrganizationID[1])
-	b[6] = byte(tlv.OrganizationID[2])
-	b[7] = byte(tlv.OrganizationSubType[0])
-	b[8] = byte(tlv.OrganizationSubType[1])
-	b[9] = byte(tlv.OrganizationSubType[2])
-	b[10] = byte(tlv.GrandmasterPriority1)
-	b[11] = byte(tlv.GrandmasterClockQuality.ClockClass)
-	b[12] = byte(tlv.GrandmasterClockQuality.ClockAccuracy)
-	b[13] = byte(tlv.GrandmasterClockQuality.OffsetScaledLogVariance >> 8)
-	b[14] = byte(tlv.GrandmasterClockQuality.OffsetScaledLogVariance)
-	b[15] = byte(tlv.GrandmasterPriority2)
-	b[16] = byte(tlv.StepsRemoved >> 8)
-	b[17] = byte(tlv.StepsRemoved)
-	b[18] = byte(uint16(tlv.CurrentUTCOffset) >> 8)
-	b[19] = byte(uint16(tlv.CurrentUTCOffset))
-	b[20] = byte(tlv.GrandmasterIdentity[0])
-	b[21] = byte(tlv.GrandmasterIdentity[1])
-	b[22] = byte(tlv.GrandmasterIdentity[2])
-	b[23] = byte(tlv.GrandmasterIdentity[3])
-	b[24] = byte(tlv.GrandmasterIdentity[4])
-	b[25] = byte(tlv.GrandmasterIdentity[5])
-	b[26] = byte(tlv.GrandmasterIdentity[6])
-	b[27] = byte(tlv.GrandmasterIdentity[7])
-	b[28] = byte(tlv.ParentAddress.NetworkProtocol >> 8)
-	b[29] = byte(tlv.ParentAddress.NetworkProtocol)
-	b[30] = byte(tlv.ParentAddress.AddressLength >> 8)
-	b[31] = byte(tlv.ParentAddress.AddressLength)
+	b[4] = byte(tlv.GrandmasterPriority1)
+	b[5] = byte(tlv.GrandmasterClockQuality.ClockClass)
+	b[6] = byte(tlv.GrandmasterClockQuality.ClockAccuracy)
+	b[7] = byte(tlv.GrandmasterClockQuality.OffsetScaledLogVariance >> 8)
+	b[8] = byte(tlv.GrandmasterClockQuality.OffsetScaledLogVariance)
+	b[9] = byte(tlv.GrandmasterPriority2)
+	b[10] = byte(tlv.StepsRemoved >> 8)
+	b[11] = byte(tlv.StepsRemoved)
+	b[12] = byte(uint16(tlv.CurrentUTCOffset) >> 8)
+	b[13] = byte(uint16(tlv.CurrentUTCOffset))
+	b[14] = byte(tlv.GrandmasterIdentity[0])
+	b[15] = byte(tlv.GrandmasterIdentity[1])
+	b[16] = byte(tlv.GrandmasterIdentity[2])
+	b[17] = byte(tlv.GrandmasterIdentity[3])
+	b[18] = byte(tlv.GrandmasterIdentity[4])
+	b[19] = byte(tlv.GrandmasterIdentity[5])
+	b[20] = byte(tlv.GrandmasterIdentity[6])
+	b[21] = byte(tlv.GrandmasterIdentity[7])
+	b[22] = byte(tlv.ParentAddress.NetworkProtocol >> 8)
+	b[23] = byte(tlv.ParentAddress.NetworkProtocol)
+	b[24] = byte(tlv.ParentAddress.AddressLength >> 8)
+	b[25] = byte(tlv.ParentAddress.AddressLength)
 	for i := 0; i < int(tlv.ParentAddress.AddressLength); i++ {
-		b[32+i] = tlv.ParentAddress.Address[i]
+		b[26+i] = tlv.ParentAddress.Address[i]
 	}
 	if int(tlv.ParentAddress.AddressLength)%2 != 0 {
-		b[32+int(tlv.ParentAddress.AddressLength)] = 0
+		b[26+int(tlv.ParentAddress.AddressLength)] = 0
 	}
 }
 
@@ -639,32 +613,30 @@ var (
 )
 
 func DecodeCSPTPStatusTLV(tlv *CSPTPStatusTLV, b []byte) error {
-	if len(b) < 32 {
+	if len(b) < MinCSPTPStatusTLVLength {
 		return errUnexpectedCSPTPStatusTLVSize
 	}
-	_ = b[31]
+	_ = b[25]
 	tlv.Type = uint16(b[0])<<8 | uint16(b[1])
 	tlv.Length = uint16(b[2])<<8 | uint16(b[3])
-	tlv.OrganizationID = [3]uint8{b[4], b[5], b[6]}
-	tlv.OrganizationSubType = [3]uint8{b[7], b[8], b[9]}
-	tlv.GrandmasterPriority1 = b[10]
-	tlv.GrandmasterClockQuality.ClockClass = b[11]
-	tlv.GrandmasterClockQuality.ClockAccuracy = b[12]
-	tlv.GrandmasterClockQuality.OffsetScaledLogVariance = uint16(b[13])<<8 | uint16(b[14])
-	tlv.GrandmasterPriority2 = b[15]
-	tlv.StepsRemoved = uint16(b[16])<<8 | uint16(b[17])
-	tlv.CurrentUTCOffset = int16(uint16(b[18])<<8 | uint16(b[19]))
-	tlv.GrandmasterIdentity = [8]uint8{b[20], b[21], b[22], b[23], b[24], b[25], b[26], b[27]}
-	tlv.ParentAddress.NetworkProtocol = uint16(b[28])<<8 | uint16(b[29])
-	tlv.ParentAddress.AddressLength = uint16(b[30])<<8 | uint16(b[31])
+	tlv.GrandmasterPriority1 = b[4]
+	tlv.GrandmasterClockQuality.ClockClass = b[5]
+	tlv.GrandmasterClockQuality.ClockAccuracy = b[6]
+	tlv.GrandmasterClockQuality.OffsetScaledLogVariance = uint16(b[7])<<8 | uint16(b[8])
+	tlv.GrandmasterPriority2 = b[9]
+	tlv.StepsRemoved = uint16(b[10])<<8 | uint16(b[11])
+	tlv.CurrentUTCOffset = int16(uint16(b[12])<<8 | uint16(b[13]))
+	tlv.GrandmasterIdentity = [8]uint8{b[14], b[15], b[16], b[17], b[18], b[19], b[20], b[21]}
+	tlv.ParentAddress.NetworkProtocol = uint16(b[22])<<8 | uint16(b[23])
+	tlv.ParentAddress.AddressLength = uint16(b[24])<<8 | uint16(b[25])
 
-	if len(b) < 32+int(tlv.ParentAddress.AddressLength) {
+	if len(b) < MinCSPTPStatusTLVLength+int(tlv.ParentAddress.AddressLength) {
 		return errUnexpectedCSPTPStatusTLVSize
 	}
 
 	tlv.ParentAddress.Address = make([]byte, tlv.ParentAddress.AddressLength)
 	for i := 0; i < int(tlv.ParentAddress.AddressLength); i++ {
-		tlv.ParentAddress.Address[i] = b[32+i]
+		tlv.ParentAddress.Address[i] = b[26+i]
 	}
 
 	return nil

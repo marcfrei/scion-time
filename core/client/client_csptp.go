@@ -55,12 +55,12 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 func csptpSyncRequest(sequenceID uint16) csptp.Message {
 	return csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.SdoID, /* csptp.CSPTPSdoID */
 			csptp.MessageTypeSync,
 		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
-		DomainNumber:        csptp.DomainNumber,
+		DomainNumber:        0, /* csptp.DomainNumber */
 		MinorSdoID:          csptp.MinorSdoID,
 		FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 		CorrectionField:     0,
@@ -70,8 +70,8 @@ func csptpSyncRequest(sequenceID uint16) csptp.Message {
 			Port:    1,
 		},
 		SequenceID:         sequenceID,
-		ControlField:       csptp.ControlSync,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: 0, /* csptp.LogMessageInterval */
 		Timestamp:          csptp.Timestamp{},
 	}
 }
@@ -79,12 +79,12 @@ func csptpSyncRequest(sequenceID uint16) csptp.Message {
 func csptpFollowUpRequest(sequenceID uint16) (csptp.Message, csptp.RequestTLV) {
 	reqmsg := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.SdoID, /* csptp.CSPTPSdoID */
 			csptp.MessageTypeFollowUp,
 		),
 		PTPVersion:          csptp.PTPVersion,
 		MessageLength:       csptp.MinMessageLength,
-		DomainNumber:        csptp.DomainNumber,
+		DomainNumber:        0, /* csptp.DomainNumber */
 		MinorSdoID:          csptp.MinorSdoID,
 		FlagField:           csptp.FlagUnicast,
 		CorrectionField:     0,
@@ -94,8 +94,8 @@ func csptpFollowUpRequest(sequenceID uint16) (csptp.Message, csptp.RequestTLV) {
 			Port:    1,
 		},
 		SequenceID:         sequenceID,
-		ControlField:       csptp.ControlFollowUp,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: 0, /* csptp.LogMessageInterval */
 		Timestamp:          csptp.Timestamp{},
 	}
 	reqtlv := csptp.RequestTLV{

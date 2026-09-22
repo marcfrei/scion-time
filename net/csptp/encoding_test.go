@@ -225,7 +225,7 @@ func TestSequenceIDRoundTrip(t *testing.T) {
 
 func TestControlFieldRoundTrip(t *testing.T) {
 	vs := []uint8{0, 1, math.MaxUint8 - 1, math.MaxUint8,
-		csptp.ControlSync, csptp.ControlFollowUp, csptp.ControlOther}
+		csptp.ControlField}
 	for _, v := range vs {
 		msg0 := csptp.Message{ControlField: v}
 		b := make([]byte, csptp.MinMessageLength)
@@ -320,7 +320,7 @@ func TestCompleteMessageRoundTrip(t *testing.T) {
 			Port:    0xEEEE,
 		},
 		SequenceID:         0xFFFF,
-		ControlField:       csptp.ControlSync,
+		ControlField:       csptp.ControlField,
 		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp: csptp.Timestamp{
 			Seconds:     [6]uint8{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
@@ -1009,7 +1009,7 @@ func TestResponseTLVInvalidLength(t *testing.T) {
 func TestSyncRequest0(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeSync,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1024,16 +1024,16 @@ func TestSyncRequest0(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         0,
-		ControlField:       csptp.ControlSync,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	b0 := []byte{
-		0x00, 0x12, 0x00, 0x2c, 0x00, 0x00, 0x06, 0x00,
+		0x30, 0x12, 0x00, 0x2c, 0x80, 0x00, 0x06, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x33, 0x00, 0x01, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00}
 	b1 := make([]byte, msg0.MessageLength)
 	csptp.EncodeMessage(b1, &msg0)
@@ -1053,7 +1053,7 @@ func TestSyncRequest0(t *testing.T) {
 func TestFollowUpRequest0(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeFollowUp,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1068,8 +1068,8 @@ func TestFollowUpRequest0(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         0,
-		ControlField:       csptp.ControlFollowUp,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	tlv0 := csptp.RequestTLV{
@@ -1088,11 +1088,11 @@ func TestFollowUpRequest0(t *testing.T) {
 	msg0.MessageLength += uint16(csptp.RequestTLVLength(&tlv0))
 	tlv0.Length = uint16(csptp.RequestTLVLength(&tlv0))
 	b0 := []byte{
-		0x08, 0x12, 0x00, 0x62, 0x00, 0x00, 0x04, 0x00,
+		0x38, 0x12, 0x00, 0x62, 0x80, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x33, 0x00, 0x01, 0x00, 0x00,
-		0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x36,
 		0xec, 0x46, 0x70, 0x52, 0x65, 0x71, 0x00, 0x00,
 		0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1128,7 +1128,7 @@ func TestFollowUpRequest0(t *testing.T) {
 func TestSyncResponse0(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeSync,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1143,12 +1143,12 @@ func TestSyncResponse0(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         0,
-		ControlField:       csptp.ControlSync,
+		ControlField:       csptp.ControlField,
 		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	b0 := []byte{
-		0x00, 0x12, 0x00, 0x2c, 0x00, 0x00, 0x06, 0x00,
+		0x30, 0x12, 0x00, 0x2c, 0x80, 0x00, 0x06, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x31, 0x00, 0x01, 0x00, 0x00,
@@ -1172,7 +1172,7 @@ func TestSyncResponse0(t *testing.T) {
 func TestFollowUpResponse0(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeFollowUp,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1187,7 +1187,7 @@ func TestFollowUpResponse0(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         0,
-		ControlField:       csptp.ControlFollowUp,
+		ControlField:       csptp.ControlField,
 		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.TimestampFromTime(time.Unix(1737196455, 486627530).UTC()),
 	}
@@ -1222,11 +1222,11 @@ func TestFollowUpResponse0(t *testing.T) {
 	msg0.MessageLength += uint16(csptp.ResponseTLVLength(&tlv0))
 	tlv0.Length = uint16(csptp.ResponseTLVLength(&tlv0))
 	b0 := []byte{
-		0x08, 0x12, 0x00, 0x62, 0x00, 0x00, 0x04, 0x00,
+		0x38, 0x12, 0x00, 0x62, 0x80, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x31, 0x00, 0x01, 0x00, 0x00,
-		0x02, 0x7f, 0x00, 0x00, 0x67, 0x8b, 0x83, 0xa7,
+		0x00, 0x7f, 0x00, 0x00, 0x67, 0x8b, 0x83, 0xa7,
 		0x1d, 0x01, 0x58, 0xca, 0x00, 0x03, 0x00, 0x36,
 		0xec, 0x46, 0x70, 0x52, 0x65, 0x73, 0x00, 0x00,
 		0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x67, 0x8b,
@@ -1262,7 +1262,7 @@ func TestFollowUpResponse0(t *testing.T) {
 func TestSyncRequest1(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeSync,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1277,16 +1277,16 @@ func TestSyncRequest1(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         1,
-		ControlField:       csptp.ControlSync,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	b0 := []byte{
-		0x00, 0x12, 0x00, 0x2c, 0x00, 0x00, 0x06, 0x00,
+		0x30, 0x12, 0x00, 0x2c, 0x80, 0x00, 0x06, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x33, 0x00, 0x01, 0x00, 0x01,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x0}
 	b1 := make([]byte, msg0.MessageLength)
 	csptp.EncodeMessage(b1, &msg0)
@@ -1306,7 +1306,7 @@ func TestSyncRequest1(t *testing.T) {
 func TestFollowUpRequest1(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeFollowUp,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1321,8 +1321,8 @@ func TestFollowUpRequest1(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         1,
-		ControlField:       csptp.ControlFollowUp,
-		LogMessageInterval: 0,
+		ControlField:       csptp.ControlField,
+		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	tlv0 := csptp.RequestTLV{
@@ -1341,11 +1341,11 @@ func TestFollowUpRequest1(t *testing.T) {
 	msg0.MessageLength += uint16(csptp.RequestTLVLength(&tlv0))
 	tlv0.Length = uint16(csptp.RequestTLVLength(&tlv0))
 	b0 := []byte{
-		0x08, 0x12, 0x00, 0x50, 0x00, 0x00, 0x04, 0x00,
+		0x38, 0x12, 0x00, 0x50, 0x80, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x33, 0x00, 0x01, 0x00, 0x01,
-		0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x24,
 		0xec, 0x46, 0x70, 0x52, 0x65, 0x71, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1378,7 +1378,7 @@ func TestFollowUpRequest1(t *testing.T) {
 func TestSyncResponse1(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeSync,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1393,12 +1393,12 @@ func TestSyncResponse1(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         1,
-		ControlField:       csptp.ControlSync,
+		ControlField:       csptp.ControlField,
 		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.Timestamp{},
 	}
 	b0 := []byte{
-		0x00, 0x12, 0x00, 0x2c, 0x00, 0x00, 0x06, 0x00,
+		0x30, 0x12, 0x00, 0x2c, 0x80, 0x00, 0x06, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x31, 0x00, 0x01, 0x00, 0x01,
@@ -1422,7 +1422,7 @@ func TestSyncResponse1(t *testing.T) {
 func TestFollowUpResponse1(t *testing.T) {
 	msg0 := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
-			csptp.SdoID,
+			csptp.CSPTPSdoID,
 			csptp.MessageTypeFollowUp,
 		),
 		PTPVersion:          csptp.PTPVersion,
@@ -1437,7 +1437,7 @@ func TestFollowUpResponse1(t *testing.T) {
 			Port:    1,
 		},
 		SequenceID:         1,
-		ControlField:       csptp.ControlFollowUp,
+		ControlField:       csptp.ControlField,
 		LogMessageInterval: csptp.LogMessageInterval,
 		Timestamp:          csptp.TimestampFromTime(time.Unix(1737196456, 494391756).UTC()),
 	}
@@ -1472,11 +1472,11 @@ func TestFollowUpResponse1(t *testing.T) {
 	msg0.MessageLength += uint16(csptp.ResponseTLVLength(&tlv0))
 	tlv0.Length = uint16(csptp.ResponseTLVLength(&tlv0))
 	b0 := []byte{
-		0x08, 0x12, 0x00, 0x50, 0x00, 0x00, 0x04, 0x00,
+		0x38, 0x12, 0x00, 0x50, 0x80, 0x00, 0x04, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x65, 0xff,
 		0xfe, 0x74, 0x68, 0x31, 0x00, 0x01, 0x00, 0x01,
-		0x02, 0x7f, 0x00, 0x00, 0x67, 0x8b, 0x83, 0xa8,
+		0x00, 0x7f, 0x00, 0x00, 0x67, 0x8b, 0x83, 0xa8,
 		0x1d, 0x77, 0xd1, 0xcc, 0x00, 0x03, 0x00, 0x24,
 		0xec, 0x46, 0x70, 0x52, 0x65, 0x73, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0x8b,
@@ -1595,7 +1595,7 @@ func TestCSPTPRequestTLVInvalidLength(t *testing.T) {
 	b := make([]byte, csptp.CSPTPRequestTLVLength)
 	csptp.EncodeCSPTPRequestTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPRequestTLV{}
-	err = csptp.DecodeCSPTPRequestTLV(&tlv1, b[:13])
+	err = csptp.DecodeCSPTPRequestTLV(&tlv1, b[:7])
 	if err == nil {
 		t.Error("Expected error for insufficient buffer length")
 	}
@@ -1637,56 +1637,6 @@ func TestCSPTPResponseTLVLengthRoundTrip(t *testing.T) {
 			t.Fail()
 		}
 		if tlv1.Length != tlv0.Length {
-			t.Fail()
-		}
-	}
-}
-
-func TestCSPTPResponseTLVOrganizationIDRoundTrip(t *testing.T) {
-	vs := [][3]uint8{
-		{0, 0, 0},
-		{1, 1, 1},
-		{0xFF, 0xFF, 0xFE},
-		{0xFF, 0xFF, 0xFF},
-	}
-	for _, v := range vs {
-		tlv0 := csptp.CSPTPResponseTLV{OrganizationID: v}
-		b := make([]byte, csptp.CSPTPResponseTLVLength)
-		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
-		var tlv1 csptp.CSPTPResponseTLV
-		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tlv0.OrganizationID != v {
-			t.Fail()
-		}
-		if tlv1.OrganizationID != tlv0.OrganizationID {
-			t.Fail()
-		}
-	}
-}
-
-func TestCSPTPResponseTLVOrganizationSubTypeRoundTrip(t *testing.T) {
-	vs := [][3]uint8{
-		{0, 0, 0},
-		{1, 1, 1},
-		{0xFF, 0xFF, 0xFE},
-		{0xFF, 0xFF, 0xFF},
-	}
-	for _, v := range vs {
-		tlv0 := csptp.CSPTPResponseTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.CSPTPResponseTLVLength)
-		csptp.EncodeCSPTPResponseTLV(b, &tlv0)
-		var tlv1 csptp.CSPTPResponseTLV
-		err := csptp.DecodeCSPTPResponseTLV(&tlv1, b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tlv0.OrganizationSubType != v {
-			t.Fail()
-		}
-		if tlv1.OrganizationSubType != tlv0.OrganizationSubType {
 			t.Fail()
 		}
 	}
@@ -1751,10 +1701,8 @@ func TestCSPTPResponseTLVReqCorrectionFieldRoundTrip(t *testing.T) {
 
 func TestCompleteCSPTPResponseTLVRoundTrip(t *testing.T) {
 	tlv0 := csptp.CSPTPResponseTLV{
-		Type:                csptp.TLVTypeCSPTPResponse,
-		Length:              uint16(csptp.CSPTPResponseTLVLength) - 4,
-		OrganizationID:      [3]uint8{0xAA, 0xBB, 0xCC},
-		OrganizationSubType: [3]uint8{0xDD, 0xEE, 0xFF},
+		Type:   csptp.TLVTypeCSPTPResponse,
+		Length: uint16(csptp.CSPTPResponseTLVLength) - 4,
 		ReqIngressTimestamp: csptp.Timestamp{
 			Seconds:     [6]uint8{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
 			Nanoseconds: 0x77777777,
@@ -1781,7 +1729,7 @@ func TestCSPTPResponseTLVInvalidLength(t *testing.T) {
 	b := make([]byte, csptp.CSPTPResponseTLVLength)
 	csptp.EncodeCSPTPResponseTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPResponseTLV{}
-	err = csptp.DecodeCSPTPResponseTLV(&tlv1, b[:27])
+	err = csptp.DecodeCSPTPResponseTLV(&tlv1, b[:21])
 	if err == nil {
 		t.Error("Expected error for insufficient buffer length")
 	}
@@ -1837,56 +1785,6 @@ func TestCSPTPStatusTLVLengthRoundTrip(t *testing.T) {
 			t.Fail()
 		}
 		if tlv1.Length != tlv0.Length {
-			t.Fail()
-		}
-	}
-}
-
-func TestCSPTPStatusTLVOrganizationIDRoundTrip(t *testing.T) {
-	vs := [][3]uint8{
-		{0, 0, 0},
-		{1, 1, 1},
-		{0xFF, 0xFF, 0xFE},
-		{0xFF, 0xFF, 0xFF},
-	}
-	for _, v := range vs {
-		tlv0 := csptp.CSPTPStatusTLV{OrganizationID: v}
-		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
-		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
-		var tlv1 csptp.CSPTPStatusTLV
-		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tlv0.OrganizationID != v {
-			t.Fail()
-		}
-		if tlv1.OrganizationID != tlv0.OrganizationID {
-			t.Fail()
-		}
-	}
-}
-
-func TestCSPTPStatusTLVOrganizationSubTypeRoundTrip(t *testing.T) {
-	vs := [][3]uint8{
-		{0, 0, 0},
-		{1, 1, 1},
-		{0xFF, 0xFF, 0xFE},
-		{0xFF, 0xFF, 0xFF},
-	}
-	for _, v := range vs {
-		tlv0 := csptp.CSPTPStatusTLV{OrganizationSubType: v}
-		b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
-		csptp.EncodeCSPTPStatusTLV(b, &tlv0)
-		var tlv1 csptp.CSPTPStatusTLV
-		err := csptp.DecodeCSPTPStatusTLV(&tlv1, b)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tlv0.OrganizationSubType != v {
-			t.Fail()
-		}
-		if tlv1.OrganizationSubType != tlv0.OrganizationSubType {
 			t.Fail()
 		}
 	}
@@ -2085,5 +1983,163 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:len(b)-1])
 	if err == nil {
 		t.Error("Expected error for insufficient buffer length with parent address")
+	}
+}
+
+func TestCSPTPRequestTLVEncoding(t *testing.T) {
+	vs := []struct {
+		name  string
+		flags uint32
+		buf   []byte
+	}{
+		{"none", 0, []byte{0xff, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00}},
+		{"status", csptp.TLVFlagStatus, []byte{0xff, 0x00, 0x00, 0x04, 0x01, 0x00, 0x00, 0x00}},
+		{"alternate", csptp.TLVFlagAltTimescale, []byte{0xff, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00}},
+		{"both", csptp.TLVFlagStatus | csptp.TLVFlagAltTimescale, []byte{0xff, 0x00, 0x00, 0x04, 0x03, 0x00, 0x00, 0x00}},
+	}
+	for _, v := range vs {
+		t.Run(v.name, func(t *testing.T) {
+			tlv0 := csptp.CSPTPRequestTLV{
+				Type:         csptp.TLVTypeCSPTPRequest,
+				Length:       csptp.CSPTPRequestTLVLength - 4,
+				RequestFlags: v.flags,
+			}
+			b := make([]byte, csptp.CSPTPRequestTLVLength)
+			csptp.EncodeCSPTPRequestTLV(b, &tlv0)
+			if !bytes.Equal(b, v.buf) {
+				t.Errorf("encoded % x, expected % x", b, v.buf)
+			}
+			var tlv1 csptp.CSPTPRequestTLV
+			err := csptp.DecodeCSPTPRequestTLV(&tlv1, v.buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tlv1 != tlv0 {
+				t.Errorf("decoded %+v, expected %+v", tlv1, tlv0)
+			}
+		})
+	}
+}
+
+func TestCSPTPResponseTLVEncoding(t *testing.T) {
+	tlv0 := csptp.CSPTPResponseTLV{
+		Type:   csptp.TLVTypeCSPTPResponse,
+		Length: csptp.CSPTPResponseTLVLength - 4,
+		ReqIngressTimestamp: csptp.Timestamp{
+			Seconds:     [6]uint8{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+			Nanoseconds: 0x12345678,
+		},
+		ReqCorrectionField: -0x0102030405060708,
+	}
+	b0 := []byte{
+		0xff, 0x01, 0x00, 0x12,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x12, 0x34, 0x56, 0x78,
+		0xfe, 0xfd, 0xfc, 0xfb, 0xfa, 0xf9, 0xf8, 0xf8,
+	}
+	b1 := make([]byte, csptp.CSPTPResponseTLVLength)
+	csptp.EncodeCSPTPResponseTLV(b1, &tlv0)
+	if !bytes.Equal(b1, b0) {
+		t.Errorf("encoded % x, expected % x", b1, b0)
+	}
+	var tlv1 csptp.CSPTPResponseTLV
+	err := csptp.DecodeCSPTPResponseTLV(&tlv1, b0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tlv1 != tlv0 {
+		t.Errorf("decoded %+v, expected %+v", tlv1, tlv0)
+	}
+}
+
+func TestCSPTPStatusTLVEncoding(t *testing.T) {
+	vs := []struct {
+		name   string
+		parent csptp.PortAddress
+		buf    []byte
+	}{
+		{
+			name: "IPv4",
+			parent: csptp.PortAddress{
+				NetworkProtocol: 1,
+				AddressLength:   4,
+				Address:         []byte{192, 0, 2, 1},
+			},
+			buf: []byte{
+				0xf0, 0x02, 0x00, 0x1a,
+				0x80, 0x06, 0x21, 0x12, 0x34, 0x81, 0x01, 0x02, 0xff, 0xdb,
+				0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+				0x00, 0x01, 0x00, 0x04, 192, 0, 2, 1,
+			},
+		},
+		{
+			name: "IPv6",
+			parent: csptp.PortAddress{
+				NetworkProtocol: 2,
+				AddressLength:   16,
+				Address:         []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+			},
+			buf: []byte{
+				0xf0, 0x02, 0x00, 0x26,
+				0x80, 0x06, 0x21, 0x12, 0x34, 0x81, 0x01, 0x02, 0xff, 0xdb,
+				0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+				0x00, 0x02, 0x00, 0x10,
+				0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+			},
+		},
+		{
+			name: "odd address length",
+			parent: csptp.PortAddress{
+				NetworkProtocol: 0xfffe,
+				AddressLength:   3,
+				Address:         []byte{0xab, 0xcd, 0xef},
+			},
+			buf: []byte{
+				0xf0, 0x02, 0x00, 0x1a,
+				0x80, 0x06, 0x21, 0x12, 0x34, 0x81, 0x01, 0x02, 0xff, 0xdb,
+				0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+				0xff, 0xfe, 0x00, 0x03, 0xab, 0xcd, 0xef, 0x00,
+			},
+		},
+	}
+	for _, v := range vs {
+		t.Run(v.name, func(t *testing.T) {
+			tlv0 := csptp.CSPTPStatusTLV{
+				Type:                 csptp.TLVTypeCSPTPStatus,
+				GrandmasterPriority1: 128,
+				GrandmasterClockQuality: csptp.ClockQuality{
+					ClockClass:              6,
+					ClockAccuracy:           0x21,
+					OffsetScaledLogVariance: 0x1234,
+				},
+				GrandmasterPriority2: 129,
+				StepsRemoved:         0x0102,
+				CurrentUTCOffset:     -37,
+				GrandmasterIdentity:  [8]uint8{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77},
+				ParentAddress:        v.parent,
+			}
+			tlv0.Length = uint16(csptp.CSPTPStatusTLVLength(&tlv0)) - 4
+			b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
+			csptp.EncodeCSPTPStatusTLV(b, &tlv0)
+			if !bytes.Equal(b, v.buf) {
+				t.Errorf("encoded % x, expected % x", b, v.buf)
+			}
+			var tlv1 csptp.CSPTPStatusTLV
+			err := csptp.DecodeCSPTPStatusTLV(&tlv1, v.buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tlv1.Type != tlv0.Type || tlv1.Length != tlv0.Length ||
+				tlv1.GrandmasterPriority1 != tlv0.GrandmasterPriority1 ||
+				tlv1.GrandmasterClockQuality != tlv0.GrandmasterClockQuality ||
+				tlv1.GrandmasterPriority2 != tlv0.GrandmasterPriority2 ||
+				tlv1.StepsRemoved != tlv0.StepsRemoved ||
+				tlv1.CurrentUTCOffset != tlv0.CurrentUTCOffset ||
+				tlv1.GrandmasterIdentity != tlv0.GrandmasterIdentity ||
+				tlv1.ParentAddress.NetworkProtocol != tlv0.ParentAddress.NetworkProtocol ||
+				tlv1.ParentAddress.AddressLength != tlv0.ParentAddress.AddressLength ||
+				!bytes.Equal(tlv1.ParentAddress.Address, tlv0.ParentAddress.Address) {
+				t.Errorf("decoded %+v, expected %+v", tlv1, tlv0)
+			}
+		})
 	}
 }
