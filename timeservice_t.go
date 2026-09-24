@@ -31,6 +31,7 @@ func runT() {
 			laddr, raddr string
 			dscp         uint
 			periodic     bool
+			flashPTP     bool
 		)
 
 		toolFlags := flag.NewFlagSet("tool", flag.ExitOnError)
@@ -38,6 +39,7 @@ func runT() {
 		toolFlags.StringVar(&raddr, "remote", "", "Remote address")
 		toolFlags.UintVar(&dscp, "dscp", 0, "Differentiated services codepoint, must be in range [0, 63]")
 		toolFlags.BoolVar(&periodic, "periodic", false, "Perform periodic offset measurements")
+		toolFlags.BoolVar(&flashPTP, "flashptp", false, "Use FlashPTP instead of IEEE P1588.1 CSPTP")
 
 		err := toolFlags.Parse(os.Args[2:])
 		if err != nil || toolFlags.NArg() != 0 {
@@ -62,9 +64,9 @@ func runT() {
 				if ip4 := localAddr.Host.IP.To4(); ip4 != nil {
 					localAddr.Host.IP = ip4
 				}
-				server.StartCSPTPServerIP(ctx, log, localAddr.Host, uint8(dscp))
+				server.StartCSPTPServerIP(ctx, log, localAddr.Host, uint8(dscp), flashPTP)
 			} else {
-				server.StartCSPTPServerSCION(ctx, log, localAddr.Host, uint8(dscp))
+				server.StartCSPTPServerSCION(ctx, log, localAddr.Host, uint8(dscp), flashPTP)
 			}
 			select {}
 		} else {
@@ -93,8 +95,9 @@ func runT() {
 					panic("unexpected address type")
 				}
 				c := &client.CSPTPClientIP{
-					Log:  log,
-					DSCP: uint8(dscp),
+					Log:      log,
+					DSCP:     uint8(dscp),
+					FlashPTP: flashPTP,
 				}
 				for {
 					ts, off, err := c.MeasureClockOffset(ctx, laddr, raddr)
@@ -121,8 +124,9 @@ func runT() {
 					NextHop:       remoteAddr.Host,
 				}
 				c := &client.CSPTPClientSCION{
-					Log:  log,
-					DSCP: uint8(dscp),
+					Log:      log,
+					DSCP:     uint8(dscp),
+					FlashPTP: flashPTP,
 				}
 				for {
 					ts, off, err := c.MeasureClockOffset(ctx, laddr, raddr, p)

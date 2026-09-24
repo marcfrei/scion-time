@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"strconv"
 	"sync"
 	"time"
 
@@ -79,16 +78,7 @@ func (q *csptpClientQueueSCION) Pop() any {
 }
 
 func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
-	conn *udpConn, localHostIface string, localHostPort int, dscp uint8) {
-	err := udp.EnableTimestamping(conn.c, localHostIface, -1 /* index */)
-	if err != nil {
-		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
-	}
-	err = udp.SetDSCP(conn.c, dscp)
-	if err != nil {
-		log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
-	}
-
+	conn, generalConn *udpConn, localHostPort int, dscp uint8, flashPTP bool) {
 	var syncConn, followUpConn *udpConn
 
 	buf := make([]byte, scion.MTU)
@@ -194,7 +184,38 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 		clientID := scionLayer.SrcIA.String() + "," + srcAddr.String()
 
-		if reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortSCION {
+		if !flashPTP && reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortSCION {
+			if reqmsg.MajorSdoID() != csptp.CSPTPSdoID {
+				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected SdoID")
+				continue
+			}
+
+			if reqmsg.FlagField&csptp.FlagTwoStep == csptp.FlagTwoStep {
+				log.LogAttrs(ctx, slog.LevelInfo, "received two-step Sync request")
+				continue
+			}
+
+			var reqtlv csptp.CSPTPRequestTLV
+			err = csptp.DecodeCSPTPRequestTLV(&reqtlv, udpLayer.Payload[csptp.MinMessageLength:])
+			if err != nil {
+				log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
+				continue
+			}
+			if reqtlv.Type != csptp.TLVTypeCSPTPRequest ||
+				reqtlv.Length != csptp.CSPTPRequestTLVLength-csptp.MinTLVLength {
+				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Sync message")
+				continue
+			}
+
+			log.LogAttrs(ctx, slog.LevelDebug, "received request",
+				slog.Time("at", rxt),
+				slog.String("from", clientID),
+				slog.Any("reqmsg", &reqmsg),
+				slog.Any("reqtlv", &reqtlv),
+			)
+
+			syncConn, followUpConn = conn, generalConn
+		} else if flashPTP && reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortSCION {
 			if len(udpLayer.Payload)-csptp.MinMessageLength != 0 {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Sync message length")
 				continue
@@ -212,7 +233,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			)
 
 			syncConn, followUpConn = conn, nil
-		} else if reqmsg.MessageType() == csptp.MessageTypeFollowUp && localHostPort == csptp.GeneralPortSCION {
+		} else if flashPTP && reqmsg.MessageType() == csptp.MessageTypeFollowUp && localHostPort == csptp.GeneralPortSCION {
 			var reqtlv csptp.RequestTLV
 			err = csptp.DecodeRequestTLV(&reqtlv, udpLayer.Payload[csptp.MinMessageLength:])
 			if err != nil {
@@ -252,41 +273,60 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			sequenceComplete     bool
 		)
 
-		csptpSrvrMuSCION.Lock()
-		// maintain CSPTP client data structure
-		_ = len(csptpClntsSCION)
-		_ = len(csptpClntsQSCION)
-		var clnt *csptpClientSCION
-		if syncConn != nil {
-			clnt = &csptpSyncClntSCION
-		} else if followUpConn != nil {
-			clnt = &csptpFollowUpClntSCION
-		}
-		if clnt.key != clientID || clnt.ctxts[0].sequenceID <= reqmsg.SequenceID {
-			clnt.key = clientID
-			clnt.ctxts[0].conn = conn
-			clnt.ctxts[0].buf = buf
-			clnt.ctxts[0].lastHop = lastHop
-			clnt.ctxts[0].scionLayer = scionLayer
-			clnt.ctxts[0].udpLayer = udpLayer
-			clnt.ctxts[0].rxTime = rxt
-			clnt.ctxts[0].sequenceID = reqmsg.SequenceID
-			clnt.ctxts[0].domainNumber = reqmsg.DomainNumber
-			clnt.ctxts[0].correction = reqmsg.CorrectionField
-			clnt.len = 1
+		if flashPTP {
+			csptpSrvrMuSCION.Lock()
+			// maintain CSPTP client data structure
+			_ = len(csptpClntsSCION)
+			_ = len(csptpClntsQSCION)
+			var clnt *csptpClientSCION
+			if syncConn != nil {
+				clnt = &csptpSyncClntSCION
+			} else if followUpConn != nil {
+				clnt = &csptpFollowUpClntSCION
+			}
+			if clnt.key != clientID || clnt.ctxts[0].sequenceID <= reqmsg.SequenceID {
+				clnt.key = clientID
+				clnt.ctxts[0].conn = conn
+				clnt.ctxts[0].buf = buf
+				clnt.ctxts[0].lastHop = lastHop
+				clnt.ctxts[0].scionLayer = scionLayer
+				clnt.ctxts[0].udpLayer = udpLayer
+				clnt.ctxts[0].rxTime = rxt
+				clnt.ctxts[0].sequenceID = reqmsg.SequenceID
+				clnt.ctxts[0].domainNumber = reqmsg.DomainNumber
+				clnt.ctxts[0].correction = reqmsg.CorrectionField
+				clnt.len = 1
+				buf = make([]byte, cap(buf))
+			}
+			if csptpSyncClntSCION.key == csptpFollowUpClntSCION.key &&
+				csptpSyncClntSCION.ctxts[0].sequenceID == csptpFollowUpClntSCION.ctxts[0].sequenceID {
+
+				sequenceComplete = true
+				syncCtx = csptpSyncClntSCION.ctxts[0]
+				followUpCtx = csptpFollowUpClntSCION.ctxts[0]
+
+				csptpSyncClntSCION.key = ""
+				csptpFollowUpClntSCION.key = ""
+			}
+			csptpSrvrMuSCION.Unlock()
+		} else {
+			// IEEE P1588.1: respond to one-step request immediately, no client state
+			syncCtx = csptpContextSCION{
+				conn:         syncConn,
+				buf:          buf,
+				lastHop:      lastHop,
+				scionLayer:   scionLayer,
+				udpLayer:     udpLayer,
+				rxTime:       rxt,
+				sequenceID:   reqmsg.SequenceID,
+				domainNumber: reqmsg.DomainNumber,
+				correction:   reqmsg.CorrectionField,
+			}
+			followUpCtx = syncCtx
+			followUpCtx.conn = followUpConn
+			sequenceComplete = true
 			buf = make([]byte, cap(buf))
 		}
-		if csptpSyncClntSCION.key == csptpFollowUpClntSCION.key &&
-			csptpSyncClntSCION.ctxts[0].sequenceID == csptpFollowUpClntSCION.ctxts[0].sequenceID {
-
-			sequenceComplete = true
-			syncCtx = csptpSyncClntSCION.ctxts[0]
-			followUpCtx = csptpFollowUpClntSCION.ctxts[0]
-
-			csptpSyncClntSCION.key = ""
-			csptpFollowUpClntSCION.key = ""
-		}
-		csptpSrvrMuSCION.Unlock()
 
 		if sequenceComplete {
 			var msg csptp.Message
@@ -316,8 +356,23 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				Timestamp:          csptp.Timestamp{},
 			}
 
-			buf = buf[:msg.MessageLength]
-			csptp.EncodeMessage(buf, &msg)
+			if flashPTP {
+				buf = buf[:msg.MessageLength]
+				csptp.EncodeMessage(buf, &msg)
+			} else {
+				msg.SourcePortIdentity = csptp.PortID{}
+				csptptlv := csptp.CSPTPResponseTLV{
+					Type:                csptp.TLVTypeCSPTPResponse,
+					Length:              csptp.CSPTPResponseTLVLength - csptp.MinTLVLength,
+					ReqIngressTimestamp: csptp.TimestampFromTime(syncCtx.rxTime),
+					ReqCorrectionField:  syncCtx.correction,
+				}
+				msg.MessageLength += csptp.CSPTPResponseTLVLength
+
+				buf = buf[:msg.MessageLength]
+				csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
+				csptp.EncodeCSPTPResponseTLV(buf[csptp.MinMessageLength:], &csptptlv)
+			}
 
 			syncCtx.scionLayer.TrafficClass = dscp << 2
 			syncCtx.scionLayer.DstIA, syncCtx.scionLayer.SrcIA =
@@ -408,57 +463,72 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				LogMessageInterval: csptp.LogMessageInterval,
 				Timestamp:          csptp.TimestampFromTime(txTime0),
 			}
-			resptlv = csptp.ResponseTLV{
-				Type:   csptp.TLVTypeOrganizationExtension,
-				Length: 0,
-				OrganizationID: [3]uint8{
-					csptp.OrganizationIDMeinberg0,
-					csptp.OrganizationIDMeinberg1,
-					csptp.OrganizationIDMeinberg2},
-				OrganizationSubType: [3]uint8{
-					csptp.OrganizationSubTypeResponse0,
-					csptp.OrganizationSubTypeResponse1,
-					csptp.OrganizationSubTypeResponse2},
-				// FlagField:               csptp.TLVFlagServerStateDS,
-				FlagField:               0,
-				Error:                   0,
-				RequestIngressTimestamp: csptp.TimestampFromTime(syncCtx.rxTime),
-				RequestCorrectionField:  0,
-				UTCOffset:               0,
-				ServerStateDS: csptp.ServerStateDS{
-					GMPriority1:     0, /* TODO */
-					GMClockClass:    0, /* TODO */
-					GMClockAccuracy: 0, /* TODO */
-					GMClockVariance: 0, /* TODO */
-					GMPriority2:     0, /* TODO */
-					GMClockID:       0, /* TODO */
-					StepsRemoved:    0, /* TODO */
-					TimeSource:      0, /* TODO */
-					Reserved:        0,
-				},
+			if flashPTP {
+				resptlv = csptp.ResponseTLV{
+					Type:   csptp.TLVTypeOrganizationExtension,
+					Length: 0,
+					OrganizationID: [3]uint8{
+						csptp.OrganizationIDMeinberg0,
+						csptp.OrganizationIDMeinberg1,
+						csptp.OrganizationIDMeinberg2},
+					OrganizationSubType: [3]uint8{
+						csptp.OrganizationSubTypeResponse0,
+						csptp.OrganizationSubTypeResponse1,
+						csptp.OrganizationSubTypeResponse2},
+					// FlagField:               csptp.TLVFlagServerStateDS,
+					FlagField:               0,
+					Error:                   0,
+					RequestIngressTimestamp: csptp.TimestampFromTime(syncCtx.rxTime),
+					RequestCorrectionField:  0,
+					UTCOffset:               0,
+					ServerStateDS: csptp.ServerStateDS{
+						GMPriority1:     0, /* TODO */
+						GMClockClass:    0, /* TODO */
+						GMClockAccuracy: 0, /* TODO */
+						GMClockVariance: 0, /* TODO */
+						GMPriority2:     0, /* TODO */
+						GMClockID:       0, /* TODO */
+						StepsRemoved:    0, /* TODO */
+						TimeSource:      0, /* TODO */
+						Reserved:        0,
+					},
+				}
+				msg.MessageLength += uint16(csptp.ResponseTLVLength(&resptlv))
+				resptlv.Length = uint16(csptp.ResponseTLVLength(&resptlv))
+
+				buf = buf[:msg.MessageLength]
+				csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
+				csptp.EncodeResponseTLV(buf[csptp.MinMessageLength:], &resptlv)
+			} else {
+				msg.SourcePortIdentity = csptp.PortID{}
+
+				buf = buf[:msg.MessageLength]
+				csptp.EncodeMessage(buf, &msg)
 			}
-			msg.MessageLength += uint16(csptp.ResponseTLVLength(&resptlv))
-			resptlv.Length = uint16(csptp.ResponseTLVLength(&resptlv))
 
-			buf = buf[:msg.MessageLength]
-			csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
-			csptp.EncodeResponseTLV(buf[csptp.MinMessageLength:], &resptlv)
+			if flashPTP {
+				followUpCtx.scionLayer.TrafficClass = dscp << 2
+				followUpCtx.scionLayer.DstIA, followUpCtx.scionLayer.SrcIA =
+					followUpCtx.scionLayer.SrcIA, followUpCtx.scionLayer.DstIA
+				followUpCtx.scionLayer.DstAddrType, followUpCtx.scionLayer.SrcAddrType =
+					followUpCtx.scionLayer.SrcAddrType, followUpCtx.scionLayer.DstAddrType
+				followUpCtx.scionLayer.RawDstAddr, followUpCtx.scionLayer.RawSrcAddr =
+					followUpCtx.scionLayer.RawSrcAddr, followUpCtx.scionLayer.RawDstAddr
+				followUpCtx.scionLayer.Path, err = followUpCtx.scionLayer.Path.Reverse()
+				if err != nil {
+					panic(err)
+				}
+				followUpCtx.scionLayer.NextHdr = slayers.L4UDP
 
-			followUpCtx.scionLayer.TrafficClass = dscp << 2
-			followUpCtx.scionLayer.DstIA, followUpCtx.scionLayer.SrcIA =
-				followUpCtx.scionLayer.SrcIA, followUpCtx.scionLayer.DstIA
-			followUpCtx.scionLayer.DstAddrType, followUpCtx.scionLayer.SrcAddrType =
-				followUpCtx.scionLayer.SrcAddrType, followUpCtx.scionLayer.DstAddrType
-			followUpCtx.scionLayer.RawDstAddr, followUpCtx.scionLayer.RawSrcAddr =
-				followUpCtx.scionLayer.RawSrcAddr, followUpCtx.scionLayer.RawDstAddr
-			followUpCtx.scionLayer.Path, err = followUpCtx.scionLayer.Path.Reverse()
-			if err != nil {
-				panic(err)
+				followUpCtx.udpLayer.DstPort, followUpCtx.udpLayer.SrcPort =
+					followUpCtx.udpLayer.SrcPort, followUpCtx.udpLayer.DstPort
+			} else {
+				// Follow Up response via the already reversed Sync response path,
+				// from the general port to the Sync request's source port
+				followUpCtx.scionLayer = syncCtx.scionLayer
+				followUpCtx.udpLayer = syncCtx.udpLayer
+				followUpCtx.udpLayer.SrcPort = csptp.GeneralPortSCION
 			}
-			followUpCtx.scionLayer.NextHdr = slayers.L4UDP
-
-			followUpCtx.udpLayer.DstPort, followUpCtx.udpLayer.SrcPort =
-				followUpCtx.udpLayer.SrcPort, followUpCtx.udpLayer.DstPort
 			followUpCtx.udpLayer.SetNetworkLayerForChecksum(&followUpCtx.scionLayer)
 
 			payload = gopacket.Payload(buf)
@@ -515,9 +585,10 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 }
 
 func StartCSPTPServerSCION(ctx context.Context, log *slog.Logger,
-	localHost *net.UDPAddr, dscp uint8) {
+	localHost *net.UDPAddr, dscp uint8, flashPTP bool) {
 	log.LogAttrs(ctx, slog.LevelInfo, "CSPTP server listening via SCION",
 		slog.Any("local host", localHost.IP),
+		slog.Bool("FlashPTP", flashPTP),
 	)
 
 	if localHost.Port != 0 {
@@ -525,17 +596,10 @@ func StartCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			slog.Int("port", localHost.Port))
 	}
 
-	lc := net.ListenConfig{
-		Control: udp.SetsockoptReuseAddrPort,
-	}
-	for _, localHostPort := range []int{csptp.EventPortSCION, csptp.GeneralPortSCION} {
-		address := net.JoinHostPort(localHost.IP.String(), strconv.Itoa(localHostPort))
-		for range scionServerNumGoroutine {
-			conn, err := lc.ListenPacket(ctx, "udp", address)
-			if err != nil {
-				logbase.FatalContext(ctx, log, "failed to listen for packets", slog.Any("error", err))
-			}
-			go runCSPTPServerSCION(ctx, log, &udpConn{c: conn.(*net.UDPConn)}, localHost.Zone, localHostPort, dscp)
-		}
+	for range scionServerNumGoroutine {
+		econn := openCSPTPConn(ctx, log, localHost, csptp.EventPortSCION, dscp)
+		gconn := openCSPTPConn(ctx, log, localHost, csptp.GeneralPortSCION, dscp)
+		go runCSPTPServerSCION(ctx, log, econn, gconn, csptp.EventPortSCION, dscp, flashPTP)
+		go runCSPTPServerSCION(ctx, log, gconn, gconn, csptp.GeneralPortSCION, dscp, flashPTP)
 	}
 }
