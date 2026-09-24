@@ -296,12 +296,12 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.CSPTPSdoID,
+					csptp.SdoID,
 					csptp.MessageTypeSync,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        syncCtx.domainNumber,
+				DomainNumber:        0 /* csptp.DomainNumber */,
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 				CorrectionField:     0,
@@ -389,12 +389,12 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.CSPTPSdoID,
+					csptp.SdoID,
 					csptp.MessageTypeFollowUp,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        syncCtx.domainNumber,
+				DomainNumber:        0 /* csptp.DomainNumber */,
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagUnicast,
 				CorrectionField:     0,
