@@ -336,12 +336,12 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.CSPTPSdoID,
+					csptp.SdoID,
 					csptp.MessageTypeSync,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        syncCtx.domainNumber,
+				DomainNumber:        0, /* csptp.DomainNumber */
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 				CorrectionField:     0,
@@ -360,6 +360,11 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				buf = buf[:msg.MessageLength]
 				csptp.EncodeMessage(buf, &msg)
 			} else {
+				msg.SdoIDMessageType = csptp.SdoIDMessageType(
+					csptp.CSPTPSdoID,
+					csptp.MessageTypeSync,
+				)
+				msg.DomainNumber = syncCtx.domainNumber
 				msg.SourcePortIdentity = csptp.PortID{}
 				csptptlv := csptp.CSPTPResponseTLV{
 					Type:                csptp.TLVTypeCSPTPResponse,
@@ -444,12 +449,12 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 			msg = csptp.Message{
 				SdoIDMessageType: csptp.SdoIDMessageType(
-					csptp.CSPTPSdoID,
+					csptp.SdoID,
 					csptp.MessageTypeFollowUp,
 				),
 				PTPVersion:          csptp.PTPVersion,
 				MessageLength:       csptp.MinMessageLength,
-				DomainNumber:        syncCtx.domainNumber,
+				DomainNumber:        0, /* csptp.DomainNumber */
 				MinorSdoID:          csptp.MinorSdoID,
 				FlagField:           csptp.FlagUnicast,
 				CorrectionField:     0,
@@ -500,6 +505,11 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
 				csptp.EncodeResponseTLV(buf[csptp.MinMessageLength:], &resptlv)
 			} else {
+				msg.SdoIDMessageType = csptp.SdoIDMessageType(
+					csptp.CSPTPSdoID,
+					csptp.MessageTypeFollowUp,
+				)
+				msg.DomainNumber = syncCtx.domainNumber
 				msg.SourcePortIdentity = csptp.PortID{}
 
 				buf = buf[:msg.MessageLength]
