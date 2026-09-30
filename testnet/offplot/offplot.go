@@ -188,6 +188,11 @@ func main() {
 
 	p.Add(plotter.NewGrid())
 
+	// line, err := plotter.NewLine(data)
+	// if err != nil {
+	// 	log.Fatalf("error during plot: %s", err)
+	// }
+	// p.Add(line)
 	scatter, err := plotter.NewScatter(data)
 	if err != nil {
 		log.Fatalf("error during plot: %s", err)
