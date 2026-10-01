@@ -3,10 +3,12 @@ package client
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"log/slog"
 	"math"
 	"net"
 	"net/netip"
+	"os"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -33,6 +35,11 @@ import (
 	"example.com/scion-time/net/ntske"
 	"example.com/scion-time/net/scion"
 	"example.com/scion-time/net/udp"
+)
+
+const (
+	exchangeTimeoutMin  = 100 * time.Millisecond
+	exchangeTimeoutRTTs = 4
 )
 
 type SCIONClient struct {
@@ -140,11 +147,15 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	}
 	defer func() { _ = conn.Close() }()
 	deadline, deadlineSet := ctx.Deadline()
+	var sampleEnd time.Time
 	if deadlineSet {
 		err = conn.SetDeadline(deadline)
 		if err != nil {
 			return time.Time{}, 0, err
 		}
+		// Stop collecting lucky packet samples after 80% of the time to the
+		// deadline, leaving room for the last exchange to complete.
+		sampleEnd = time.Now().Add(time.Until(deadline) * 4 / 5)
 	}
 	err = udp.EnableTimestamping(conn, localAddr.Host.Zone, -1 /* index */)
 	if err != nil {
@@ -218,8 +229,11 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	}
 
 	var txid uint32
+	var lastRTT time.Duration
+	var lastRxTime time.Time
 	buf := make([]byte, scion.MTU)
 	oob := make([]byte, udp.TimestampLen())
+exchanges:
 	for {
 		cTxTime0 := timebase.Now()
 		interleavedReq := false
@@ -373,6 +387,21 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			mtrcs.reqsSentInterleaved.Inc()
 		}
 
+		// After a first response, time out single exchanges so that a lost
+		// packet does not stall sampling until the deadline.
+		readDeadline := deadline
+		if deadlineSet && lastRTT != 0 {
+			t := time.Now().Add(max(exchangeTimeoutMin, exchangeTimeoutRTTs*lastRTT))
+			if t.Before(deadline) {
+				readDeadline = t
+			}
+			err = conn.SetReadDeadline(readDeadline)
+			if err != nil {
+				incFailures(c)
+				return time.Time{}, 0, err
+			}
+		}
+
 		const maxNumRetries = 1
 		numRetries := 0
 		for {
@@ -380,10 +409,31 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 			oob = oob[:cap(oob)]
 			n, oobn, flags, lastHop, err := conn.ReadMsgUDPAddrPort(buf, oob)
 			if err != nil {
+				if readDeadline.Before(deadline) && errors.Is(err, os.ErrDeadlineExceeded) {
+					c.Log.LogAttrs(ctx, slog.LevelInfo, "exchange timed out",
+						slog.String("via", pathFingerprint))
+					incFailures(c)
+					// A late response must not be paired with the next request's
+					// timestamps: continue in basic mode.
+					c.prev.timestamps.set = false
+					if time.Now().Before(sampleEnd) {
+						continue exchanges
+					}
+					if c.Filter != nil {
+						off, ok := c.Filter.Flush()
+						if ok {
+							return lastRxTime, off, nil
+						}
+					}
+					return time.Time{}, 0, err
+				}
 				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 					numRetries++
 					continue
+				}
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					c.prev.timestamps.set = false
 				}
 				incFailures(c)
 				return time.Time{}, 0, err
@@ -651,6 +701,8 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				c.prev.interleaved = interleavedResp
 			}
 			c.prev.failures = 0
+			lastRTT = rtd
+			lastRxTime = cRxTime
 
 			if c.Histogram != nil {
 				err := c.Histogram.RecordValue(rtd.Microseconds())
@@ -661,6 +713,9 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 
 			if c.Filter != nil {
 				off, ok = c.Filter.Do(t0, t1, t2, t3)
+				if !ok && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
+					off, ok = c.Filter.Flush()
+				}
 				if !ok {
 					break
 				}

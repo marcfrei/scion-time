@@ -26,6 +26,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/segment/iface"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
 
@@ -80,6 +81,7 @@ type svcConfig struct {
 	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
 	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
 	SCIONPublicAddr         string   `toml:"scion_public_address,omitempty"`
+	SCIONExcludedIfaces     []string `toml:"scion_excluded_interfaces,omitempty"` // ISD-AS#IFID
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	PHCReferenceClocks      []string `toml:"phc_reference_clocks,omitempty"`
@@ -115,12 +117,13 @@ type ntpReferenceClockIP struct {
 }
 
 type ntpReferenceClockSCION struct {
-	log        *slog.Logger
-	ntpcs      [scionRefClockNumClient]*client.SCIONClient
-	localAddr  udp.UDPAddr
-	remoteAddr udp.UDPAddr
-	publicIP   net.IP
-	pather     *scion.Pather
+	log            *slog.Logger
+	ntpcs          [scionRefClockNumClient]*client.SCIONClient
+	localAddr      udp.UDPAddr
+	remoteAddr     udp.UDPAddr
+	publicIP       net.IP
+	pather         *scion.Pather
+	excludedIfaces []snet.PathInterface
 }
 
 type tlsCertCache struct {
@@ -311,7 +314,7 @@ func (c *ntpReferenceClockSCION) MeasureClockOffset(ctx context.Context) (
 			NextHop:       c.remoteAddr.Host,
 		}}
 	} else {
-		ps = c.pather.Paths(c.remoteAddr.IA)
+		ps = client.ExcludePaths(c.pather.Paths(c.remoteAddr.IA), c.excludedIfaces)
 	}
 	return client.MeasureClockOffsetSCION(
 		ctx, c.log, c.ntpcs[:], c.localAddr, c.remoteAddr, c.publicIP, ps)
@@ -398,6 +401,29 @@ func filterConfig(cfg svcConfig) (size, pick int) {
 		logbase.Fatal(slog.Default(), "invalid filter configuration specified in config")
 	}
 	return
+}
+
+func excludedInterfaces(cfg svcConfig) []snet.PathInterface {
+	var ifaces []snet.PathInterface
+	for _, s := range cfg.SCIONExcludedIfaces {
+		iaStr, idStr, ok := strings.Cut(s, "#")
+		if !ok {
+			logbase.Fatal(slog.Default(), "unexpected excluded interface specification",
+				slog.String("interface", s))
+		}
+		ia, err := addr.ParseIA(iaStr)
+		if err != nil || ia.IsZero() {
+			logbase.Fatal(slog.Default(), "unexpected excluded interface ISD-AS",
+				slog.String("interface", s), slog.Any("error", err))
+		}
+		id, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil || id == 0 {
+			logbase.Fatal(slog.Default(), "unexpected excluded interface ID",
+				slog.String("interface", s), slog.Any("error", err))
+		}
+		ifaces = append(ifaces, snet.PathInterface{IA: ia, ID: iface.ID(id)})
+	}
+	return ifaces
 }
 
 func clockDrift(cfg svcConfig) time.Duration {
@@ -623,10 +649,12 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			logbase.Fatal(slog.Default(), "failed to start path discovery",
 				slog.Any("error", err))
 		}
+		excludedIfaces := excludedInterfaces(cfg)
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
+				scionclk.excludedIfaces = excludedIfaces
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
@@ -640,6 +668,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
+				scionclk.excludedIfaces = excludedIfaces
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true

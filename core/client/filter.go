@@ -70,6 +70,24 @@ func (f *NtimedFilter) Do(cTx, sRx, sTx, cRx time.Time) (
 		return 0, false
 	}
 
+	return f.pickLucky(), true
+}
+
+// Flush selects from the samples collected so far, even if fewer than the
+// lucky packet window size.
+func (f *NtimedFilter) Flush() (offset time.Duration, ok bool) {
+	if f.epoch != timebase.Epoch() {
+		f.Reset()
+	}
+
+	if len(f.buf) == 0 {
+		return 0, false
+	}
+
+	return f.pickLucky(), true
+}
+
+func (f *NtimedFilter) pickLucky() time.Duration {
 	var off time.Duration
 	if f.pick == 1 {
 		x := f.buf[0]
@@ -82,7 +100,7 @@ func (f *NtimedFilter) Do(cTx, sRx, sTx, cRx time.Time) (
 		off = f.filter(x.cTx, x.sRx, x.sTx, x.cRx)
 	} else {
 		slices.SortStableFunc(f.buf, cmpRTD)
-		f.buf = f.buf[:f.pick]
+		f.buf = f.buf[:min(f.pick, len(f.buf))]
 		slices.SortStableFunc(f.buf, cmpCTx)
 		for _, s := range f.buf {
 			off = f.filter(s.cTx, s.sRx, s.sTx, s.cRx)
@@ -90,7 +108,7 @@ func (f *NtimedFilter) Do(cTx, sRx, sTx, cRx time.Time) (
 	}
 	f.buf = f.buf[:0]
 
-	return off, true
+	return off
 }
 
 func (f *NtimedFilter) filter(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (

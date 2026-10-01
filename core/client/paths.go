@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"sync"
 
 	"github.com/scionproto/scion/pkg/snet"
@@ -83,6 +84,21 @@ func pathInterfaces(p snet.Path) []snet.PathInterface {
 		return md.Interfaces
 	}
 	return nil
+}
+
+// ExcludePaths removes the paths that traverse any of the given interfaces.
+func ExcludePaths(ps []snet.Path, ifaces []snet.PathInterface) []snet.Path {
+	if len(ifaces) == 0 {
+		return ps
+	}
+	return slices.DeleteFunc(ps, func(p snet.Path) bool {
+		for _, iface := range pathInterfaces(p) {
+			if slices.Contains(ifaces, iface) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {

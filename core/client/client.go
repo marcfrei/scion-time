@@ -26,6 +26,7 @@ type ReferenceClockClient struct {
 
 var (
 	errNoPath             = errors.New("failed to measure clock offset: no path")
+	errNoMeasurement      = errors.New("failed to measure clock offset: no successful measurement")
 	errUnexpectedAddrType = errors.New("unexpected address type")
 
 	ipMetrics    atomic.Pointer[ipClientMetrics]
@@ -200,8 +201,11 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			}
 		}(ctx, log, mtrcs, ntpcs[i], localAddr, remoteAddr, publicIP, sps[i])
 	}
-	collectMeasurements(ctx, ms, msc)
-	m := measurements.FaultTolerantMidpoint(ms)
+	n := collectMeasurements(ctx, ms, msc)
+	if n == 0 {
+		return time.Time{}, 0, errNoMeasurement
+	}
+	m := measurements.FaultTolerantMidpoint(ms[:n])
 	return m.Timestamp, m.Offset, m.Error
 }
 
