@@ -56,6 +56,9 @@ const (
 	TLVFlagStatus        = 1 << 24
 	TLVFlagAltTimescale  = 1 << 25
 
+	NetworkProtocolUDPIPv4 = 1
+	NetworkProtocolUDPIPv6 = 2
+
 	ErrorTxTimestampInvalid = 1
 )
 

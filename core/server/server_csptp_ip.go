@@ -48,6 +48,42 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger,
 	return &udpConn{c: conn}
 }
 
+func newCSPTPStatusTLV(localAddr netip.Addr) csptp.CSPTPStatusTLV {
+	// No PTP data sets available: the server reports itself as grandmaster
+	// with IEEE 1588 default or "unknown" clock quality values.
+	tlv := csptp.CSPTPStatusTLV{
+		Type:                 csptp.TLVTypeCSPTPStatus,
+		GrandmasterPriority1: 128,
+		GrandmasterClockQuality: csptp.ClockQuality{
+			ClockClass:              248,    // default
+			ClockAccuracy:           0xfe,   // unknown
+			OffsetScaledLogVariance: 0xffff, // not computed
+		},
+		GrandmasterPriority2: 128,
+		StepsRemoved:         0,
+		CurrentUTCOffset:     0,          // ptpTimescale not set
+		GrandmasterIdentity:  [8]uint8{}, // sourcePortIdentity is 0 as well
+	}
+	localAddr = localAddr.Unmap()
+	if localAddr.Is4() {
+		a := localAddr.As4()
+		tlv.ParentAddress = csptp.PortAddress{
+			NetworkProtocol: csptp.NetworkProtocolUDPIPv4,
+			AddressLength:   uint16(len(a)),
+			Address:         a[:],
+		}
+	} else {
+		a := localAddr.As16()
+		tlv.ParentAddress = csptp.PortAddress{
+			NetworkProtocol: csptp.NetworkProtocolUDPIPv6,
+			AddressLength:   uint16(len(a)),
+			Address:         a[:],
+		}
+	}
+	tlv.Length = uint16(csptp.CSPTPStatusTLVLength(&tlv) - csptp.MinTLVLength)
+	return tlv
+}
+
 type csptpContextIP struct {
 	conn         *udpConn
 	srcPort      uint16
@@ -55,6 +91,7 @@ type csptpContextIP struct {
 	sequenceID   uint16
 	domainNumber uint8
 	correction   int64
+	requestFlags uint32
 }
 
 //lint:ignore U1000 work in progress
@@ -107,6 +144,8 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 	conn, generalConn *udpConn, localHostPort int, flashPTP bool) {
 	var syncConn, followUpConn *udpConn
 
+	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr())
+
 	buf := make([]byte, csptp.MaxMessageLength)
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -149,6 +188,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			continue
 		}
 
+		var reqFlags uint32
 		if !flashPTP && reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortIP {
 			if reqmsg.MajorSdoID() != csptp.CSPTPSdoID {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected SdoID")
@@ -171,6 +211,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Sync message")
 				continue
 			}
+			reqFlags = reqtlv.RequestFlags
 
 			log.LogAttrs(ctx, slog.LevelDebug, "received request",
 				slog.Time("at", rxt),
@@ -279,6 +320,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				sequenceID:   reqmsg.SequenceID,
 				domainNumber: reqmsg.DomainNumber,
 				correction:   reqmsg.CorrectionField,
+				requestFlags: reqFlags,
 			}
 			followUpCtx = syncCtx
 			followUpCtx.conn = followUpConn
@@ -330,10 +372,19 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					ReqCorrectionField:  syncCtx.correction,
 				}
 				msg.MessageLength += csptp.CSPTPResponseTLVLength
+				status := syncCtx.requestFlags&csptp.TLVFlagStatus == csptp.TLVFlagStatus
+				if status {
+					msg.MessageLength += uint16(csptp.CSPTPStatusTLVLength(&statustlv))
+				}
 
 				buf = buf[:msg.MessageLength]
 				csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
 				csptp.EncodeCSPTPResponseTLV(buf[csptp.MinMessageLength:], &csptptlv)
+				if status {
+					// IEEE P1588.1: requested TLVs immediately after CSPTP_RESPONSE TLV
+					csptp.EncodeCSPTPStatusTLV(
+						buf[csptp.MinMessageLength+csptp.CSPTPResponseTLVLength:], &statustlv)
+				}
 			}
 
 			syncCtx.conn.mu.Lock()

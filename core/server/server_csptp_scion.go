@@ -29,6 +29,7 @@ type csptpContextSCION struct {
 	sequenceID   uint16
 	domainNumber uint8
 	correction   int64
+	requestFlags uint32
 }
 
 //lint:ignore U1000 work in progress
@@ -80,6 +81,8 @@ func (q *csptpClientQueueSCION) Pop() any {
 func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 	conn, generalConn *udpConn, localHostPort int, dscp uint8, flashPTP bool) {
 	var syncConn, followUpConn *udpConn
+
+	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr())
 
 	buf := make([]byte, scion.MTU)
 	oob := make([]byte, udp.TimestampLen())
@@ -184,6 +187,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 
 		clientID := scionLayer.SrcIA.String() + "," + srcAddr.String()
 
+		var reqFlags uint32
 		if !flashPTP && reqmsg.MessageType() == csptp.MessageTypeSync && localHostPort == csptp.EventPortSCION {
 			if reqmsg.MajorSdoID() != csptp.CSPTPSdoID {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected SdoID")
@@ -206,6 +210,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to validate packet payload: unexpected Sync message")
 				continue
 			}
+			reqFlags = reqtlv.RequestFlags
 
 			log.LogAttrs(ctx, slog.LevelDebug, "received request",
 				slog.Time("at", rxt),
@@ -321,6 +326,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				sequenceID:   reqmsg.SequenceID,
 				domainNumber: reqmsg.DomainNumber,
 				correction:   reqmsg.CorrectionField,
+				requestFlags: reqFlags,
 			}
 			followUpCtx = syncCtx
 			followUpCtx.conn = followUpConn
@@ -373,10 +379,19 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 					ReqCorrectionField:  syncCtx.correction,
 				}
 				msg.MessageLength += csptp.CSPTPResponseTLVLength
+				status := syncCtx.requestFlags&csptp.TLVFlagStatus == csptp.TLVFlagStatus
+				if status {
+					msg.MessageLength += uint16(csptp.CSPTPStatusTLVLength(&statustlv))
+				}
 
 				buf = buf[:msg.MessageLength]
 				csptp.EncodeMessage(buf[:csptp.MinMessageLength], &msg)
 				csptp.EncodeCSPTPResponseTLV(buf[csptp.MinMessageLength:], &csptptlv)
+				if status {
+					// IEEE P1588.1: requested TLVs immediately after CSPTP_RESPONSE TLV
+					csptp.EncodeCSPTPStatusTLV(
+						buf[csptp.MinMessageLength+csptp.CSPTPResponseTLVLength:], &statustlv)
+				}
 			}
 
 			syncCtx.scionLayer.TrafficClass = dscp << 2
