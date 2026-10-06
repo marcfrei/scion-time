@@ -18,7 +18,6 @@ type CSPTPClientIP struct {
 	FlashPTP      bool
 	RequestStatus bool // IEEE P1588.1: request CSPTP_STATUS TLV
 	sequenceID    uint16
-	clockID       csptpLocalClockID
 }
 
 func readCSPTPReplyIP(ctx context.Context, log *slog.Logger,
@@ -125,8 +124,6 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	}
 	defer func() { _ = gconn.Close() }()
 
-	clockID := c.clockID.get(ctx, c.Log, localAddr)
-
 	var cTxTime0, cTxTime1 time.Time
 
 	buf := make([]byte, csptp.MaxMessageLength)
@@ -135,13 +132,13 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	reference := remoteAddr.String()
 
 	if c.FlashPTP {
-		buf = flashPTPSyncRequest(buf, c.sequenceID, clockID)
+		buf = flashPTPSyncRequest(buf, c.sequenceID)
 	} else {
 		var reqFlags uint32
 		if c.RequestStatus {
 			reqFlags |= csptp.TLVFlagStatus
 		}
-		buf = csptpSyncRequest(buf, c.sequenceID, clockID, reqFlags)
+		buf = csptpSyncRequest(buf, c.sequenceID, reqFlags)
 	}
 
 	n, err = econn.WriteToUDPAddrPort(buf, netip.AddrPortFrom(remoteAddr, csptp.EventPortIP))
@@ -158,7 +155,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	}
 
 	if c.FlashPTP {
-		buf = flashPTPFollowUpRequest(buf[:cap(buf)], c.sequenceID, clockID)
+		buf = flashPTPFollowUpRequest(buf[:cap(buf)], c.sequenceID)
 
 		n, err = gconn.WriteToUDPAddrPort(buf, netip.AddrPortFrom(remoteAddr, csptp.GeneralPortIP))
 		if err != nil {

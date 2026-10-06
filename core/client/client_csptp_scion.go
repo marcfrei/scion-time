@@ -25,7 +25,6 @@ type CSPTPClientSCION struct {
 	DSCP       uint8
 	FlashPTP   bool
 	sequenceID uint16
-	clockID    csptpLocalClockID
 }
 
 func readCSPTPReplySCION(ctx context.Context, log *slog.Logger,
@@ -185,8 +184,6 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 		defer func() { _ = gconn.Close() }()
 	}
 
-	clockID := c.clockID.get(ctx, c.Log, laddr)
-
 	ip4 := remoteAddr.Host.IP.To4()
 	if ip4 != nil {
 		remoteAddr.Host.IP = ip4
@@ -209,9 +206,9 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	pathFingerprint := snet.Fingerprint(pathInterfaces(path)).String()
 
 	if c.FlashPTP {
-		buf = flashPTPSyncRequest(buf, c.sequenceID, clockID)
+		buf = flashPTPSyncRequest(buf, c.sequenceID)
 	} else {
-		buf = csptpSyncRequest(buf, c.sequenceID, clockID, 0 /* requestFlags */)
+		buf = csptpSyncRequest(buf, c.sequenceID, 0 /* requestFlags */)
 	}
 
 	var scionLayer slayers.SCION
@@ -288,7 +285,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	}
 
 	if c.FlashPTP {
-		buf = flashPTPFollowUpRequest(buf[:cap(buf)], c.sequenceID, clockID)
+		buf = flashPTPFollowUpRequest(buf[:cap(buf)], c.sequenceID)
 
 		scionLayer.TrafficClass = c.DSCP << 2
 		scionLayer.SrcIA = localAddr.IA

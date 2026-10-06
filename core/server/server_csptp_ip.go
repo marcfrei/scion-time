@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -46,6 +47,34 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger,
 		log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
 	}
 	return &udpConn{c: conn}
+}
+
+func csptpClockIdentity(localAddr netip.Addr) ([8]uint8, error) {
+	localAddr = localAddr.Unmap().WithZone("")
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return [8]uint8{}, err
+	}
+	for _, iface := range ifaces {
+		if len(iface.HardwareAddr) != 6 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip, ok := netip.AddrFromSlice(ipnet.IP)
+			if ok && ip.Unmap() == localAddr {
+				return csptp.ClockIdentityFromMAC([6]uint8(iface.HardwareAddr)), nil
+			}
+		}
+	}
+	return [8]uint8{}, errors.New("no interface with MAC address found for local address")
 }
 
 func newCSPTPStatusTLV(localAddr netip.Addr, clockID [8]uint8) csptp.CSPTPStatusTLV {
@@ -520,7 +549,7 @@ func StartCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			slog.Int("port", localHost.Port))
 	}
 
-	clockID, err := csptp.LocalClockIdentity(localHost.AddrPort().Addr())
+	clockID, err := csptpClockIdentity(localHost.AddrPort().Addr())
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to determine clock identity",
 			slog.Any("local host", localHost.IP),
