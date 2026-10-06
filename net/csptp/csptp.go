@@ -53,8 +53,8 @@ const (
 	OrganizationSubTypeResponse2 = 0x73
 
 	TLVFlagServerStateDS = 1 << 0
-	TLVFlagStatus        = 1 << 0
-	// TLVFlagStatus     = 1 << 24
+	// TLVFlagStatus        = 1 << 0
+	TLVFlagStatus     = 1 << 24
 	TLVFlagAltTimescale = 1 << 25
 
 	NetworkProtocolUDPIPv4 = 1

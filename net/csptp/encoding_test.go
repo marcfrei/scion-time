@@ -1965,9 +1965,20 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 	b := make([]byte, csptp.CSPTPStatusTLVLength(&tlv0))
 	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPStatusTLV{}
-	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:25])
+	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:21])
 	if err == nil {
 		t.Error("Expected error for insufficient buffer length")
+	}
+
+	// Lenient decoding: truncated parentAddress is decoded as omitted
+	tlv1 = csptp.CSPTPStatusTLV{}
+	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:25])
+	if err != nil {
+		t.Errorf("Unexpected error for truncated parent address header: %v", err)
+	}
+	if tlv1.ParentAddress.NetworkProtocol != 0 || tlv1.ParentAddress.AddressLength != 0 ||
+		tlv1.ParentAddress.Address != nil {
+		t.Errorf("Expected omitted parent address for truncated parent address header, got %+v", tlv1.ParentAddress)
 	}
 
 	tlv0 = csptp.CSPTPStatusTLV{
@@ -1981,8 +1992,12 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 	csptp.EncodeCSPTPStatusTLV(b, &tlv0)
 	tlv1 = csptp.CSPTPStatusTLV{}
 	err = csptp.DecodeCSPTPStatusTLV(&tlv1, b[:len(b)-1])
-	if err == nil {
-		t.Error("Expected error for insufficient buffer length with parent address")
+	if err != nil {
+		t.Errorf("Unexpected error for truncated parent address: %v", err)
+	}
+	if tlv1.ParentAddress.NetworkProtocol != 0 || tlv1.ParentAddress.AddressLength != 0 ||
+		tlv1.ParentAddress.Address != nil {
+		t.Errorf("Expected omitted parent address for truncated parent address, got %+v", tlv1.ParentAddress)
 	}
 }
 
