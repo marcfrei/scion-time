@@ -176,14 +176,14 @@ func TestMessageTypeSpecificRoundTrip(t *testing.T) {
 
 func TestSourcePortIdentityRoundTrip(t *testing.T) {
 	vs := []csptp.PortID{
-		{ClockID: 0, Port: 0},
-		{ClockID: 0, Port: math.MaxUint16},
-		{ClockID: 1, Port: 0},
-		{ClockID: 1, Port: math.MaxUint16},
-		{ClockID: math.MaxUint64 - 1, Port: 0},
-		{ClockID: math.MaxUint64 - 1, Port: math.MaxUint16},
-		{ClockID: math.MaxUint64, Port: 0},
-		{ClockID: math.MaxUint64, Port: math.MaxUint16},
+		{ClockID: [8]uint8{}, Port: 0},
+		{ClockID: [8]uint8{}, Port: math.MaxUint16},
+		{ClockID: [8]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, Port: 0},
+		{ClockID: [8]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, Port: math.MaxUint16},
+		{ClockID: [8]uint8{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe}, Port: 0},
+		{ClockID: [8]uint8{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe}, Port: math.MaxUint16},
+		{ClockID: [8]uint8{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, Port: 0},
+		{ClockID: [8]uint8{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, Port: math.MaxUint16},
 	}
 	for _, v := range vs {
 		msg0 := csptp.Message{SourcePortIdentity: v}
@@ -316,7 +316,7 @@ func TestCompleteMessageRoundTrip(t *testing.T) {
 		CorrectionField:     0x123456789ABCDEF,
 		MessageTypeSpecific: 0xDEADBEEF,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0xAAAABBBBCCCCDDDD,
+			ClockID: [8]uint8{0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd},
 			Port:    0xEEEE,
 		},
 		SequenceID:         0xFFFF,
@@ -863,7 +863,7 @@ func TestResponseTLVServerStateDSRoundTrip(t *testing.T) {
 			GMClockAccuracy: 1,
 			GMClockVariance: 1,
 			GMPriority2:     1,
-			GMClockID:       1,
+			GMClockID:       [8]uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
 			StepsRemoved:    1,
 			TimeSource:      1,
 		},
@@ -873,7 +873,7 @@ func TestResponseTLVServerStateDSRoundTrip(t *testing.T) {
 			GMClockAccuracy: math.MaxUint8,
 			GMClockVariance: math.MaxUint16,
 			GMPriority2:     math.MaxUint8,
-			GMClockID:       math.MaxUint64,
+			GMClockID:       [8]uint8{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 			StepsRemoved:    math.MaxUint16,
 			TimeSource:      math.MaxUint8,
 		},
@@ -954,7 +954,7 @@ func TestCompleteResponseTLVRoundTrip(t *testing.T) {
 			GMClockAccuracy: 3,
 			GMClockVariance: 4,
 			GMPriority2:     5,
-			GMClockID:       0xAAAABBBBCCCCDDDD,
+			GMClockID:       [8]uint8{0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd},
 			StepsRemoved:    6,
 			TimeSource:      7,
 		},
@@ -1020,7 +1020,7 @@ func TestSyncRequest0(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746833,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x33},
 			Port:    1,
 		},
 		SequenceID:         0,
@@ -1064,7 +1064,7 @@ func TestFollowUpRequest0(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746833,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x33},
 			Port:    1,
 		},
 		SequenceID:         0,
@@ -1139,7 +1139,7 @@ func TestSyncResponse0(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746831,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x31},
 			Port:    1,
 		},
 		SequenceID:         0,
@@ -1183,7 +1183,7 @@ func TestFollowUpResponse0(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746831,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x31},
 			Port:    1,
 		},
 		SequenceID:         0,
@@ -1213,7 +1213,7 @@ func TestFollowUpResponse0(t *testing.T) {
 			GMClockAccuracy: 47,
 			GMClockVariance: 65535,
 			GMPriority2:     128,
-			GMClockID:       33326197411964977,
+			GMClockID:       [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x31},
 			StepsRemoved:    0,
 			TimeSource:      96,
 			Reserved:        0,
@@ -1273,7 +1273,7 @@ func TestSyncRequest1(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746833,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x33},
 			Port:    1,
 		},
 		SequenceID:         1,
@@ -1317,7 +1317,7 @@ func TestFollowUpRequest1(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746833,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x33},
 			Port:    1,
 		},
 		SequenceID:         1,
@@ -1389,7 +1389,7 @@ func TestSyncResponse1(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746831,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x31},
 			Port:    1,
 		},
 		SequenceID:         1,
@@ -1433,7 +1433,7 @@ func TestFollowUpResponse1(t *testing.T) {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0x007665fffe746831,
+			ClockID: [8]uint8{0x00, 0x76, 0x65, 0xff, 0xfe, 0x74, 0x68, 0x31},
 			Port:    1,
 		},
 		SequenceID:         1,
@@ -1463,7 +1463,7 @@ func TestFollowUpResponse1(t *testing.T) {
 			GMClockAccuracy: 0,
 			GMClockVariance: 0,
 			GMPriority2:     0,
-			GMClockID:       0,
+			GMClockID:       [8]uint8{},
 			StepsRemoved:    0,
 			TimeSource:      0,
 			Reserved:        0,

@@ -193,3 +193,11 @@ func TestTimeIntervalConversion(t *testing.T) {
 		})
 	}
 }
+
+func TestClockIdentityFromMAC(t *testing.T) {
+	mac := [6]uint8{0x2c, 0xcf, 0x67, 0x3a, 0x1a, 0xdb}
+	want := [8]uint8{0x2c, 0xcf, 0x67, 0xff, 0xfe, 0x3a, 0x1a, 0xdb}
+	if got := csptp.ClockIdentityFromMAC(mac); got != want {
+		t.Errorf("ClockIdentityFromMAC(% x) = % x, want % x", mac, got, want)
+	}
+}

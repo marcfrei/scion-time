@@ -79,10 +79,14 @@ func (q *csptpClientQueueSCION) Pop() any {
 }
 
 func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
-	conn, generalConn *udpConn, localHostPort int, dscp uint8, flashPTP bool) {
+	conn, generalConn *udpConn, localHostPort int, dscp uint8, clockID [8]uint8, flashPTP bool) {
 	var syncConn, followUpConn *udpConn
 
-	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr())
+	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr(), clockID)
+	portID := csptp.PortID{
+		ClockID: clockID,
+		Port:    1,
+	}
 
 	buf := make([]byte, scion.MTU)
 	oob := make([]byte, udp.TimestampLen())
@@ -352,14 +356,11 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 				CorrectionField:     0,
 				MessageTypeSpecific: 0,
-				SourcePortIdentity: csptp.PortID{
-					ClockID: 1,
-					Port:    1,
-				},
-				SequenceID:         syncCtx.sequenceID,
-				ControlField:       csptp.ControlField,
-				LogMessageInterval: csptp.LogMessageInterval,
-				Timestamp:          csptp.Timestamp{},
+				SourcePortIdentity:  portID,
+				SequenceID:          syncCtx.sequenceID,
+				ControlField:        csptp.ControlField,
+				LogMessageInterval:  csptp.LogMessageInterval,
+				Timestamp:           csptp.Timestamp{},
 			}
 
 			if flashPTP {
@@ -371,7 +372,6 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 					csptp.MessageTypeSync,
 				)
 				msg.DomainNumber = syncCtx.domainNumber
-				msg.SourcePortIdentity = csptp.PortID{}
 				csptptlv := csptp.CSPTPResponseTLV{
 					Type:                csptp.TLVTypeCSPTPResponse,
 					Length:              csptp.CSPTPResponseTLVLength - csptp.MinTLVLength,
@@ -474,14 +474,11 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 				FlagField:           csptp.FlagUnicast,
 				CorrectionField:     0,
 				MessageTypeSpecific: 0,
-				SourcePortIdentity: csptp.PortID{
-					ClockID: 1,
-					Port:    1,
-				},
-				SequenceID:         followUpCtx.sequenceID,
-				ControlField:       csptp.ControlField,
-				LogMessageInterval: csptp.LogMessageInterval,
-				Timestamp:          csptp.TimestampFromTime(txTime0),
+				SourcePortIdentity:  portID,
+				SequenceID:          followUpCtx.sequenceID,
+				ControlField:        csptp.ControlField,
+				LogMessageInterval:  csptp.LogMessageInterval,
+				Timestamp:           csptp.TimestampFromTime(txTime0),
 			}
 			if flashPTP {
 				resptlv = csptp.ResponseTLV{
@@ -507,7 +504,7 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 						GMClockAccuracy: 0, /* TODO */
 						GMClockVariance: 0, /* TODO */
 						GMPriority2:     0, /* TODO */
-						GMClockID:       0, /* TODO */
+						GMClockID:       clockID,
 						StepsRemoved:    0, /* TODO */
 						TimeSource:      0, /* TODO */
 						Reserved:        0,
@@ -525,7 +522,6 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 					csptp.MessageTypeFollowUp,
 				)
 				msg.DomainNumber = syncCtx.domainNumber
-				msg.SourcePortIdentity = csptp.PortID{}
 
 				buf = buf[:msg.MessageLength]
 				csptp.EncodeMessage(buf, &msg)
@@ -621,10 +617,17 @@ func StartCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			slog.Int("port", localHost.Port))
 	}
 
+	clockID, err := csptpClockIdentity(localHost.AddrPort().Addr())
+	if err != nil {
+		log.LogAttrs(ctx, slog.LevelError, "failed to determine clock identity",
+			slog.Any("local host", localHost.IP),
+			slog.Any("error", err))
+	}
+
 	for range scionServerNumGoroutine {
 		econn := openCSPTPConn(ctx, log, localHost, csptp.EventPortSCION, dscp)
 		gconn := openCSPTPConn(ctx, log, localHost, csptp.GeneralPortSCION, dscp)
-		go runCSPTPServerSCION(ctx, log, econn, gconn, csptp.EventPortSCION, dscp, flashPTP)
-		go runCSPTPServerSCION(ctx, log, gconn, gconn, csptp.GeneralPortSCION, dscp, flashPTP)
+		go runCSPTPServerSCION(ctx, log, econn, gconn, csptp.EventPortSCION, dscp, clockID, flashPTP)
+		go runCSPTPServerSCION(ctx, log, gconn, gconn, csptp.GeneralPortSCION, dscp, clockID, flashPTP)
 	}
 }

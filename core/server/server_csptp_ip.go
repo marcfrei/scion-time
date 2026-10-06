@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -48,7 +49,35 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger,
 	return &udpConn{c: conn}
 }
 
-func newCSPTPStatusTLV(localAddr netip.Addr) csptp.CSPTPStatusTLV {
+func csptpClockIdentity(localAddr netip.Addr) ([8]uint8, error) {
+	localAddr = localAddr.Unmap().WithZone("")
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return [8]uint8{}, err
+	}
+	for _, iface := range ifaces {
+		if len(iface.HardwareAddr) != 6 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip, ok := netip.AddrFromSlice(ipnet.IP)
+			if ok && ip.Unmap() == localAddr {
+				return csptp.ClockIdentityFromMAC([6]uint8(iface.HardwareAddr)), nil
+			}
+		}
+	}
+	return [8]uint8{}, errors.New("no interface with MAC address found for local address")
+}
+
+func newCSPTPStatusTLV(localAddr netip.Addr, clockID [8]uint8) csptp.CSPTPStatusTLV {
 	// No PTP data sets available: the server reports itself as grandmaster
 	// with IEEE 1588 default or "unknown" clock quality values.
 	tlv := csptp.CSPTPStatusTLV{
@@ -61,8 +90,8 @@ func newCSPTPStatusTLV(localAddr netip.Addr) csptp.CSPTPStatusTLV {
 		},
 		GrandmasterPriority2: 128,
 		StepsRemoved:         0,
-		CurrentUTCOffset:     0,          // ptpTimescale not set
-		GrandmasterIdentity:  [8]uint8{}, // sourcePortIdentity is 0 as well
+		CurrentUTCOffset:     0, // ptpTimescale not set
+		GrandmasterIdentity:  clockID,
 	}
 	localAddr = localAddr.Unmap()
 	if localAddr.Is4() {
@@ -141,10 +170,14 @@ func (q *csptpClientQueueIP) Pop() any {
 }
 
 func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
-	conn, generalConn *udpConn, localHostPort int, flashPTP bool) {
+	conn, generalConn *udpConn, localHostPort int, clockID [8]uint8, flashPTP bool) {
 	var syncConn, followUpConn *udpConn
 
-	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr())
+	statustlv := newCSPTPStatusTLV(conn.c.LocalAddr().(*net.UDPAddr).AddrPort().Addr(), clockID)
+	portID := csptp.PortID{
+		ClockID: clockID,
+		Port:    1,
+	}
 
 	buf := make([]byte, csptp.MaxMessageLength)
 	oob := make([]byte, udp.TimestampLen())
@@ -345,14 +378,11 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				FlagField:           csptp.FlagTwoStep | csptp.FlagUnicast,
 				CorrectionField:     0,
 				MessageTypeSpecific: 0,
-				SourcePortIdentity: csptp.PortID{
-					ClockID: 1,
-					Port:    1,
-				},
-				SequenceID:         syncCtx.sequenceID,
-				ControlField:       csptp.ControlField,
-				LogMessageInterval: csptp.LogMessageInterval,
-				Timestamp:          csptp.Timestamp{},
+				SourcePortIdentity:  portID,
+				SequenceID:          syncCtx.sequenceID,
+				ControlField:        csptp.ControlField,
+				LogMessageInterval:  csptp.LogMessageInterval,
+				Timestamp:           csptp.Timestamp{},
 			}
 
 			if flashPTP {
@@ -364,7 +394,6 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					csptp.MessageTypeSync,
 				)
 				msg.DomainNumber = syncCtx.domainNumber
-				msg.SourcePortIdentity = csptp.PortID{}
 				csptptlv := csptp.CSPTPResponseTLV{
 					Type:                csptp.TLVTypeCSPTPResponse,
 					Length:              csptp.CSPTPResponseTLVLength - csptp.MinTLVLength,
@@ -426,14 +455,11 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				FlagField:           csptp.FlagUnicast,
 				CorrectionField:     0,
 				MessageTypeSpecific: 0,
-				SourcePortIdentity: csptp.PortID{
-					ClockID: 1,
-					Port:    1,
-				},
-				SequenceID:         followUpCtx.sequenceID,
-				ControlField:       csptp.ControlField,
-				LogMessageInterval: csptp.LogMessageInterval,
-				Timestamp:          csptp.TimestampFromTime(txTime0),
+				SourcePortIdentity:  portID,
+				SequenceID:          followUpCtx.sequenceID,
+				ControlField:        csptp.ControlField,
+				LogMessageInterval:  csptp.LogMessageInterval,
+				Timestamp:           csptp.TimestampFromTime(txTime0),
 			}
 			if flashPTP {
 				resptlv = csptp.ResponseTLV{
@@ -459,7 +485,7 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 						GMClockAccuracy: 0, /* TODO */
 						GMClockVariance: 0, /* TODO */
 						GMPriority2:     0, /* TODO */
-						GMClockID:       0, /* TODO */
+						GMClockID:       clockID,
 						StepsRemoved:    0, /* TODO */
 						TimeSource:      0, /* TODO */
 						Reserved:        0,
@@ -477,7 +503,6 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 					csptp.MessageTypeFollowUp,
 				)
 				msg.DomainNumber = syncCtx.domainNumber
-				msg.SourcePortIdentity = csptp.PortID{}
 
 				buf = buf[:msg.MessageLength]
 				csptp.EncodeMessage(buf, &msg)
@@ -524,10 +549,17 @@ func StartCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			slog.Int("port", localHost.Port))
 	}
 
+	clockID, err := csptpClockIdentity(localHost.AddrPort().Addr())
+	if err != nil {
+		log.LogAttrs(ctx, slog.LevelError, "failed to determine clock identity",
+			slog.Any("local host", localHost.IP),
+			slog.Any("error", err))
+	}
+
 	for range ipServerNumGoroutine {
 		econn := openCSPTPConn(ctx, log, localHost, csptp.EventPortIP, dscp)
 		gconn := openCSPTPConn(ctx, log, localHost, csptp.GeneralPortIP, dscp)
-		go runCSPTPServerIP(ctx, log, econn, gconn, csptp.EventPortIP, flashPTP)
-		go runCSPTPServerIP(ctx, log, gconn, gconn, csptp.GeneralPortIP, flashPTP)
+		go runCSPTPServerIP(ctx, log, econn, gconn, csptp.EventPortIP, clockID, flashPTP)
+		go runCSPTPServerIP(ctx, log, gconn, gconn, csptp.GeneralPortIP, clockID, flashPTP)
 	}
 }

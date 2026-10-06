@@ -70,7 +70,7 @@ func csptpSyncRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0,
+			ClockID: [8]uint8{},
 			Port:    0,
 		},
 		SequenceID:         sequenceID,
@@ -105,7 +105,7 @@ func flashPTPSyncRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0,
+			ClockID: [8]uint8{},
 			Port:    1,
 		},
 		SequenceID:         sequenceID,
@@ -133,7 +133,7 @@ func flashPTPFollowUpRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: 0,
+			ClockID: [8]uint8{},
 			Port:    1,
 		},
 		SequenceID:         sequenceID,
