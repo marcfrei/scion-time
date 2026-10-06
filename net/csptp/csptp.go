@@ -38,7 +38,7 @@ const (
 	TLVTypeOrganizationExtension = 3
 	TLVTypeCSPTPRequest          = 0xFF00
 	TLVTypeCSPTPResponse         = 0xFF01
-	TLVTypeCSPTPStatus           = 0xF002
+	TLVTypeCSPTPStatus           = 0xFF02
 
 	OrganizationIDMeinberg0 = 0xec
 	OrganizationIDMeinberg1 = 0x46
@@ -53,8 +53,9 @@ const (
 	OrganizationSubTypeResponse2 = 0x73
 
 	TLVFlagServerStateDS = 1 << 0
-	TLVFlagStatus        = 1 << 24
-	TLVFlagAltTimescale  = 1 << 25
+	// TLVFlagStatus        = 1 << 0
+	TLVFlagStatus       = 1 << 24
+	TLVFlagAltTimescale = 1 << 25
 
 	NetworkProtocolUDPIPv4 = 1
 	NetworkProtocolUDPIPv6 = 2
@@ -63,7 +64,7 @@ const (
 )
 
 type PortID struct {
-	ClockID uint64
+	ClockID [8]uint8
 	Port    uint16
 }
 
@@ -107,7 +108,7 @@ type ServerStateDS struct {
 	GMClockAccuracy uint8
 	GMClockVariance uint16
 	GMPriority2     uint8
-	GMClockID       uint64
+	GMClockID       [8]uint8
 	StepsRemoved    uint16
 	TimeSource      uint8
 	Reserved        uint8
@@ -163,6 +164,13 @@ type CSPTPStatusTLV struct {
 	ParentAddress           PortAddress
 }
 
+// ClockIdentityFromMAC maps a 48-bit MAC address to a 64-bit clock identity
+// by inserting 0xFFFE between the OUI and the extension identifier,
+// see IEEE 1588-2008, 7.5.2.2.2
+func ClockIdentityFromMAC(mac [6]uint8) [8]uint8 {
+	return [8]uint8{mac[0], mac[1], mac[2], 0xff, 0xfe, mac[3], mac[4], mac[5]}
+}
+
 func TimestampFromTime(t time.Time) Timestamp {
 	s := t.Unix()
 	if s < 0 {
@@ -214,14 +222,14 @@ func EncodeMessage(b []byte, msg *Message) {
 	b[17] = byte(msg.MessageTypeSpecific >> 16)
 	b[18] = byte(msg.MessageTypeSpecific >> 8)
 	b[19] = byte(msg.MessageTypeSpecific)
-	b[20] = byte(msg.SourcePortIdentity.ClockID >> 56)
-	b[21] = byte(msg.SourcePortIdentity.ClockID >> 48)
-	b[22] = byte(msg.SourcePortIdentity.ClockID >> 40)
-	b[23] = byte(msg.SourcePortIdentity.ClockID >> 32)
-	b[24] = byte(msg.SourcePortIdentity.ClockID >> 24)
-	b[25] = byte(msg.SourcePortIdentity.ClockID >> 16)
-	b[26] = byte(msg.SourcePortIdentity.ClockID >> 8)
-	b[27] = byte(msg.SourcePortIdentity.ClockID)
+	b[20] = byte(msg.SourcePortIdentity.ClockID[0])
+	b[21] = byte(msg.SourcePortIdentity.ClockID[1])
+	b[22] = byte(msg.SourcePortIdentity.ClockID[2])
+	b[23] = byte(msg.SourcePortIdentity.ClockID[3])
+	b[24] = byte(msg.SourcePortIdentity.ClockID[4])
+	b[25] = byte(msg.SourcePortIdentity.ClockID[5])
+	b[26] = byte(msg.SourcePortIdentity.ClockID[6])
+	b[27] = byte(msg.SourcePortIdentity.ClockID[7])
 	b[28] = byte(msg.SourcePortIdentity.Port >> 8)
 	b[29] = byte(msg.SourcePortIdentity.Port)
 	b[30] = byte(msg.SequenceID >> 8)
@@ -259,8 +267,7 @@ func DecodeMessage(msg *Message, b []byte) error {
 	msg.CorrectionField = int64(uint64(b[8])<<56 | uint64(b[9])<<48 | uint64(b[10])<<40 | uint64(b[11])<<32 |
 		uint64(b[12])<<24 | uint64(b[13])<<16 | uint64(b[14])<<8 | uint64(b[15]))
 	msg.MessageTypeSpecific = uint32(b[16])<<24 | uint32(b[17])<<16 | uint32(b[18])<<8 | uint32(b[19])
-	msg.SourcePortIdentity.ClockID = uint64(b[20])<<56 | uint64(b[21])<<48 | uint64(b[22])<<40 | uint64(b[23])<<32 |
-		uint64(b[24])<<24 | uint64(b[25])<<16 | uint64(b[26])<<8 | uint64(b[27])
+	msg.SourcePortIdentity.ClockID = [8]uint8{b[20], b[21], b[22], b[23], b[24], b[25], b[26], b[27]}
 	msg.SourcePortIdentity.Port = uint16(b[28])<<8 | uint16(b[29])
 	msg.SequenceID = uint16(b[30])<<8 | uint16(b[31])
 	msg.ControlField = b[32]
@@ -421,14 +428,14 @@ func EncodeResponseTLV(b []byte, tlv *ResponseTLV) {
 		b[39] = byte(tlv.ServerStateDS.GMClockVariance >> 8)
 		b[40] = byte(tlv.ServerStateDS.GMClockVariance)
 		b[41] = byte(tlv.ServerStateDS.GMPriority2)
-		b[42] = byte(tlv.ServerStateDS.GMClockID >> 56)
-		b[43] = byte(tlv.ServerStateDS.GMClockID >> 48)
-		b[44] = byte(tlv.ServerStateDS.GMClockID >> 40)
-		b[45] = byte(tlv.ServerStateDS.GMClockID >> 32)
-		b[46] = byte(tlv.ServerStateDS.GMClockID >> 24)
-		b[47] = byte(tlv.ServerStateDS.GMClockID >> 16)
-		b[48] = byte(tlv.ServerStateDS.GMClockID >> 8)
-		b[49] = byte(tlv.ServerStateDS.GMClockID)
+		b[42] = byte(tlv.ServerStateDS.GMClockID[0])
+		b[43] = byte(tlv.ServerStateDS.GMClockID[1])
+		b[44] = byte(tlv.ServerStateDS.GMClockID[2])
+		b[45] = byte(tlv.ServerStateDS.GMClockID[3])
+		b[46] = byte(tlv.ServerStateDS.GMClockID[4])
+		b[47] = byte(tlv.ServerStateDS.GMClockID[5])
+		b[48] = byte(tlv.ServerStateDS.GMClockID[6])
+		b[49] = byte(tlv.ServerStateDS.GMClockID[7])
 		b[50] = byte(tlv.ServerStateDS.StepsRemoved >> 8)
 		b[51] = byte(tlv.ServerStateDS.StepsRemoved)
 		b[52] = byte(tlv.ServerStateDS.TimeSource)
@@ -468,8 +475,7 @@ func DecodeResponseTLV(tlv *ResponseTLV, b []byte) error {
 		tlv.ServerStateDS.GMClockAccuracy = b[38]
 		tlv.ServerStateDS.GMClockVariance = uint16(b[39])<<8 | uint16(b[40])
 		tlv.ServerStateDS.GMPriority2 = b[41]
-		tlv.ServerStateDS.GMClockID = uint64(b[42])<<56 | uint64(b[43])<<48 | uint64(b[44])<<40 | uint64(b[45])<<32 |
-			uint64(b[46])<<24 | uint64(b[47])<<16 | uint64(b[48])<<8 | uint64(b[49])
+		tlv.ServerStateDS.GMClockID = [8]uint8{b[42], b[43], b[44], b[45], b[46], b[47], b[48], b[49]}
 		tlv.ServerStateDS.StepsRemoved = uint16(b[50])<<8 | uint16(b[51])
 		tlv.ServerStateDS.TimeSource = b[52]
 		tlv.ServerStateDS.Reserved = b[53]
@@ -479,7 +485,7 @@ func DecodeResponseTLV(tlv *ResponseTLV, b []byte) error {
 		tlv.ServerStateDS.GMClockAccuracy = 0
 		tlv.ServerStateDS.GMClockVariance = 0
 		tlv.ServerStateDS.GMPriority2 = 0
-		tlv.ServerStateDS.GMClockID = 0
+		tlv.ServerStateDS.GMClockID = [8]uint8{}
 		tlv.ServerStateDS.StepsRemoved = 0
 		tlv.ServerStateDS.TimeSource = 0
 		tlv.ServerStateDS.Reserved = 0
