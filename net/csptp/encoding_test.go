@@ -1986,6 +1986,35 @@ func TestCSPTPStatusTLVInvalidLength(t *testing.T) {
 	}
 }
 
+func TestCSPTPStatusTLVWithoutParentAddressDecoding(t *testing.T) {
+	buf := []byte{
+		0xff, 0x02, 0x00, 0x12,
+		0x80, 0x06, 0x21, 0x12, 0x34, 0x81, 0x01, 0x02, 0xff, 0xdb,
+		0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+	}
+	var tlv csptp.CSPTPStatusTLV
+	err := csptp.DecodeCSPTPStatusTLV(&tlv, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tlv.Type != csptp.TLVTypeCSPTPStatus || tlv.Length != 18 ||
+		tlv.GrandmasterPriority1 != 128 ||
+		tlv.GrandmasterClockQuality != (csptp.ClockQuality{ClockClass: 6, ClockAccuracy: 0x21, OffsetScaledLogVariance: 0x1234}) ||
+		tlv.GrandmasterPriority2 != 129 ||
+		tlv.StepsRemoved != 0x0102 ||
+		tlv.CurrentUTCOffset != -37 ||
+		tlv.GrandmasterIdentity != [8]uint8{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77} ||
+		tlv.ParentAddress.NetworkProtocol != 0 || tlv.ParentAddress.AddressLength != 0 ||
+		tlv.ParentAddress.Address != nil {
+		t.Errorf("unexpected decoded TLV %+v", tlv)
+	}
+
+	err = csptp.DecodeCSPTPStatusTLV(&tlv, buf[:len(buf)-1])
+	if err == nil {
+		t.Error("Expected error for insufficient buffer length without parent address")
+	}
+}
+
 func TestCSPTPRequestTLVEncoding(t *testing.T) {
 	vs := []struct {
 		name  string

@@ -15,6 +15,7 @@ type csptpReply struct {
 	msg  csptp.Message
 	tlv  csptp.ResponseTLV      // FlashPTP: response TLV in Follow Up message
 	resp csptp.CSPTPResponseTLV // IEEE P1588.1: CSPTP_RESPONSE TLV in Sync message
+	stat csptp.CSPTPStatusTLV   // IEEE P1588.1: CSPTP_STATUS TLV in Sync message, if requested
 	rxt  time.Time
 	ok   bool
 }
@@ -74,7 +75,7 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 	return conn, nil
 }
 
-func csptpSyncRequest(b []byte, sequenceID uint16, clockID [8]uint8) []byte {
+func csptpSyncRequest(b []byte, sequenceID uint16, clockID [8]uint8, requestFlags uint32) []byte {
 	reqmsg := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.CSPTPSdoID,
@@ -99,7 +100,7 @@ func csptpSyncRequest(b []byte, sequenceID uint16, clockID [8]uint8) []byte {
 	reqtlv := csptp.CSPTPRequestTLV{
 		Type:         csptp.TLVTypeCSPTPRequest,
 		Length:       csptp.CSPTPRequestTLVLength - csptp.MinTLVLength,
-		RequestFlags: 0,
+		RequestFlags: requestFlags,
 	}
 	reqmsg.MessageLength += csptp.CSPTPRequestTLVLength
 
@@ -250,6 +251,11 @@ func decodeCSPTPReply(reply *csptpReply, b []byte, sequenceID uint16, flashPTP b
 				return err
 			}
 			tlvFound = true
+		case tlvRequired && !flashPTP && tlvhdr.Type == csptp.TLVTypeCSPTPStatus:
+			err = csptp.DecodeCSPTPStatusTLV(&reply.stat, tlvbuf[:tlvlen])
+			if err != nil {
+				return err
+			}
 		}
 		tlvbuf = tlvbuf[tlvlen:]
 	}

@@ -55,8 +55,8 @@ const (
 	OrganizationSubTypeResponse2 = 0x73
 
 	TLVFlagServerStateDS = 1 << 0
-	// TLVFlagStatus        = 1 << 0
-	TLVFlagStatus       = 1 << 24
+	TLVFlagStatus        = 1 << 0
+	// TLVFlagStatus     = 1 << 24
 	TLVFlagAltTimescale = 1 << 25
 
 	NetworkProtocolUDPIPv4 = 1
@@ -658,10 +658,10 @@ var (
 )
 
 func DecodeCSPTPStatusTLV(tlv *CSPTPStatusTLV, b []byte) error {
-	if len(b) < MinCSPTPStatusTLVLength {
+	if len(b) < 22 {
 		return errUnexpectedCSPTPStatusTLVSize
 	}
-	_ = b[25]
+	_ = b[21]
 	tlv.Type = uint16(b[0])<<8 | uint16(b[1])
 	tlv.Length = uint16(b[2])<<8 | uint16(b[3])
 	tlv.GrandmasterPriority1 = b[4]
@@ -672,11 +672,26 @@ func DecodeCSPTPStatusTLV(tlv *CSPTPStatusTLV, b []byte) error {
 	tlv.StepsRemoved = uint16(b[10])<<8 | uint16(b[11])
 	tlv.CurrentUTCOffset = int16(uint16(b[12])<<8 | uint16(b[13]))
 	tlv.GrandmasterIdentity = [8]uint8{b[14], b[15], b[16], b[17], b[18], b[19], b[20], b[21]}
+
+	if tlv.Length == 18 {
+		// parentAddress omitted
+		tlv.ParentAddress = PortAddress{}
+		return nil
+	}
+
+	if len(b) < MinCSPTPStatusTLVLength {
+		// return errUnexpectedCSPTPStatusTLVSize
+		tlv.ParentAddress = PortAddress{}
+		return nil
+	}
+	_ = b[25]
 	tlv.ParentAddress.NetworkProtocol = uint16(b[22])<<8 | uint16(b[23])
 	tlv.ParentAddress.AddressLength = uint16(b[24])<<8 | uint16(b[25])
 
 	if len(b) < MinCSPTPStatusTLVLength+int(tlv.ParentAddress.AddressLength) {
-		return errUnexpectedCSPTPStatusTLVSize
+		// return errUnexpectedCSPTPStatusTLVSize
+		tlv.ParentAddress = PortAddress{}
+		return nil
 	}
 
 	tlv.ParentAddress.Address = make([]byte, tlv.ParentAddress.AddressLength)

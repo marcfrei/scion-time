@@ -13,11 +13,12 @@ import (
 )
 
 type CSPTPClientIP struct {
-	Log        *slog.Logger
-	DSCP       uint8
-	FlashPTP   bool
-	sequenceID uint16
-	clockID    csptpLocalClockID
+	Log           *slog.Logger
+	DSCP          uint8
+	FlashPTP      bool
+	RequestStatus bool // IEEE P1588.1: request CSPTP_STATUS TLV
+	sequenceID    uint16
+	clockID       csptpLocalClockID
 }
 
 func readCSPTPReplyIP(ctx context.Context, log *slog.Logger,
@@ -136,7 +137,11 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	if c.FlashPTP {
 		buf = flashPTPSyncRequest(buf, c.sequenceID, clockID)
 	} else {
-		buf = csptpSyncRequest(buf, c.sequenceID, clockID)
+		var reqFlags uint32
+		if c.RequestStatus {
+			reqFlags |= csptp.TLVFlagStatus
+		}
+		buf = csptpSyncRequest(buf, c.sequenceID, clockID, reqFlags)
 	}
 
 	n, err = econn.WriteToUDPAddrPort(buf, netip.AddrPortFrom(remoteAddr, csptp.EventPortIP))
@@ -194,7 +199,12 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		slog.Any("respmsg1", &replies.followUp.msg),
 		slog.Any("resptlv0", &replies.sync.resp),
 		slog.Any("resptlv1", &replies.followUp.tlv),
+		slog.Any("statustlv", &replies.sync.stat),
 	)
+	if !c.FlashPTP && c.RequestStatus && replies.sync.stat.Type != csptp.TLVTypeCSPTPStatus {
+		c.Log.LogAttrs(ctx, slog.LevelInfo, "requested CSPTP_STATUS TLV not received",
+			slog.String("from", reference))
+	}
 
 	t0 := cTxTime0
 	t1, t1Corr, t2, t3Corr, utcCorr := csptpServerTimes(&replies, c.FlashPTP)

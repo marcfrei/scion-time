@@ -32,6 +32,7 @@ func runT() {
 			dscp         uint
 			periodic     bool
 			flashPTP     bool
+			status       bool
 		)
 
 		toolFlags := flag.NewFlagSet("tool", flag.ExitOnError)
@@ -40,6 +41,7 @@ func runT() {
 		toolFlags.UintVar(&dscp, "dscp", 0, "Differentiated services codepoint, must be in range [0, 63]")
 		toolFlags.BoolVar(&periodic, "periodic", false, "Perform periodic offset measurements")
 		toolFlags.BoolVar(&flashPTP, "flashptp", false, "Use FlashPTP instead of IEEE P1588.1 CSPTP")
+		toolFlags.BoolVar(&status, "status", false, "Request CSPTP_STATUS TLV (IEEE P1588.1 CSPTP client via IP only)")
 
 		err := toolFlags.Parse(os.Args[2:])
 		if err != nil || toolFlags.NArg() != 0 {
@@ -95,9 +97,10 @@ func runT() {
 					panic("unexpected address type")
 				}
 				c := &client.CSPTPClientIP{
-					Log:      log,
-					DSCP:     uint8(dscp),
-					FlashPTP: flashPTP,
+					Log:           log,
+					DSCP:          uint8(dscp),
+					FlashPTP:      flashPTP,
+					RequestStatus: status,
 				}
 				for {
 					ts, off, err := c.MeasureClockOffset(ctx, laddr, raddr)

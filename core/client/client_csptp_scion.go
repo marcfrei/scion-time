@@ -211,7 +211,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	if c.FlashPTP {
 		buf = flashPTPSyncRequest(buf, c.sequenceID, clockID)
 	} else {
-		buf = csptpSyncRequest(buf, c.sequenceID, clockID)
+		buf = csptpSyncRequest(buf, c.sequenceID, clockID, 0 /* requestFlags */)
 	}
 
 	var scionLayer slayers.SCION
