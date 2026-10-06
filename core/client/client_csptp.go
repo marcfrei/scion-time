@@ -168,8 +168,11 @@ func decodeCSPTPReply(reply *csptpReply, b []byte, sequenceID uint16, flashPTP b
 	if err != nil {
 		return err
 	}
-	if len(b) != int(reply.msg.MessageLength) || reply.msg.SequenceID != sequenceID {
+	if len(b) != int(reply.msg.MessageLength) {
 		return errUnexpectedPacket
+	}
+	if reply.msg.SequenceID != sequenceID {
+		return errUnexpectedSequenceID
 	}
 	if !flashPTP && (reply.msg.MajorSdoID() != csptp.CSPTPSdoID ||
 		reply.msg.DomainNumber != csptp.DomainNumber) {
