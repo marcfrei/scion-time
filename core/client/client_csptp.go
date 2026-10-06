@@ -29,6 +29,24 @@ func (r *csptpReplies) complete() bool {
 		(r.sync.msg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep || r.followUp.ok)
 }
 
+type csptpLocalClockID struct {
+	addr netip.Addr
+	id   [8]uint8
+}
+
+func (c *csptpLocalClockID) get(ctx context.Context, log *slog.Logger, localAddr netip.Addr) [8]uint8 {
+	if localAddr != c.addr {
+		id, err := csptp.LocalClockIdentity(localAddr)
+		if err != nil {
+			log.LogAttrs(ctx, slog.LevelError, "failed to determine clock identity",
+				slog.Any("local addr", localAddr),
+				slog.Any("error", err))
+		}
+		c.addr, c.id = localAddr, id
+	}
+	return c.id
+}
+
 func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 	localAddr netip.Addr, localZone string, localPort uint16, deadline time.Time, deadlineSet bool) (
 	*net.UDPConn, error) {
@@ -56,7 +74,7 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 	return conn, nil
 }
 
-func csptpSyncRequest(b []byte, sequenceID uint16) []byte {
+func csptpSyncRequest(b []byte, sequenceID uint16, clockID [8]uint8) []byte {
 	reqmsg := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.CSPTPSdoID,
@@ -70,7 +88,7 @@ func csptpSyncRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: [8]uint8{},
+			ClockID: clockID,
 			Port:    0,
 		},
 		SequenceID:         sequenceID,
@@ -91,7 +109,7 @@ func csptpSyncRequest(b []byte, sequenceID uint16) []byte {
 	return b
 }
 
-func flashPTPSyncRequest(b []byte, sequenceID uint16) []byte {
+func flashPTPSyncRequest(b []byte, sequenceID uint16, clockID [8]uint8) []byte {
 	reqmsg := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.SdoID, /* csptp.CSPTPSdoID */
@@ -105,7 +123,7 @@ func flashPTPSyncRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: [8]uint8{},
+			ClockID: clockID,
 			Port:    1,
 		},
 		SequenceID:         sequenceID,
@@ -119,7 +137,7 @@ func flashPTPSyncRequest(b []byte, sequenceID uint16) []byte {
 	return b
 }
 
-func flashPTPFollowUpRequest(b []byte, sequenceID uint16) []byte {
+func flashPTPFollowUpRequest(b []byte, sequenceID uint16, clockID [8]uint8) []byte {
 	reqmsg := csptp.Message{
 		SdoIDMessageType: csptp.SdoIDMessageType(
 			csptp.SdoID, /* csptp.CSPTPSdoID */
@@ -133,7 +151,7 @@ func flashPTPFollowUpRequest(b []byte, sequenceID uint16) []byte {
 		CorrectionField:     0,
 		MessageTypeSpecific: 0,
 		SourcePortIdentity: csptp.PortID{
-			ClockID: [8]uint8{},
+			ClockID: clockID,
 			Port:    1,
 		},
 		SequenceID:         sequenceID,

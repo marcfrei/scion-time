@@ -5,6 +5,8 @@ package csptp
 
 import (
 	"errors"
+	"net"
+	"net/netip"
 	"time"
 )
 
@@ -169,6 +171,40 @@ type CSPTPStatusTLV struct {
 // see IEEE 1588-2008, 7.5.2.2.2
 func ClockIdentityFromMAC(mac [6]uint8) [8]uint8 {
 	return [8]uint8{mac[0], mac[1], mac[2], 0xff, 0xfe, mac[3], mac[4], mac[5]}
+}
+
+var (
+	errNoInterfaceMAC = errors.New("no interface with MAC address found for local address")
+)
+
+// LocalClockIdentity derives the clock identity from the MAC address of the
+// network interface that owns localAddr
+func LocalClockIdentity(localAddr netip.Addr) ([8]uint8, error) {
+	localAddr = localAddr.Unmap().WithZone("")
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return [8]uint8{}, err
+	}
+	for _, iface := range ifaces {
+		if len(iface.HardwareAddr) != 6 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip, ok := netip.AddrFromSlice(ipnet.IP)
+			if ok && ip.Unmap() == localAddr {
+				return ClockIdentityFromMAC([6]uint8(iface.HardwareAddr)), nil
+			}
+		}
+	}
+	return [8]uint8{}, errNoInterfaceMAC
 }
 
 func TimestampFromTime(t time.Time) Timestamp {

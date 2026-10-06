@@ -617,7 +617,7 @@ func StartCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			slog.Int("port", localHost.Port))
 	}
 
-	clockID, err := csptpClockIdentity(localHost.AddrPort().Addr())
+	clockID, err := csptp.LocalClockIdentity(localHost.AddrPort().Addr())
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to determine clock identity",
 			slog.Any("local host", localHost.IP),
