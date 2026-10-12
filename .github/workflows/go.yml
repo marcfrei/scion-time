@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.27.1'
+          go-version: '1.27.2'
 
       - name: go build
         run: go build -o bin/timeservice
@@ -57,7 +57,7 @@ jobs:
 
       - name: golangci-lint
         run: |
-          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.13.0
+          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.14.0
           $(go env GOPATH)/bin/golangci-lint run --disable staticcheck
 
       - name: gosec
