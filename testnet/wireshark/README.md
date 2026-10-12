@@ -1,0 +1,1 @@
+For installation instructions see https://docs.scion.org/en/latest/dev/wireshark.html#install-the-scion-packet-dissector-plugin

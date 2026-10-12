@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"encoding/csv"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -180,6 +181,28 @@ func main() {
 		log.Fatalf("error during scan: %s", err)
 	}
 
+	if len(data) != 0 {
+		ys := make([]float64, len(data))
+		var sum float64
+		for i, d := range data {
+			ys[i] = d.Y
+			sum += d.Y
+		}
+		mean := sum / float64(len(ys))
+		var ss float64
+		for _, y := range ys {
+			ss += (y - mean) * (y - mean)
+		}
+		sd := math.Sqrt(ss / float64(len(ys))) // population standard deviation
+		slices.Sort(ys)
+		median := ys[len(ys)/2]
+		if len(ys)%2 == 0 {
+			median = (ys[len(ys)/2-1] + ys[len(ys)/2]) / 2
+		}
+		fmt.Printf("%s: n=%d, mean ± sd = %+.3f ± %.3f µs, median = %+.3f µs, min = %+.3f µs, max = %+.3f µs\n",
+			fn0, len(ys), mean*1e6, sd*1e6, median*1e6, ys[0]*1e6, ys[len(ys)-1]*1e6)
+	}
+
 	p := plot.New()
 	p.X.Label.Text = "Time [s]"
 	p.X.Label.Padding = vg.Points(5)
@@ -188,17 +211,17 @@ func main() {
 
 	p.Add(plotter.NewGrid())
 
-	// line, err := plotter.NewLine(data)
-	// if err != nil {
-	// 	log.Fatalf("error during plot: %s", err)
-	// }
-	// p.Add(line)
-	scatter, err := plotter.NewScatter(data)
+	line, err := plotter.NewLine(data)
 	if err != nil {
 		log.Fatalf("error during plot: %s", err)
 	}
-	scatter.GlyphStyle.Radius = vg.Points(0.01)
-	p.Add(scatter)
+	p.Add(line)
+	// scatter, err := plotter.NewScatter(data)
+	// if err != nil {
+	// 	log.Fatalf("error during plot: %s", err)
+	// }
+	// scatter.GlyphStyle.Radius = vg.Points(0.01)
+	// p.Add(scatter)
 
 	if limitSet {
 		p.Y.Max = math.Abs(limit)
