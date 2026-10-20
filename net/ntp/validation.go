@@ -13,7 +13,9 @@ var (
 func ValidateResponseMetadata(resp *Packet) error {
 	// Based on Ntimed by Poul-Henning Kamp, https://github.com/bsdphk/Ntimed
 
-	if resp.LeapIndicator() == LeapIndicatorUnknown {
+	if resp.LeapIndicator() != LeapIndicatorNoWarning {
+		// UTC is continuous as of 2027-05-20 (CGPM 2026, Resolution 5),
+		// the last leap second was inserted on 2016-12-31.
 		return errUnexpectedResponse
 	}
 	if resp.Version() != 3 && resp.Version() != 4 {
