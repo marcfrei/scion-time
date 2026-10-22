@@ -15,6 +15,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -28,14 +29,17 @@ import (
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 	"gonum.org/v1/plot/vg/draw"
+	"gonum.org/v1/plot/vg/vgimg"
 	"gonum.org/v1/plot/vg/vgpdf"
 )
 
 func main() {
 	var limit, lmin, lmax float64
+	var png bool
 	flag.Float64Var(&limit, "l", 0.0, "limit")
 	flag.Float64Var(&lmin, "min", 0.0, "minimum")
 	flag.Float64Var(&lmax, "max", 0.0, "maximum")
+	flag.BoolVar(&png, "png", false, "write PNG instead of PDF")
 	flag.Parse()
 
 	var limitSet bool
@@ -231,15 +235,27 @@ func main() {
 		p.Y.Max = lmax
 	}
 
-	c := vgpdf.New(8.5*vg.Inch, 1.75*vg.Inch)
-	c.EmbedFonts(true)
+	var c interface {
+		vg.CanvasSizer
+		io.WriterTo
+	}
+	fext1 := ".pdf"
+	if png {
+		c = vgimg.PngCanvas{Canvas: vgimg.NewWith(
+			vgimg.UseWH(8.5*vg.Inch, 1.75*vg.Inch), vgimg.UseDPI(192))}
+		fext1 = ".png"
+	} else {
+		pc := vgpdf.New(8.5*vg.Inch, 1.75*vg.Inch)
+		pc.EmbedFonts(true)
+		c = pc
+	}
 	dc := draw.New(c)
 	dc = draw.Crop(dc, 1*vg.Millimeter, -1*vg.Millimeter, 1*vg.Millimeter, -1*vg.Millimeter)
 
 	p.Draw(dc)
 
 	fext := filepath.Ext(fn0)
-	fn1 := fn0[:len(fn0)-len(fext)] + ".pdf"
+	fn1 := fn0[:len(fn0)-len(fext)] + fext1
 	f1, err := os.Create(fn1)
 	if err != nil {
 		log.Fatalf("failed to create file: %s, %s", fn1, err)
