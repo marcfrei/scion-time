@@ -19,7 +19,7 @@ const (
 	serverRefID = 0x58535453
 
 	tssCap     = 1 << 20
-	tssItemCap = 8
+	tssItemCap = 16
 )
 
 type tssItem struct {
