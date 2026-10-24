@@ -11,7 +11,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/gopacket/gopacket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -54,9 +53,8 @@ type SCIONClient struct {
 		mac          []byte
 		NTSKEFetcher ntske.Fetcher
 	}
-	Filter    *Filter
-	Histogram *hdrhistogram.Histogram
-	prev      struct {
+	Filter *Filter
+	prev   struct {
 		reference  string
 		path       string
 		failures   int
@@ -734,13 +732,6 @@ exchanges:
 			c.prev.failures = 0
 			lastRTT = rtd
 			lastRxTime = cRxTime
-
-			if c.Histogram != nil {
-				err := c.Histogram.RecordValue(rtd.Microseconds())
-				if err != nil {
-					return time.Time{}, 0, err
-				}
-			}
 
 			if c.Filter != nil {
 				off, err = c.Filter.Do(t0, t1, t2, t3)

@@ -3,7 +3,6 @@ module example.com/scion-time
 go 1.27.3
 
 require (
-	github.com/HdrHistogram/hdrhistogram-go v1.4.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/gopacket/gopacket v1.7.4
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
@@ -17,6 +16,7 @@ require (
 )
 
 require (
+	github.com/HdrHistogram/hdrhistogram-go v1.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -25,6 +25,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
@@ -44,6 +45,7 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	zgo.at/zcache/v2 v2.4.1 // indirect
 )
