@@ -77,6 +77,9 @@ type PIController struct {
 	// Offset threshold indicating that, if reached, a clock step is to be applied.
 	StepThreshold time.Duration
 
+	// Level of the log messages on clock adjustments.
+	LogLevel slog.Level
+
 	running bool
 	p, i    float64
 }
@@ -94,7 +97,7 @@ func (c *PIController) Do(offset time.Duration) {
 	c.i = min(max(-maxFreq, c.i+c.p*c.KI), maxFreq)
 
 	if c.StepThreshold != 0 && offset.Abs() >= c.StepThreshold {
-		log.LogAttrs(ctx, slog.LevelInfo, "adjusting clock",
+		log.LogAttrs(ctx, c.LogLevel, "adjusting clock",
 			slog.Duration("offset", offset))
 		c.Clock.Step(offset)
 		c.p = 0
@@ -103,7 +106,7 @@ func (c *PIController) Do(offset time.Duration) {
 
 	c.p = offset.Seconds() * c.KP
 	freq := min(max(-maxFreq, c.i+c.p), maxFreq)
-	log.LogAttrs(ctx, slog.LevelInfo, "adjusting clock frequency",
+	log.LogAttrs(ctx, c.LogLevel, "adjusting clock frequency",
 		slog.Float64("frequency", freq))
 	c.Clock.SetFrequency(freq)
 }

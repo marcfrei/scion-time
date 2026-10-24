@@ -69,6 +69,7 @@ func StartPHCSync(log *slog.Logger, config string) {
 		KP:            0.02,
 		KI:            0.005,
 		StepThreshold: stepThreshold,
+		LogLevel:      slog.LevelDebug,
 	}
 
 	go func() {
