@@ -19,13 +19,14 @@ const (
 	serverRefID = 0x58535453
 
 	tssCap     = 1 << 20
-	tssItemCap = 8
+	tssItemCap = 16
 )
 
 type tssItem struct {
 	key string
 	buf [tssItemCap]struct {
 		rxt, txt ntp.Time64
+		updated  bool
 	}
 	len  int
 	qval ntp.Time64
@@ -174,7 +175,7 @@ func handleRequest(clientID string, req *ntp.Packet, rxt, txt *time.Time, resp *
 
 	resp.ReferenceTime = txt64
 	resp.ReceiveTime = rxt64
-	if req.ReceiveTime != req.TransmitTime && o != -1 {
+	if req.ReceiveTime != req.TransmitTime && o != -1 && tssi.buf[o].updated {
 		// interleaved mode: serve from timestamp store
 		resp.OriginTime = req.ReceiveTime
 		resp.TransmitTime = tssi.buf[o].txt
@@ -194,14 +195,17 @@ func handleRequest(clientID string, req *ntp.Packet, rxt, txt *time.Time, resp *
 			// maintain interleaved mode timestamp values
 			tssi.buf[o].rxt = rxt64
 			tssi.buf[o].txt = txt64
+			tssi.buf[o].updated = false
 		} else if tssi.len == cap(tssi.buf) {
 			// replace minimum timestamp values
 			tssi.buf[min].rxt = rxt64
 			tssi.buf[min].txt = txt64
+			tssi.buf[min].updated = false
 		} else {
 			// add timestamp values
 			tssi.buf[tssi.len].rxt = rxt64
 			tssi.buf[tssi.len].txt = txt64
+			tssi.buf[tssi.len].updated = false
 			tssi.len++
 			tssMetrics.tssValues.Inc()
 		}
@@ -211,6 +215,8 @@ func handleRequest(clientID string, req *ntp.Packet, rxt, txt *time.Time, resp *
 func updateTXTimestamp(clientID string, rxt time.Time, txt *time.Time) {
 	tssMu.Lock()
 	defer tssMu.Unlock()
+
+	txt64 := ntp.Time64FromTime(*txt)
 
 	if !rxt.Before(*txt) {
 		// ensure strict monotonicity of rx/tx timestamps
@@ -222,7 +228,6 @@ func updateTXTimestamp(clientID string, rxt time.Time, txt *time.Time) {
 	tssi, ok := tss[clientID]
 	if ok {
 		rxt64 := ntp.Time64FromTime(rxt)
-		txt64 := ntp.Time64FromTime(*txt)
 		var i, x, max0, max1 int
 		for i, x, max0, max1 = 0, -1, -1, -1; i != tssi.len; i++ {
 			if tssi.buf[i].rxt == rxt64 {
@@ -236,7 +241,8 @@ func updateTXTimestamp(clientID string, rxt time.Time, txt *time.Time) {
 		}
 		if x != -1 {
 			if tssi.buf[x].txt != txt64 {
-				tssi.buf[x].txt = txt64
+				tssi.buf[x].txt = ntp.Time64FromTime(*txt)
+				tssi.buf[x].updated = true
 			} else {
 				// No updated tx timestamp available
 				if tssi.len == 1 {

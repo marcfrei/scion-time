@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/gopacket/gopacket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -48,9 +47,8 @@ type SCIONClient struct {
 		mac          []byte
 		NTSKEFetcher ntske.Fetcher
 	}
-	Filter    measurements.Filter
-	Histogram *hdrhistogram.Histogram
-	prev      struct {
+	Filter measurements.Filter
+	prev   struct {
 		reference  string
 		path       string
 		failures   int
@@ -651,13 +649,6 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 				c.prev.interleaved = interleavedResp
 			}
 			c.prev.failures = 0
-
-			if c.Histogram != nil {
-				err := c.Histogram.RecordValue(rtd.Microseconds())
-				if err != nil {
-					return time.Time{}, 0, err
-				}
-			}
 
 			if c.Filter != nil {
 				off, ok = c.Filter.Do(t0, t1, t2, t3)

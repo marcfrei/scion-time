@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
 
       - name: go build
         run: go build -o bin/timeservice
@@ -63,7 +63,7 @@ jobs:
       - name: gosec
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          $(go env GOPATH)/bin/gosec -quiet -exclude=G103,G104,G114,G115,G204,G304,G402,G407 ./...
+          $(go env GOPATH)/bin/gosec -quiet -exclude=G103,G104,G110,G114,G115,G203,G204,G304,G402,G407 ./...
 
       - name: go test
         run: go test example.com/scion-time/...

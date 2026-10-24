@@ -447,16 +447,20 @@ func runCSPTPServerSCION(ctx context.Context, log *slog.Logger,
 			xtxid := syncCtx.conn.txid
 			syncCtx.conn.txid++
 			txTime0, id, err := udp.ReadTXTimestamp(syncCtx.conn.c, xtxid)
-			if err != nil {
-				txTime0 = timebase.Now()
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Any("local_addr", syncCtx.conn.c.LocalAddr()),
-					slog.Any("error", err))
-			} else if id != xtxid {
-				txTime0 = timebase.Now()
-				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
-				syncCtx.conn.txid = id + 1
+			if err != nil || id != xtxid {
+				// Without a tx timestamp for the sync message, skip the follow-up
+				// message rather than sending an inaccurate timestamp.
+				if err != nil {
+					log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet tx timestamp",
+						slog.Any("local_addr", syncCtx.conn.c.LocalAddr()),
+						slog.Any("error", err))
+				} else {
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
+					syncCtx.conn.txid = id + 1
+				}
+				syncCtx.conn.mu.Unlock()
+				continue
 			}
 			syncCtx.conn.mu.Unlock()
 
