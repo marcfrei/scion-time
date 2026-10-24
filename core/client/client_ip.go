@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -30,9 +29,8 @@ type IPClient struct {
 		Enabled      bool
 		NTSKEFetcher ntske.Fetcher
 	}
-	Filter    measurements.Filter
-	Histogram *hdrhistogram.Histogram
-	prev      struct {
+	Filter measurements.Filter
+	prev   struct {
 		reference  string
 		timestamps struct {
 			cTx ntp.Time64
@@ -350,13 +348,6 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 				c.prev.timestamps.sRx = ntpresp.ReceiveTime
 				c.prev.timestamps.set = true
 				c.prev.interleaved = interleavedResp
-			}
-
-			if c.Histogram != nil {
-				err := c.Histogram.RecordValue(rtd.Microseconds())
-				if err != nil {
-					return time.Time{}, 0, err
-				}
 			}
 
 			if c.Filter != nil {

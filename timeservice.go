@@ -32,8 +32,6 @@ import (
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/base/timemath"
 
-	"example.com/scion-time/bench"
-
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/server"
 	"example.com/scion-time/core/sync"
@@ -80,7 +78,6 @@ type svcConfig struct {
 	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
 	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
 	SCIONPublicAddr         string   `toml:"scion_public_address,omitempty"`
-	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	PHCReferenceClocks      []string `toml:"phc_reference_clocks,omitempty"`
 	SHMReferenceClocks      []string `toml:"shm_reference_clocks,omitempty"`
@@ -340,18 +337,6 @@ func localAddress(cfg svcConfig) *snet.UDPAddr {
 		logbase.Fatal(slog.Default(), "failed to parse local address")
 	}
 	return &localAddr
-}
-
-func remoteAddress(cfg svcConfig) *snet.UDPAddr {
-	if cfg.RemoteAddr == "" {
-		logbase.Fatal(slog.Default(), "remote_address not specified in config")
-	}
-	var remoteAddr snet.UDPAddr
-	err := remoteAddr.Set(cfg.RemoteAddr)
-	if err != nil {
-		logbase.Fatal(slog.Default(), "failed to parse remote address")
-	}
-	return &remoteAddr
 }
 
 func scionPublicIP(publicAddr string) net.IP {
@@ -949,42 +934,6 @@ func runSelectPaths(daemonAddr, apiAddr, topoFile, certsDir string, remoteIA add
 	}
 }
 
-func runBenchmark(configFile string) {
-	cfg := loadConfig(configFile)
-	log := slog.Default()
-
-	localAddr := localAddress(cfg)
-	remoteAddr := remoteAddress(cfg)
-
-	localAddr.Host.Port = 0
-	ntskeServer := ntskeServerFromRemoteAddr(cfg.RemoteAddr)
-
-	if !remoteAddr.IA.IsZero() {
-		cpc := controlPlaneConnectorFromConfig(cfg)
-		runBenchmarkSCION(cpc, localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
-	} else {
-		runBenchmarkIP(localAddr, remoteAddr, cfg.AuthModes, ntskeServer, log)
-	}
-}
-
-func runBenchmarkIP(localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
-	lclk := clocks.NewSystemClock(
-		slog.New(slog.DiscardHandler),
-		clocks.UnknownDrift,
-	)
-	timebase.RegisterClock(lclk)
-	bench.RunIPBenchmark(localAddr.Host, remoteAddr.Host, authModes, ntskeServer, log)
-}
-
-func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
-	lclk := clocks.NewSystemClock(
-		slog.New(slog.DiscardHandler),
-		clocks.UnknownDrift,
-	)
-	timebase.RegisterClock(lclk)
-	bench.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
-}
-
 func runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir string,
 	serverMode bool, serverAddr, clientAddr *snet.UDPAddr) {
 	ctx := context.Background()
@@ -1079,7 +1028,6 @@ func main() {
 	pingFlags := flag.NewFlagSet("ping", flag.ExitOnError)
 	showPathsFlags := flag.NewFlagSet("showpaths", flag.ExitOnError)
 	selectPathsFlags := flag.NewFlagSet("selectpaths", flag.ExitOnError)
-	benchmarkFlags := flag.NewFlagSet("benchmark", flag.ExitOnError)
 	drkeyFlags := flag.NewFlagSet("drkey", flag.ExitOnError)
 
 	serverFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
@@ -1131,10 +1079,6 @@ func main() {
 	selectPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	selectPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
 	selectPathsFlags.IntVar(&selectK, "k", 7, "Number of paths to select")
-
-	benchmarkFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
-	benchmarkFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
-	benchmarkFlags.StringVar(&configFile, "config", "", "Config file")
 
 	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -1331,16 +1275,6 @@ func main() {
 		}
 		initLogger(logLevel())
 		runSelectPaths(daemonAddr, apiAddr, topoFile, certsDir, remoteIA, selectK)
-	case benchmarkFlags.Name():
-		err := benchmarkFlags.Parse(os.Args[2:])
-		if err != nil || benchmarkFlags.NArg() != 0 {
-			exitWithUsage()
-		}
-		if configFile == "" {
-			exitWithUsage()
-		}
-		initLogger(logLevel())
-		runBenchmark(configFile)
 	case drkeyFlags.Name():
 		err := drkeyFlags.Parse(os.Args[2:])
 		if err != nil || drkeyFlags.NArg() != 0 {

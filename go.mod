@@ -3,7 +3,6 @@ module example.com/scion-time
 go 1.27.3
 
 require (
-	github.com/HdrHistogram/hdrhistogram-go v1.4.0
 	github.com/VictoriaMetrics/easyproto v1.2.0
 	github.com/gopacket/gopacket v1.7.4
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75
@@ -17,6 +16,7 @@ require (
 )
 
 require (
+	github.com/HdrHistogram/hdrhistogram-go v1.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
