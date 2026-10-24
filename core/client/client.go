@@ -43,7 +43,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *slog.Logger,
 	ts time.Time, off time.Duration, err error) {
 	mtrcs := ipMetrics.Load()
 
-	var nerr, n int
+	var n int
 	log.LogAttrs(ctx, slog.LevelDebug, "measuring clock offset",
 		slog.Any("to", remoteAddr),
 	)
@@ -52,22 +52,19 @@ func MeasureClockOffsetIP(ctx context.Context, log *slog.Logger,
 	} else {
 		n = 1
 	}
-	for i := range n {
+	for range n {
 		t, o, e := ntpc.measureClockOffsetIP(ctx, mtrcs, localAddr, remoteAddr)
 		if e == nil {
 			ts, off, err = t, o, e
-			if ntpc.InInterleavedMode() {
-				break
-			}
-		} else {
-			if nerr == i {
-				err = e
-			}
-			nerr++
-			log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
-				slog.Any("to", remoteAddr),
-				slog.Any("error", e),
-			)
+			break
+		}
+		err = e
+		log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
+			slog.Any("to", remoteAddr),
+			slog.Any("error", e),
+		)
+		if errors.Is(e, errFilterRejected) {
+			break
 		}
 	}
 	return
@@ -163,7 +160,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			var err error
 			var ts time.Time
 			var off time.Duration
-			var nerr, n int
+			var n int
 			via := snet.Fingerprint(pathInterfaces(p)).String()
 			log.LogAttrs(ctx, slog.LevelDebug, "measuring clock offset",
 				slog.Any("to", remoteAddr),
@@ -175,25 +172,28 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			} else {
 				n = 1
 			}
-			for j := range n {
+			for range n {
 				t, o, e := ntpc.measureClockOffsetSCION(ctx, mtrcs, localAddr, remoteAddr, publicIP, p)
 				if e == nil {
 					ts, off, err = t, o, e
-					if ntpc.InInterleavedMode() {
-						break
-					}
-				} else {
-					if nerr == j {
-						err = e
-					}
-					nerr++
-					log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
-						slog.Any("to", remoteAddr),
-						slog.String("via", via),
-						slog.Any("error", e),
-					)
+					break
+				}
+				err = e
+				log.LogAttrs(ctx, slog.LevelInfo, "failed to measure clock offset",
+					slog.Any("to", remoteAddr),
+					slog.String("via", via),
+					slog.Any("error", e),
+				)
+				if errors.Is(e, errFilterRejected) {
+					break
 				}
 			}
+			log.LogAttrs(ctx, slog.LevelInfo, "measured clock offset",
+				slog.String("via", via),
+				slog.Any("path", p),
+				slog.Duration("offset", off),
+				slog.Any("error", err),
+			)
 			msc <- measurements.Measurement{
 				Timestamp: ts,
 				Offset:    off,

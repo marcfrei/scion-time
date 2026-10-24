@@ -26,7 +26,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/measurements"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ip"
@@ -55,7 +54,7 @@ type SCIONClient struct {
 		mac          []byte
 		NTSKEFetcher ntske.Fetcher
 	}
-	Filter    measurements.Filter
+	Filter    *Filter
 	Histogram *hdrhistogram.Histogram
 	prev      struct {
 		reference  string
@@ -420,9 +419,12 @@ exchanges:
 						continue exchanges
 					}
 					if c.Filter != nil {
-						off, ok := c.Filter.Flush()
-						if ok {
+						off, ferr := c.Filter.Flush()
+						if ferr == nil {
 							return lastRxTime, off, nil
+						}
+						if !errors.Is(ferr, errFilterPending) {
+							return time.Time{}, 0, ferr
 						}
 					}
 					return time.Time{}, 0, err
@@ -712,12 +714,15 @@ exchanges:
 			}
 
 			if c.Filter != nil {
-				off, ok = c.Filter.Do(t0, t1, t2, t3)
-				if !ok && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
-					off, ok = c.Filter.Flush()
+				off, err = c.Filter.Do(t0, t1, t2, t3)
+				if errors.Is(err, errFilterPending) && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
+					off, err = c.Filter.Flush()
 				}
-				if !ok {
+				if errors.Is(err, errFilterPending) {
 					break
+				}
+				if err != nil {
+					return time.Time{}, 0, err
 				}
 			}
 

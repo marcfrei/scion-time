@@ -1,198 +1,127 @@
 package client
 
 import (
-	"cmp"
 	"context"
 	"log/slog"
-	"math"
 	"slices"
 	"time"
 
-	"example.com/scion-time/base/timemath"
 	"example.com/scion-time/core/timebase"
 
-	"example.com/scion-time/core/measurements"
+	"example.com/scion-time/net/ntp"
 )
+
+// A lucky packet is rejected if its round trip delay deviates by more than
+// maxRTDExcess from the floor, the 10th percentile of the round trip delays of
+// the lucky packets picked within the preceding window. Queuing in either
+// direction, or a timestamp error in a single direction, then contributes at
+// most maxRTDExcess/2 to an accepted clock offset. Unlike the minimum, the
+// percentile is not shifted by a single sample with such an error.
+const luckyPacketWindow = 5 * time.Minute
 
 type sample struct {
 	cTx, sRx, sTx, cRx time.Time
 	rtd                time.Duration
 }
 
-type NtimedFilter struct {
-	log            *slog.Logger
-	logCtx         context.Context
-	epoch          uint64
-	buf            []sample
-	pick           int
-	alo, amid, ahi float64
-	alolo, ahihi   float64
-	navg           float64
+type pick struct {
+	t   time.Time
+	rtd time.Duration
 }
 
-var _ measurements.Filter = (*NtimedFilter)(nil)
+type Filter struct {
+	log          *slog.Logger
+	logCtx       context.Context
+	maxRTDExcess time.Duration
+	epoch        uint64
+	buf          []sample
+	picks        []pick
+}
 
-func NewNtimedFilter(log *slog.Logger, size, pick int) *NtimedFilter {
+func NewFilter(log *slog.Logger, size int, maxRTDExcess time.Duration) *Filter {
 	if size < 1 {
 		panic("lucky packet window size must be >= 1")
 	}
-	if pick < 1 || pick > size {
-		panic("lucky packet pick must be >= 1 and <= size")
+	if maxRTDExcess <= 0 {
+		panic("lucky packet maximum round trip delay excess must be > 0")
 	}
-	return &NtimedFilter{
-		log:    log,
-		logCtx: context.Background(),
-		buf:    make([]sample, 0, size),
-		pick:   pick,
+	return &Filter{
+		log:          log,
+		logCtx:       context.Background(),
+		maxRTDExcess: maxRTDExcess,
+		buf:          make([]sample, 0, size),
 	}
 }
 
-func cmpCTx(a, b sample) int {
-	return a.cTx.Compare(b.cTx)
-}
-
-func cmpRTD(a, b sample) int {
-	return cmp.Compare(a.rtd, b.rtd)
-}
-
-func (f *NtimedFilter) Do(cTx, sRx, sTx, cRx time.Time) (
-	offset time.Duration, ok bool) {
-
+func (f *Filter) Do(cTx, sRx, sTx, cRx time.Time) (
+	offset time.Duration, err error) {
 	if f.epoch != timebase.Epoch() {
-		f.Reset()
+		f.epoch = timebase.Epoch()
+		f.buf = f.buf[:0]
 	}
 
 	f.buf = append(f.buf, sample{
 		cTx: cTx, sRx: sRx, sTx: sTx, cRx: cRx,
-		rtd: cRx.Sub(cTx) - sTx.Sub(sRx),
+		rtd: ntp.RoundTripDelay(cTx, sRx, sTx, cRx),
 	})
 	if len(f.buf) < cap(f.buf) {
-		return 0, false
+		return 0, errFilterPending
 	}
 
-	return f.pickLucky(), true
+	return f.pickLucky()
 }
 
-// Flush selects from the samples collected so far, even if fewer than the
-// lucky packet window size.
-func (f *NtimedFilter) Flush() (offset time.Duration, ok bool) {
+func (f *Filter) Flush() (offset time.Duration, err error) {
 	if f.epoch != timebase.Epoch() {
-		f.Reset()
+		f.epoch = timebase.Epoch()
+		f.buf = f.buf[:0]
 	}
 
 	if len(f.buf) == 0 {
-		return 0, false
+		return 0, errFilterPending
 	}
 
-	return f.pickLucky(), true
+	return f.pickLucky()
 }
 
-func (f *NtimedFilter) pickLucky() time.Duration {
-	var off time.Duration
-	if f.pick == 1 {
-		x := f.buf[0]
-		for i := 1; i != len(f.buf); i++ {
-			s := f.buf[i]
-			if s.rtd < x.rtd {
-				x = s
-			}
-		}
-		off = f.filter(x.cTx, x.sRx, x.sTx, x.cRx)
-	} else {
-		slices.SortStableFunc(f.buf, cmpRTD)
-		f.buf = f.buf[:min(f.pick, len(f.buf))]
-		slices.SortStableFunc(f.buf, cmpCTx)
-		for _, s := range f.buf {
-			off = f.filter(s.cTx, s.sRx, s.sTx, s.cRx)
+func (f *Filter) pickLucky() (time.Duration, error) {
+	x := f.buf[0]
+	for _, s := range f.buf[1:] {
+		if s.rtd < x.rtd {
+			x = s
 		}
 	}
 	f.buf = f.buf[:0]
 
-	return off
-}
-
-func (f *NtimedFilter) filter(cTxTime, sRxTime, sTxTime, cRxTime time.Time) (
-	offset time.Duration) {
-
-	// Based on Ntimed by Poul-Henning Kamp, https://github.com/bsdphk/Ntimed
-
-	var weight float64
-
-	lo := cTxTime.Sub(sRxTime).Seconds()
-	hi := cRxTime.Sub(sTxTime).Seconds()
-	mid := (lo + hi) / 2
-
-	const (
-		filterAverage   = 40.0
-		filterThreshold = 3.0
-	)
-
-	if f.navg < filterAverage {
-		f.navg += 1.0
+	now := time.Now()
+	i := 0
+	for i != len(f.picks) && now.Sub(f.picks[i].t) > luckyPacketWindow {
+		i++
 	}
-
-	var loNoise, hiNoise float64
-	if f.navg > 2.0 {
-		loNoise = math.Sqrt(max(0.0, f.alolo-f.alo*f.alo))
-		hiNoise = math.Sqrt(max(0.0, f.ahihi-f.ahi*f.ahi))
+	f.picks = append(f.picks[i:], pick{t: now, rtd: x.rtd})
+	rtds := make([]time.Duration, len(f.picks))
+	for j, p := range f.picks {
+		rtds[j] = p.rtd
 	}
+	slices.Sort(rtds)
+	floor := rtds[len(rtds)/10]
 
-	loLim := f.alo - loNoise*filterThreshold
-	hiLim := f.ahi + hiNoise*filterThreshold
-
-	var branch int
-	failLo := lo < loLim
-	failHi := hi > hiLim
-	if failLo && failHi {
-		branch = 1
-	} else if f.navg > 3.0 && failLo {
-		mid = f.amid + (hi - f.ahi)
-		branch = 2
-	} else if f.navg > 3.0 && failHi {
-		mid = f.amid + (lo - f.alo)
-		branch = 3
-	} else {
-		branch = 4
-	}
-
-	r := f.navg
-	if f.navg > 2.0 && branch != 4 {
-		r *= r
-	}
-
-	f.alo += (lo - f.alo) / r
-	f.amid += (mid - f.amid) / r
-	f.ahi += (hi - f.ahi) / r
-	f.alolo += (lo*lo - f.alolo) / r
-	f.ahihi += (hi*hi - f.ahihi) / r
-
-	offset = timemath.Duration(mid)
-	weight = max(1.0, 0.001+2.0/(hi-lo))
-
+	off := ntp.ClockOffset(x.cTx, x.sRx, x.sTx, x.cRx)
 	if f.log != nil {
-		f.log.LogAttrs(f.logCtx, slog.LevelDebug, "filtered response",
-			slog.Int("branch", branch),
-			slog.Float64("lo [s]", lo),
-			slog.Float64("mid [s]", mid),
-			slog.Float64("hi [s]", hi),
-			slog.Float64("loLim [s]", loLim),
-			slog.Float64("amid [s]", f.amid),
-			slog.Float64("hiLim [s]", hiLim),
-			slog.Float64("offset [s]", offset.Seconds()),
-			slog.Float64("weight", weight),
+		f.log.LogAttrs(f.logCtx, slog.LevelInfo, "picked lucky packet",
+			slog.Duration("clock offset", off),
+			slog.Duration("round trip delay", x.rtd),
+			slog.Duration("round trip delay floor", floor),
 		)
 	}
-
-	return timemath.Inv(offset)
+	if (x.rtd - floor).Abs() > f.maxRTDExcess {
+		return 0, errFilterRejected
+	}
+	return off, nil
 }
 
-func (f *NtimedFilter) Reset() {
+func (f *Filter) Reset() {
 	f.epoch = timebase.Epoch()
 	f.buf = f.buf[:0]
-	f.alo = 0.0
-	f.amid = 0.0
-	f.ahi = 0.0
-	f.alolo = 0.0
-	f.ahihi = 0.0
-	f.navg = 0.0
+	f.picks = f.picks[:0]
 }

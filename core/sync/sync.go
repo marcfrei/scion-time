@@ -125,7 +125,7 @@ func Run(log *slog.Logger, cfg Config,
 		case refClkOk && peerClkOk:
 			corr = timemath.Midpoint(refClkCorr, peerClkCorr)
 		}
-		log.LogAttrs(ctx, slog.LevelDebug, "correcting clock",
+		log.LogAttrs(ctx, slog.LevelInfo, "correcting clock",
 			slog.Float64("corr", corr.Seconds()),
 			slog.Bool("refClkOk", refClkOk),
 			slog.Float64("refClkOff", refClkOff.Seconds()),

@@ -35,22 +35,6 @@ func (c *SystemClock) Drift(duration time.Duration) time.Duration {
 	return math.MaxInt64
 }
 
-func (c *SystemClock) Step(offset time.Duration) {
-	c.log.LogAttrs(context.Background(), slog.LevelDebug,
-		"SystemClock.Step, not yet implemented",
-		slog.Duration("offset", offset),
-	)
-}
-
-func (c *SystemClock) Adjust(offset, duration time.Duration, frequency float64) {
-	c.log.LogAttrs(context.Background(), slog.LevelDebug,
-		"SystemClock.Adjust, not yet implemented",
-		slog.Duration("offset", offset),
-		slog.Duration("duration", duration),
-		slog.Float64("frequency", frequency),
-	)
-}
-
 func (c *SystemClock) Sleep(duration time.Duration) {
 	c.log.LogAttrs(context.Background(), slog.LevelDebug,
 		"SystemClock.Sleep",

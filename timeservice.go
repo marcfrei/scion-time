@@ -95,7 +95,7 @@ type svcConfig struct {
 	NTSKEInsecureSkipVerify bool     `toml:"ntske_insecure_skip_verify,omitempty"`
 	DSCP                    uint8    `toml:"dscp,omitempty"` // must be in range [0, 63]
 	FilterSize              int      `toml:"filter_size,omitempty"`
-	FilterPick              int      `toml:"filter_pick,omitempty"`
+	FilterMaxRTDExcess      float64  `toml:"filter_max_rtd_excess,omitempty"`
 	PIControllerKP          float64  `toml:"pi_controller_kp,omitempty"`
 	PIControllerKI          float64  `toml:"pi_controller_ki,omitempty"`
 	SyncClock               string   `toml:"sync_clock,omitempty"`
@@ -231,8 +231,10 @@ func configureIPClientNTS(c *client.IPClient, ntskeServer string, ntskeInsecureS
 	c.Auth.NTSKEFetcher.Log = log
 }
 
-func newNTPReferenceClockIP(log *slog.Logger, localAddr, remoteAddr *net.UDPAddr, dscp uint8,
-	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
+func newNTPReferenceClockIP(
+	log *slog.Logger, localAddr, remoteAddr *net.UDPAddr, dscp uint8,
+	filterSize int, filterMaxRTDExcess time.Duration,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockIP {
 	c := &ntpReferenceClockIP{
 		log:        log,
 		localAddr:  localAddr,
@@ -243,7 +245,7 @@ func newNTPReferenceClockIP(log *slog.Logger, localAddr, remoteAddr *net.UDPAddr
 		DSCP:            dscp,
 		InterleavedMode: true,
 	}
-	c.ntpc.Filter = client.NewNtimedFilter(log, filterSize, filterPick)
+	c.ntpc.Filter = client.NewFilter(log, filterSize, filterMaxRTDExcess)
 	if slices.Contains(authModes, authModeNTS) {
 		configureIPClientNTS(c.ntpc, ntskeServer, ntskeInsecureSkipVerify, log)
 	}
@@ -279,9 +281,11 @@ func configureSCIONClientNTS(c *client.SCIONClient, ntskeServer string, ntskeIns
 	c.Auth.NTSKEFetcher.QUIC.ControlPlaneConnector = cpc
 }
 
-func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector,
+func newNTPReferenceClockSCION(
+	log *slog.Logger, cpc scion.ControlPlaneConnector,
 	localAddr, remoteAddr udp.UDPAddr, publicIP net.IP, dscp uint8,
-	filterSize, filterPick int, authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
+	filterSize int, filterMaxRTDExcess time.Duration,
+	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool) *ntpReferenceClockSCION {
 	c := &ntpReferenceClockSCION{
 		log:        log,
 		localAddr:  localAddr,
@@ -294,7 +298,7 @@ func newNTPReferenceClockSCION(log *slog.Logger, cpc scion.ControlPlaneConnector
 			DSCP:            dscp,
 			InterleavedMode: true,
 		}
-		c.ntpcs[i].Filter = client.NewNtimedFilter(log, filterSize, filterPick)
+		c.ntpcs[i].Filter = client.NewFilter(log, filterSize, filterMaxRTDExcess)
 		if slices.Contains(authModes, authModeNTS) {
 			configureSCIONClientNTS(c.ntpcs[i], ntskeServer, ntskeInsecureSkipVerify,
 				cpc, localAddr, remoteAddr, publicIP, log)
@@ -389,15 +393,21 @@ func dscp(cfg svcConfig) uint8 {
 	return cfg.DSCP
 }
 
-func filterConfig(cfg svcConfig) (size, pick int) {
-	size, pick = cfg.FilterSize, cfg.FilterPick
+func filterConfig(cfg svcConfig) (size int, maxRTDExcess time.Duration) {
+	const (
+		defaultFilterSize         = 64
+		defaultFilterMaxRTDExcess = 1 * time.Millisecond
+	)
+
+	size = cfg.FilterSize
 	if size == 0 {
-		size = 1
+		size = defaultFilterSize
 	}
-	if pick == 0 {
-		pick = 1
+	maxRTDExcess = timemath.Duration(cfg.FilterMaxRTDExcess)
+	if maxRTDExcess == 0 {
+		maxRTDExcess = defaultFilterMaxRTDExcess
 	}
-	if size < 1 || pick < 1 || pick > size {
+	if size < 1 || maxRTDExcess <= 0 {
 		logbase.Fatal(slog.Default(), "invalid filter configuration specified in config")
 	}
 	return
@@ -551,7 +561,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 	publicIP := scionPublicIP(cfg.SCIONPublicAddr)
 
 	dscp := dscp(cfg)
-	filterSize, filterPick := filterConfig(cfg)
+	filterSize, filterMaxRTDExcess := filterConfig(cfg)
 	ipLocalAddr := &net.UDPAddr{
 		IP:   localAddr.Host.IP,
 		Port: 0,
@@ -610,14 +620,14 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			refClocks = append(refClocks, newNTPReferenceClockSCION(log,
 				controlPlaneConnectorFromConfig(cfg),
 				udp.UDPAddrFromSnet(scionLocalAddr), udp.UDPAddrFromSnet(remoteAddr), publicIP,
-				dscp, filterSize, filterPick,
+				dscp, filterSize, filterMaxRTDExcess,
 				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
 			dstIAs = append(dstIAs, remoteAddr.IA)
 		} else {
 			refClocks = append(refClocks, newNTPReferenceClockIP(log,
 				ipLocalAddr, remoteAddr.Host,
-				dscp, filterSize, filterPick,
+				dscp, filterSize, filterMaxRTDExcess,
 				cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 			))
 		}
@@ -635,7 +645,7 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 		peerClocks = append(peerClocks, newNTPReferenceClockSCION(log,
 			controlPlaneConnectorFromConfig(cfg),
 			udp.UDPAddrFromSnet(scionLocalAddr), udp.UDPAddrFromSnet(remoteAddr), publicIP,
-			dscp, filterSize, filterPick,
+			dscp, filterSize, filterMaxRTDExcess,
 			cfg.AuthModes, ntskeServer, cfg.NTSKEInsecureSkipVerify,
 		))
 		dstIAs = append(dstIAs, remoteAddr.IA)

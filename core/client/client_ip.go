@@ -2,9 +2,11 @@ package client
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -13,7 +15,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/measurements"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
@@ -30,7 +31,7 @@ type IPClient struct {
 		Enabled      bool
 		NTSKEFetcher ntske.Fetcher
 	}
-	Filter    measurements.Filter
+	Filter    *Filter
 	Histogram *hdrhistogram.Histogram
 	prev      struct {
 		reference  string
@@ -110,11 +111,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	conn := pconn.(*net.UDPConn)
 	defer func() { _ = conn.Close() }()
 	deadline, deadlineSet := ctx.Deadline()
+	var sampleEnd time.Time
 	if deadlineSet {
 		err = conn.SetDeadline(deadline)
 		if err != nil {
 			return time.Time{}, 0, err
 		}
+		// Stop collecting lucky packet samples after 80% of the time to the
+		// deadline, leaving room for the last exchange to complete.
+		sampleEnd = time.Now().Add(time.Until(deadline) * 4 / 5)
 	}
 	err = udp.EnableTimestamping(conn, localAddr.Zone, -1 /* index */)
 	if err != nil {
@@ -152,6 +157,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	}
 
 	var txid uint32
+	var lastRxTime time.Time
 	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
 	for {
@@ -214,6 +220,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 					numRetries++
 					continue
+				}
+				if c.Filter != nil && errors.Is(err, os.ErrDeadlineExceeded) {
+					off, ferr := c.Filter.Flush()
+					if ferr == nil {
+						return lastRxTime, off, nil
+					}
+					if !errors.Is(ferr, errFilterPending) {
+						return time.Time{}, 0, ferr
+					}
 				}
 				return time.Time{}, 0, err
 			}
@@ -351,6 +366,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 				c.prev.timestamps.set = true
 				c.prev.interleaved = interleavedResp
 			}
+			lastRxTime = cRxTime
 
 			if c.Histogram != nil {
 				err := c.Histogram.RecordValue(rtd.Microseconds())
@@ -360,10 +376,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			}
 
 			if c.Filter != nil {
-				var ok bool
-				off, ok = c.Filter.Do(t0, t1, t2, t3)
-				if !ok {
+				off, err = c.Filter.Do(t0, t1, t2, t3)
+				if errors.Is(err, errFilterPending) && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
+					off, err = c.Filter.Flush()
+				}
+				if errors.Is(err, errFilterPending) {
 					break
+				}
+				if err != nil {
+					return time.Time{}, 0, err
 				}
 			}
 
