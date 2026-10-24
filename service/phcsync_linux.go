@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"example.com/scion-time/base/logbase"
-	"example.com/scion-time/core/sync/adjustments"
+	"example.com/scion-time/core/sync"
+	"example.com/scion-time/driver/clocks"
 	"example.com/scion-time/driver/phc"
 )
 
@@ -63,8 +64,8 @@ func StartPHCSync(log *slog.Logger, config string) {
 
 	refClk := phc.NewReferenceClock(log, dev, offset)
 
-	adj := &adjustments.PIController{
-		Clock:         clk,
+	adj := &sync.PIController{
+		Clock:         clocks.NewAdjustableClock(log, clk),
 		KP:            0.02,
 		KI:            0.005,
 		StepThreshold: stepThreshold,

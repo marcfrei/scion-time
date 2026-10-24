@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,10 +15,11 @@ import (
 
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/measurements"
-	"example.com/scion-time/core/sync/adjustments"
 )
 
 type Config struct {
+	// Maximum drift of the synchronized clock per second, 0 if unknown.
+	ClockDrift           time.Duration
 	ReferenceClockImpact float64
 	PeerClockImpact      float64
 	PeerClockCutoff      time.Duration
@@ -43,7 +45,7 @@ func measureOffsetToRefClks(refClkClient client.ReferenceClockClient,
 }
 
 func Run(log *slog.Logger, cfg Config,
-	clk timebase.SystemClock, adj adjustments.Adjustment,
+	clk timebase.SystemClock, adj *PIController,
 	refClks, peerClks []client.ReferenceClock) {
 	ctx := context.Background()
 	if cfg.ReferenceClockImpact <= 1.0 {
@@ -61,13 +63,21 @@ func Run(log *slog.Logger, cfg Config,
 	if cfg.SyncTimeout < 0 || cfg.SyncTimeout > cfg.SyncInterval/2 {
 		panic("invalid sync timeout")
 	}
-	refClkMaxCorr := cfg.ReferenceClockImpact * float64(clk.Drift(cfg.SyncInterval))
-	if refClkMaxCorr <= 0 {
-		panic("unexpected system clock behavior")
+	drift := time.Duration(math.MaxInt64)
+	if cfg.ClockDrift != 0 {
+		drift = timemath.Duration(cfg.SyncInterval.Seconds() * cfg.ClockDrift.Seconds())
 	}
-	peerClkMaxCorr := cfg.PeerClockImpact * float64(clk.Drift(cfg.SyncInterval))
+	refClkMaxCorr := cfg.ReferenceClockImpact * float64(drift)
+	if refClkMaxCorr <= 0 {
+		panic("invalid clock drift")
+	}
+	peerClkMaxCorr := cfg.PeerClockImpact * float64(drift)
 	if peerClkMaxCorr <= 0 {
-		panic("unexpected system clock behavior")
+		panic("invalid clock drift")
+	}
+	if len(refClks) == 0 && len(peerClks) == 0 {
+		// nothing to synchronize to, leave the clock alone
+		return
 	}
 	var refClkClient client.ReferenceClockClient
 	refClkOffsets := make([]measurements.Measurement, len(refClks))

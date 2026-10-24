@@ -3,7 +3,6 @@ package server_test
 import (
 	"log/slog"
 	"testing"
-	"time"
 
 	"example.com/scion-time/core/server"
 	"example.com/scion-time/core/timebase"
@@ -14,10 +13,7 @@ import (
 )
 
 func init() {
-	lclk := clocks.NewSystemClock(
-		slog.New(slog.DiscardHandler),
-		clocks.UnknownDrift,
-	)
+	lclk := clocks.NewSystemClock(slog.New(slog.DiscardHandler))
 	timebase.RegisterClock(lclk)
 }
 
@@ -33,7 +29,7 @@ func TestSimpleRequest(t *testing.T) {
 	rxt := timebase.Now()
 	clientID := "client-0"
 
-	var txt0 time.Time
+	txt0 := timebase.Now()
 	var ntpresp ntp.Packet
 	server.HandleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 

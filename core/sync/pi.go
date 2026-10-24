@@ -1,5 +1,3 @@
-//go:build linux
-
 /*
  * Based on flashptpd, https://github.com/meinberg-sync/flashptpd
  *
@@ -35,23 +33,35 @@
  *
  */
 
-package adjustments
+package sync
 
 import (
 	"context"
 	"log/slog"
 	"time"
-
-	"golang.org/x/sys/unix"
-
-	"example.com/scion-time/base/logbase"
-	"example.com/scion-time/base/unixutil"
 )
 
+const (
+	PIControllerMinPRatio     = 0.001
+	PIControllerDefaultPRatio = 0.2
+	PIControllerMaxPRatio     = 1.0
+	PIControllerMinIRatio     = 0.0005
+	PIControllerDefaultIRatio = 0.05
+	PIControllerMaxIRatio     = 0.5
+
+	PIControllerDefaultStepThreshold = 10 * time.Millisecond
+)
+
+type Clock interface {
+	MaxFrequency() float64
+	Frequency() float64
+	SetFrequency(frequency float64)
+	Step(offset time.Duration)
+}
+
 type PIController struct {
-	// Clock defaults to CLOCK_REALTIME when empty. On Linux, a device path such
-	// as /dev/ptp0 selects a PTP hardware clock.
-	Clock string
+	// Clock to be adjusted.
+	Clock Clock
 
 	// Ratio (gain factor) of the proportional control output value (applied to
 	// the measured offset).
@@ -67,83 +77,33 @@ type PIController struct {
 	// Offset threshold indicating that, if reached, a clock step is to be applied.
 	StepThreshold time.Duration
 
-	clockID, clockFD int
-	running          bool
-	p, i             float64
-}
-
-var _ Adjustment = (*PIController)(nil)
-
-var (
-	linuxMinFreqAdj = unixutil.FreqFromScaledPPM(-32768000)
-	linuxMaxFreqAdj = unixutil.FreqFromScaledPPM(32768000)
-)
-
-func (c *PIController) openClock() error {
-	if c.Clock == "" {
-		c.clockID = unix.CLOCK_REALTIME
-		return nil
-	}
-	if c.clockID != 0 {
-		return nil
-	}
-
-	var err error
-	c.clockFD, err = unix.Open(c.Clock, unix.O_RDWR, 0)
-	if err != nil {
-		return err
-	}
-	c.clockID = int((^int32(c.clockFD) << 3) | 3)
-	return nil
+	running bool
+	p, i    float64
 }
 
 func (c *PIController) Do(offset time.Duration) {
 	ctx := context.Background()
 	log := slog.Default()
 
-	err := c.openClock()
-	if err != nil {
-		logbase.Fatal(log, "failed to open clock device",
-			slog.String("dev", c.Clock), slog.Any("error", err))
-	}
-
+	maxFreq := c.Clock.MaxFrequency()
 	if !c.running {
-		tx := unix.Timex{}
-		_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
-		if err != nil {
-			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
-		}
-		c.i = unixutil.FreqFromScaledPPM(tx.Freq)
+		c.i = c.Clock.Frequency()
 		c.running = true
 	}
 
-	c.i = min(max(linuxMinFreqAdj, c.i+c.p*c.KI), linuxMaxFreqAdj)
+	c.i = min(max(-maxFreq, c.i+c.p*c.KI), maxFreq)
 
 	if c.StepThreshold != 0 && offset.Abs() >= c.StepThreshold {
 		log.LogAttrs(ctx, slog.LevelInfo, "adjusting clock",
 			slog.Duration("offset", offset))
-		tx := unix.Timex{
-			Modes: unix.ADJ_SETOFFSET | unix.ADJ_NANO,
-			Time:  unixutil.TimevalFromNsec(offset.Nanoseconds()),
-		}
-		_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
-		if err != nil {
-			logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
-		}
+		c.Clock.Step(offset)
 		c.p = 0
 		return
 	}
 
 	c.p = offset.Seconds() * c.KP
-	freq := min(max(linuxMinFreqAdj, c.i+c.p), linuxMaxFreqAdj)
+	freq := min(max(-maxFreq, c.i+c.p), maxFreq)
 	log.LogAttrs(ctx, slog.LevelInfo, "adjusting clock frequency",
 		slog.Float64("frequency", freq))
-	tx := unix.Timex{
-		Modes: unix.ADJ_FREQUENCY,
-		Freq:  unixutil.ScaledPPMFromFreq(freq),
-	}
-	_, err = unix.ClockAdjtime(int32(c.clockID), &tx)
-	if err != nil {
-		logbase.Fatal(log, "unix.ClockAdjtime failed", slog.Any("error", err))
-	}
+	c.Clock.SetFrequency(freq)
 }

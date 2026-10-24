@@ -111,11 +111,15 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 		oob = oob[:oobn]
 		rxt, err := udp.TimestampFromOOBData(oob)
 		if err != nil {
-			oob = oob[:0]
-			rxt = timebase.Now()
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp",
 				slog.Any("local_addr", conn.c.LocalAddr()),
 				slog.Any("error", err))
+			if udp.HardwareTimestamping(localHostIface) {
+				// a substitute would come from a different clock
+				continue
+			}
+			oob = oob[:0]
+			rxt = timebase.Now()
 		}
 		buf = buf[:n]
 

@@ -4,6 +4,8 @@ import (
 	"sync"
 	"unsafe"
 
+	"errors"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -111,6 +113,66 @@ func initNetworkInterface(fd int, ifname string, filter int32) error {
 	return nil
 }
 
+var errNoPHC = errors.New("network interface has no PTP hardware clock")
+
+// HardwareTimestamping reports whether sockets configured with
+// EnableTimestamping(conn, iface, index) receive hardware timestamps, which
+// come from a PTP hardware clock instead of CLOCK_REALTIME.
+func HardwareTimestamping(iface string) bool {
+	return iface != ""
+}
+
+// TimestampClock is the clock that timestamps packets on sockets configured
+// with EnableTimestamping(conn, iface, index): the PTP hardware clock with the
+// given index or, if index is negative, the one of network interface iface.
+// Without hardware timestamping, it is CLOCK_REALTIME.
+type TimestampClock struct {
+	dev     string
+	clockID int32
+}
+
+func NewTimestampClock(iface string, index int) (*TimestampClock, error) {
+	if !HardwareTimestamping(iface) {
+		return &TimestampClock{clockID: unix.CLOCK_REALTIME}, nil
+	}
+	if index < 0 {
+		fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, 0)
+		if err != nil {
+			return nil, err
+		}
+		info, err := unix.IoctlGetEthtoolTsInfo(fd, iface)
+		_ = unix.Close(fd)
+		if err != nil {
+			return nil, err
+		}
+		if info.Phc_index < 0 {
+			return nil, errNoPHC
+		}
+		index = int(info.Phc_index)
+	}
+	dev := "/dev/ptp" + strconv.Itoa(index)
+	fd, err := unix.Open(dev, unix.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &TimestampClock{dev: dev, clockID: (^int32(fd) << 3) | 3}, nil
+}
+
+// Dev returns the device path of the PTP hardware clock, or "" for
+// CLOCK_REALTIME.
+func (c *TimestampClock) Dev() string {
+	return c.dev
+}
+
+func (c *TimestampClock) Now() time.Time {
+	var ts unix.Timespec
+	err := unix.ClockGettime(c.clockID, &ts)
+	if err != nil {
+		panic(err)
+	}
+	return time.Unix(ts.Unix()).UTC()
+}
+
 func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {
 	return configureTimestamping(conn, iface, index, false)
 }
@@ -155,7 +217,7 @@ func configureTimestamping(conn syscall.Conn, iface string, index int, tx bool) 
 			unix.SOF_TIMESTAMPING_OPT_TSONLY
 	}
 
-	if iface != "" {
+	if HardwareTimestamping(iface) {
 		sockopts |= unix.SOF_TIMESTAMPING_RAW_HARDWARE |
 			unix.SOF_TIMESTAMPING_RX_HARDWARE
 		if tx {

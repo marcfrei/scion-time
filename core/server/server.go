@@ -10,8 +10,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/timebase"
-
 	"example.com/scion-time/net/ntp"
 )
 
@@ -100,6 +98,8 @@ func (q *tssQueue) Pop() any {
 	return tssi
 }
 
+// handleRequest expects *rxt to be the receive timestamp of the request and
+// *txt the current time, both from the clock that timestamps packets.
 func handleRequest(clientID string, req *ntp.Packet, rxt, txt *time.Time, resp *ntp.Packet) {
 	resp.SetVersion(ntp.VersionMax)
 	resp.SetMode(ntp.ModeServer)
@@ -108,8 +108,6 @@ func handleRequest(clientID string, req *ntp.Packet, rxt, txt *time.Time, resp *
 	resp.Precision = -32
 	resp.RootDispersion = ntp.Time32{Seconds: 0, Fraction: 10}
 	resp.ReferenceID = serverRefID
-
-	*txt = timebase.Now()
 
 	rxt64 := ntp.Time64FromTime(*rxt)
 	txt64 := ntp.Time64FromTime(*txt)

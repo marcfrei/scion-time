@@ -38,7 +38,6 @@ import (
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/server"
 	"example.com/scion-time/core/sync"
-	"example.com/scion-time/core/sync/adjustments"
 	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/driver/clocks"
@@ -446,16 +445,93 @@ func clockDrift(cfg svcConfig) time.Duration {
 func piControllerConfig(cfg svcConfig) (kp, ki float64) {
 	kp, ki = cfg.PIControllerKP, cfg.PIControllerKI
 	if kp == 0 {
-		kp = adjustments.PIControllerDefaultPRatio
+		kp = sync.PIControllerDefaultPRatio
 	}
 	if ki == 0 {
-		ki = adjustments.PIControllerDefaultIRatio
+		ki = sync.PIControllerDefaultIRatio
 	}
-	if kp < adjustments.PIControllerMinPRatio || kp > adjustments.PIControllerMaxPRatio ||
-		ki < adjustments.PIControllerMinIRatio || ki > adjustments.PIControllerMaxIRatio {
+	if kp < sync.PIControllerMinPRatio || kp > sync.PIControllerMaxPRatio ||
+		ki < sync.PIControllerMinIRatio || ki > sync.PIControllerMaxIRatio {
 		logbase.Fatal(slog.Default(), "invalid PI controller configuration specified in config")
 	}
 	return
+}
+
+// clockDevice returns the device path of a PTP hardware clock with symbolic
+// links resolved, or "" for CLOCK_REALTIME.
+func clockDevice(dev string) string {
+	if dev == "" || dev == "CLOCK_REALTIME" {
+		return ""
+	}
+	if p, err := filepath.EvalSymlinks(dev); err == nil {
+		return p
+	}
+	return dev
+}
+
+// checkClocks ensures that the reference clocks measure the synchronized
+// clock. NTP reference clocks and SCION peers measure the clock that
+// timestamps packets on the local address, and so do the clients of a server;
+// local reference clocks measure CLOCK_REALTIME. PHC sync without offset
+// between CLOCK_REALTIME and a PTP hardware clock makes the two equivalent,
+// but it must not steer the synchronized clock.
+func checkClocks(log *slog.Logger, cfg svcConfig, localAddr *snet.UDPAddr, server bool) {
+	netRefClks := len(cfg.NTPReferenceClocks) != 0 || len(cfg.SCIONPeers) != 0
+	localRefClks := len(cfg.MBGReferenceClocks) != 0 || len(cfg.PHCReferenceClocks) != 0 ||
+		len(cfg.SHMReferenceClocks) != 0
+	if !netRefClks && !localRefClks {
+		// nothing to synchronize to
+		return
+	}
+	iface, index := localAddr.Host.Zone, -1
+	if t := strings.Split(iface, "%"); len(t) == 2 {
+		i, err := strconv.Atoi(t[1])
+		if err == nil {
+			iface, index = t[0], i
+		}
+	}
+	tsclk, err := udp.NewTimestampClock(iface, index)
+	if err != nil {
+		logbase.Fatal(log, "failed to open timestamping clock",
+			slog.String("iface", iface), slog.Any("error", err))
+	}
+	tsDev := clockDevice(tsclk.Dev())
+	syncDev := clockDevice(cfg.SyncClock)
+	name := func(dev string) string {
+		if dev == "" {
+			return "CLOCK_REALTIME"
+		}
+		return dev
+	}
+	var phcSyncDev string
+	if t := strings.Split(cfg.PHCSync, ","); len(t) >= 3 {
+		// PHC sync steers clock t[1] to follow clock t[0] with an offset of
+		// t[2] seconds
+		src, dst := clockDevice(t[0]), clockDevice(t[1])
+		if dst == syncDev {
+			logbase.Fatal(log, "synchronized clock is steered by PHC sync",
+				slog.String("sync_clock", name(syncDev)))
+		}
+		if o, err := strconv.Atoi(t[2]); err == nil && o == 0 {
+			phcSyncDev = src
+			if phcSyncDev == "" {
+				phcSyncDev = dst
+			}
+		}
+	}
+	same := func(a, b string) bool {
+		return a == b || a == "" && b == phcSyncDev || b == "" && a == phcSyncDev
+	}
+	if (netRefClks || server && localRefClks) && !same(tsDev, syncDev) {
+		logbase.Fatal(log, "synchronized clock differs from timestamping clock",
+			slog.String("sync_clock", name(syncDev)),
+			slog.String("timestamping_clock", name(tsDev)))
+	}
+	if localRefClks && !same("", syncDev) {
+		logbase.Fatal(log, "synchronized clock differs from local reference clocks",
+			slog.String("sync_clock", name(syncDev)),
+			slog.String("reference_clocks", name("")))
+	}
 }
 
 func syncConfig(cfg svcConfig) sync.Config {
@@ -468,6 +544,7 @@ func syncConfig(cfg svcConfig) sync.Config {
 	)
 
 	syncCfg := sync.Config{
+		ClockDrift:           clockDrift(cfg),
 		ReferenceClockImpact: cfg.ReferenceClockImpact,
 		PeerClockImpact:      cfg.PeerClockImpact,
 		PeerClockCutoff:      timemath.Duration(cfg.PeerClockCutoff),
@@ -699,11 +776,12 @@ func runServer(configFile string) {
 
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
+	checkClocks(log, cfg, localAddr, true /* server */)
 
 	localAddr.Host.Port = 0
 	refClocks, peerClocks := createClocks(cfg, localAddr, log)
 
-	lclk := clocks.NewSystemClock(log, clockDrift(cfg))
+	lclk := clocks.NewSystemClock(log)
 	timebase.RegisterClock(lclk)
 
 	dscp := dscp(cfg)
@@ -722,11 +800,11 @@ func runServer(configFile string) {
 	syncCfg := syncConfig(cfg)
 	kp, ki := piControllerConfig(cfg)
 
-	adj := &adjustments.PIController{
-		Clock:         cfg.SyncClock,
+	adj := &sync.PIController{
+		Clock:         clocks.NewAdjustableClock(log, cfg.SyncClock),
 		KP:            kp,
 		KI:            ki,
-		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
+		StepThreshold: sync.PIControllerDefaultStepThreshold,
 	}
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
@@ -743,6 +821,7 @@ func runClient(configFile string) {
 
 	cfg := loadConfig(configFile)
 	localAddr := localAddress(cfg)
+	checkClocks(log, cfg, localAddr, false /* server */)
 
 	refClocks, peerClocks := createClocks(cfg, localAddr, log)
 
@@ -750,7 +829,7 @@ func runClient(configFile string) {
 		logbase.Fatal(slog.Default(), "unexpected configuration", slog.Int("number of peers", len(peerClocks)))
 	}
 
-	lclk := clocks.NewSystemClock(log, clockDrift(cfg))
+	lclk := clocks.NewSystemClock(log)
 	timebase.RegisterClock(lclk)
 
 	scionClocksAvailable := false
@@ -769,11 +848,11 @@ func runClient(configFile string) {
 	syncCfg := syncConfig(cfg)
 	kp, ki := piControllerConfig(cfg)
 
-	adj := &adjustments.PIController{
-		Clock:         cfg.SyncClock,
+	adj := &sync.PIController{
+		Clock:         clocks.NewAdjustableClock(log, cfg.SyncClock),
 		KP:            kp,
 		KI:            ki,
-		StepThreshold: adjustments.PIControllerDefaultStepThreshold,
+		StepThreshold: sync.PIControllerDefaultStepThreshold,
 	}
 
 	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
@@ -788,7 +867,7 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify, periodic bool) {
 	log := slog.Default()
 
-	lclk := clocks.NewSystemClock(log, clocks.UnknownDrift)
+	lclk := clocks.NewSystemClock(log)
 	timebase.RegisterClock(lclk)
 
 	laddr := localAddr.Host
@@ -825,7 +904,7 @@ func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string
 	ctx := context.Background()
 	log := slog.Default()
 
-	lclk := clocks.NewSystemClock(log, clocks.UnknownDrift)
+	lclk := clocks.NewSystemClock(log)
 	timebase.RegisterClock(lclk)
 
 	if dispatcherMode == dispatcherModeInternal {
@@ -890,7 +969,7 @@ func runPing(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string,
 	ctx := context.Background()
 	log := slog.Default()
 
-	lclk := clocks.NewSystemClock(log, clocks.UnknownDrift)
+	lclk := clocks.NewSystemClock(log)
 	timebase.RegisterClock(lclk)
 
 	if remoteAddr.IA.IsZero() {
@@ -1007,19 +1086,13 @@ func runBenchmark(configFile string) {
 }
 
 func runBenchmarkIP(localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
-	lclk := clocks.NewSystemClock(
-		slog.New(slog.DiscardHandler),
-		clocks.UnknownDrift,
-	)
+	lclk := clocks.NewSystemClock(slog.New(slog.DiscardHandler))
 	timebase.RegisterClock(lclk)
 	bench.RunIPBenchmark(localAddr.Host, remoteAddr.Host, authModes, ntskeServer, log)
 }
 
 func runBenchmarkSCION(cpc scion.ControlPlaneConnector, localAddr, remoteAddr *snet.UDPAddr, authModes []string, ntskeServer string, log *slog.Logger) {
-	lclk := clocks.NewSystemClock(
-		slog.New(slog.DiscardHandler),
-		clocks.UnknownDrift,
-	)
+	lclk := clocks.NewSystemClock(slog.New(slog.DiscardHandler))
 	timebase.RegisterClock(lclk)
 	bench.RunSCIONBenchmark(cpc, localAddr, remoteAddr, authModes, ntskeServer, log)
 }

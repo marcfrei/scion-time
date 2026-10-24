@@ -61,10 +61,11 @@ type SCIONClient struct {
 		path       string
 		failures   int
 		timestamps struct {
-			cTx ntp.Time64
-			cRx ntp.Time64
-			sRx ntp.Time64
-			set bool
+			cTx   ntp.Time64
+			cRx   ntp.Time64
+			sRx   ntp.Time64
+			epoch uint64
+			set   bool
 		}
 		interleaved bool
 	}
@@ -160,6 +161,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
+	hwts := udp.HardwareTimestamping(localAddr.Host.Zone)
 	err = udp.SetDSCP(conn, c.DSCP)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
@@ -234,6 +236,7 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	oob := make([]byte, udp.TimestampLen())
 exchanges:
 	for {
+		epoch := timebase.Epoch()
 		cTxTime0 := timebase.Now()
 		interleavedReq := false
 
@@ -371,6 +374,7 @@ exchanges:
 		xtxid := txid
 		txid++
 		cTxTime1, id, err := udp.ReadTXTimestamp(conn, xtxid)
+		txtsOK := err == nil && id == xtxid
 		if err != nil {
 			cTxTime1 = cTxTime0
 			c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
@@ -657,6 +661,30 @@ exchanges:
 				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
 			)
 
+			// With hardware timestamping, timestamps come from a PTP hardware
+			// clock, and a substitute from timebase.Now() would not. Samples
+			// must also not span a step of the clock. An unusable sample ends
+			// the exchanges like a timeout.
+			tsOK := (!hwts || txtsOK && rxtsErr == nil) && timebase.Epoch() == epoch
+			sampleOK := tsOK
+			if interleavedResp {
+				sampleOK = c.prev.timestamps.epoch == timebase.Epoch()
+			}
+			if !sampleOK {
+				c.prev.timestamps.set = false
+				incFailures(c)
+				if c.Filter != nil {
+					off, ferr := c.Filter.Flush()
+					if ferr == nil {
+						return lastRxTime, off, nil
+					}
+					if !errors.Is(ferr, errFilterPending) {
+						return time.Time{}, 0, ferr
+					}
+				}
+				return time.Time{}, 0, errUnusableTimestamps
+			}
+
 			sRxTime := ntp.TimeFromTime64(ntpresp.ReceiveTime, cTxTime0)
 			sTxTime := ntp.TimeFromTime64(ntpresp.TransmitTime, cTxTime0)
 
@@ -699,7 +727,8 @@ exchanges:
 				c.prev.timestamps.cTx = ntp.Time64FromTime(cTxTime1)
 				c.prev.timestamps.cRx = ntp.Time64FromTime(cRxTime)
 				c.prev.timestamps.sRx = ntpresp.ReceiveTime
-				c.prev.timestamps.set = true
+				c.prev.timestamps.epoch = epoch
+				c.prev.timestamps.set = tsOK
 				c.prev.interleaved = interleavedResp
 			}
 			c.prev.failures = 0

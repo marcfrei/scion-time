@@ -47,6 +47,7 @@ rxloop:
 		}
 		oob = oob[:oobn]
 		rxt, err := udp.TimestampFromOOBData(oob)
+		rxtOK := err == nil
 		if err != nil {
 			rxt = timebase.Now()
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
@@ -81,7 +82,7 @@ rxloop:
 			return err
 		}
 
-		reply := csptpReply{msg: respmsg, rxt: rxt, ok: true}
+		reply := csptpReply{msg: respmsg, rxt: rxt, msgOK: true, rxtOK: rxtOK}
 
 		switch messageType {
 		case csptp.MessageTypeSync:
@@ -238,6 +239,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	defer func() { _ = gconn.Close() }()
 
 	var cTxTime0, cTxTime1 time.Time
+	epoch := timebase.Epoch()
 
 	buf := make([]byte, csptp.MaxMessageLength)
 	var n int
@@ -257,6 +259,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		return time.Time{}, 0, errWrite
 	}
 	cTxTime0, id, err := udp.ReadTXTimestamp(econn, 0)
+	txtsOK := err == nil && id == 0
 	if err != nil || id != 0 {
 		cTxTime0 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
@@ -307,7 +310,7 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 	syncReply := replies.sync
 	followUpReply := replies.followUp
 	replies.mu.Unlock()
-	if !syncReply.ok || !followUpReply.ok {
+	if !syncReply.msgOK || !followUpReply.msgOK {
 		return time.Time{}, 0, errUnexpectedPacket
 	}
 
@@ -324,6 +327,14 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		slog.Any("respmsg1", &respmsg1),
 		slog.Any("resptlv", &resptlv),
 	)
+
+	// With hardware timestamping, timestamps come from a PTP hardware clock,
+	// and a substitute from timebase.Now() would not. Samples must also not
+	// span a step of the clock.
+	if udp.HardwareTimestamping(localAddr.Zone()) && (!txtsOK || !syncReply.rxtOK) ||
+		timebase.Epoch() != epoch {
+		return time.Time{}, 0, errUnusableTimestamps
+	}
 
 	t0 := cTxTime0
 	t1 := csptp.TimeFromTimestamp(resptlv.RequestIngressTimestamp)

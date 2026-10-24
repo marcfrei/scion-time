@@ -49,7 +49,7 @@ func runT() {
 
 		ctx := context.Background()
 
-		lclk := clocks.NewSystemClock(log, clocks.UnknownDrift)
+		lclk := clocks.NewSystemClock(log)
 		timebase.RegisterClock(lclk)
 
 		if raddr == "" {

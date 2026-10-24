@@ -33,6 +33,24 @@ func TimestampFromOOBData(oob []byte) (time.Time, error) {
 	return time.Time{}, errTimestampNotFound
 }
 
+func HardwareTimestamping(iface string) bool {
+	return false
+}
+
+type TimestampClock struct{}
+
+func NewTimestampClock(iface string, index int) (*TimestampClock, error) {
+	return &TimestampClock{}, nil
+}
+
+func (c *TimestampClock) Dev() string {
+	return ""
+}
+
+func (c *TimestampClock) Now() time.Time {
+	return time.Now().UTC()
+}
+
 func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {
 	return errUnsupportedOperation
 }

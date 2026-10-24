@@ -13,10 +13,11 @@ import (
 )
 
 type csptpReply struct {
-	msg csptp.Message
-	tlv csptp.ResponseTLV
-	rxt time.Time
-	ok  bool
+	msg   csptp.Message
+	tlv   csptp.ResponseTLV
+	rxt   time.Time
+	msgOK bool
+	rxtOK bool
 }
 
 type csptpReplies struct {

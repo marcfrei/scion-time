@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gopacket/gopacket"
 
@@ -21,8 +20,6 @@ import (
 
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/base/metrics"
-
-	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
@@ -87,8 +84,12 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 			localHostIface, index = t[0], i
 		}
 	}
+	tsclk, err := udp.NewTimestampClock(localHostIface, index)
+	if err != nil {
+		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
+	}
+	hwts := udp.HardwareTimestamping(localHostIface)
 	txTimestamping := localHostPort != scion.EndhostPort
-	var err error
 	if txTimestamping {
 		err = udp.EnableTimestamping(conn, localHostIface, index)
 	} else {
@@ -150,11 +151,11 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 			continue
 		}
 		oob = oob[:oobn]
-		rxt, err := udp.TimestampFromOOBData(oob)
-		if err != nil {
+		rxt, rxtErr := udp.TimestampFromOOBData(oob)
+		if rxtErr != nil {
 			oob = oob[:0]
-			rxt = timebase.Now()
-			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+			rxt = tsclk.Now()
+			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", rxtErr))
 		}
 		buf = buf[:n]
 		mtrcs.pktsReceived.Inc()
@@ -390,6 +391,10 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 					slog.Int("l4_dst_port", int(udpLayer.DstPort)))
 				continue
 			}
+			if rxtErr != nil && hwts {
+				// the substitute receive time comes from a different clock
+				continue
+			}
 
 			var (
 				authOpt *slayers.EndToEndOption
@@ -513,7 +518,7 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpreq}),
 			)
 
-			var txt0 time.Time
+			txt0 := tsclk.Now()
 			var ntpresp ntp.Packet
 			handleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 

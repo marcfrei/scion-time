@@ -6,15 +6,12 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/base/metrics"
-
-	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
@@ -59,7 +56,12 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 			iface, index = t[0], i
 		}
 	}
-	err := udp.EnableTimestamping(conn, iface, index)
+	tsclk, err := udp.NewTimestampClock(iface, index)
+	if err != nil {
+		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
+	}
+	hwts := udp.HardwareTimestamping(iface)
+	err = udp.EnableTimestamping(conn, iface, index)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
@@ -86,9 +88,13 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 		oob = oob[:oobn]
 		rxt, err := udp.TimestampFromOOBData(oob)
 		if err != nil {
-			oob = oob[:0]
-			rxt = timebase.Now()
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
+			if hwts {
+				// a substitute would come from a different clock
+				continue
+			}
+			oob = oob[:0]
+			rxt = tsclk.Now()
 		}
 		buf = buf[:n]
 		mtrcs.pktsReceived.Inc()
@@ -159,7 +165,7 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 			slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpreq}),
 		)
 
-		var txt0 time.Time
+		txt0 := tsclk.Now()
 		var ntpresp ntp.Packet
 		handleRequest(clientID, &ntpreq, &rxt, &txt0, &ntpresp)
 
