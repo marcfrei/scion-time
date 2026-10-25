@@ -52,6 +52,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *slog.Logger,
 	} else {
 		n = 1
 	}
+	deadline, deadlineSet := ctx.Deadline()
 	for range n {
 		t, o, e := ntpc.measureClockOffsetIP(ctx, mtrcs, localAddr, remoteAddr)
 		if e == nil {
@@ -63,7 +64,8 @@ func MeasureClockOffsetIP(ctx context.Context, log *slog.Logger,
 			slog.Any("to", remoteAddr),
 			slog.Any("error", e),
 		)
-		if errors.Is(e, errFilterRejected) || ctx.Err() != nil {
+		if errors.Is(e, errFilterRejected) || ctx.Err() != nil ||
+			deadlineSet && !time.Now().Before(deadline) {
 			break
 		}
 	}
@@ -185,6 +187,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 			} else {
 				n = 1
 			}
+			deadline, deadlineSet := ctx.Deadline()
 			for range n {
 				t, o, e := ntpc.measureClockOffsetSCION(ctx, mtrcs, localAddr, remoteAddr, publicIP, p)
 				if e == nil {
@@ -197,7 +200,8 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 					slog.String("via", via),
 					slog.Any("error", e),
 				)
-				if errors.Is(e, errFilterRejected) || ctx.Err() != nil {
+				if errors.Is(e, errFilterRejected) || ctx.Err() != nil ||
+					deadlineSet && !time.Now().Before(deadline) {
 					break
 				}
 			}
