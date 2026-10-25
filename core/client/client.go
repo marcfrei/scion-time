@@ -63,7 +63,7 @@ func MeasureClockOffsetIP(ctx context.Context, log *slog.Logger,
 			slog.Any("to", remoteAddr),
 			slog.Any("error", e),
 		)
-		if errors.Is(e, errFilterRejected) {
+		if errors.Is(e, errFilterRejected) || ctx.Err() != nil {
 			break
 		}
 	}
@@ -108,11 +108,15 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 	time.Time, time.Duration, error) {
 	mtrcs := scionMetrics.Load()
 
-	const maxFailures = 3
+	const (
+		maxFailures       = 3
+		maxSharedFailures = 120
+	)
 
 	prevps := make([]snet.Path, len(ntpcs))
 	sps := make([]snet.Path, len(ntpcs))
 	nsps := 0
+	numHealthy := 0
 	for i, c := range ntpcs {
 		pfp := c.Path()
 		if pfp == "" {
@@ -126,7 +130,16 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 				break
 			}
 		}
-		if prevps[i] != nil && c.Failures() <= maxFailures {
+		if prevps[i] != nil && c.Failures() == 0 {
+			numHealthy++
+		}
+	}
+	// Replace failing paths only while another path works. If all paths fail,
+	// the server or the local network is likely down, and new paths would not
+	// help unless the outage persists.
+	for i, c := range ntpcs {
+		if prevps[i] != nil && (c.Failures() <= maxFailures ||
+			numHealthy == 0 && c.Failures() <= maxSharedFailures) {
 			sps[i] = prevps[i]
 			nsps++
 		}
@@ -184,7 +197,7 @@ func MeasureClockOffsetSCION(ctx context.Context, log *slog.Logger,
 					slog.String("via", via),
 					slog.Any("error", e),
 				)
-				if errors.Is(e, errFilterRejected) {
+				if errors.Is(e, errFilterRejected) || ctx.Err() != nil {
 					break
 				}
 			}
