@@ -624,14 +624,22 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				var id uint32
 				txt1, id, err = udp.ReadTXTimestamp(conn, xtxid)
 				if err != nil {
-					txt1 = txt0
 					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-						slog.Any("error", err))
+						slog.String("to", clientID), slog.Any("error", err))
+					txt1 = txt0
 				} else if id != xtxid {
-					txt1 = txt0
 					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
-						slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
+						slog.String("to", clientID),
+						slog.Uint64("id", uint64(id)),
+						slog.Uint64("expected", uint64(xtxid)))
+					txt1 = txt0
 					txid = id + 1
+				} else if txt1.Before(txt0) {
+					log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
+						slog.String("to", clientID),
+						slog.String("cause", "unexpected timestamp"),
+						slog.Duration("diff", txt1.Sub(txt0)))
+					txt1 = txt0
 				}
 			}
 			updateTXTimestamp(clientID, rxt, &txt1)
