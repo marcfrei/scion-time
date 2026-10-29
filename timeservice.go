@@ -1076,7 +1076,7 @@ func runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir string,
 			fmt.Fprintln(os.Stderr, "Error fetching host-AS key:", err)
 			return
 		}
-		t0 := time.Now().UTC()
+		t0 := time.Now()
 		serverKey, err := scion.DeriveHostHostKey(hostASKey, clientAddr.Host.IP.String())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error deriving host-host key:", err)
@@ -1096,7 +1096,7 @@ func runDRKeyDemo(daemonAddr, apiAddr, topoFile, certsDir string,
 			SrcHost:  serverAddr.Host.IP.String(),
 			DstHost:  clientAddr.Host.IP.String(),
 		}
-		t0 := time.Now().UTC()
+		t0 := time.Now()
 		clientKey, err := cp.FetchHostHostKey(ctx, hostHostMeta)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error fetching host-host key:", err)

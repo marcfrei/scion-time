@@ -12,7 +12,6 @@ import (
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 
-	"example.com/scion-time/core/timebase"
 	"example.com/scion-time/net/ip"
 	"example.com/scion-time/net/udp"
 )
@@ -116,7 +115,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 	}
 	buffer.PushLayer(scionLayer.LayerType())
 
-	txTime := timebase.Now()
+	txTime := time.Now()
 	n, err := conn.WriteToUDPAddrPort(buffer.Bytes(), nextHop)
 	if err != nil {
 		return 0, err
@@ -132,14 +131,14 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		buf = buf[:cap(buf)]
 		n, _, err := conn.ReadFromUDPAddrPort(buf)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
 			return 0, err
 		}
 		buf = buf[:n]
-		rxTime := timebase.Now()
+		rxTime := time.Now()
 
 		var (
 			hbhLayer slayers.HopByHopExtnSkipper
@@ -152,7 +151,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		decoded := make([]gopacket.LayerType, 4)
 		err = parser.DecodeLayers(buf, &decoded)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
@@ -161,7 +160,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 
 		validType := len(decoded) >= 2 && decoded[len(decoded)-1] == slayers.LayerTypeSCMP
 		if !validType {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
@@ -169,7 +168,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		}
 
 		if scmpLayer.TypeCode.Type() != slayers.SCMPTypeEchoReply {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
@@ -179,7 +178,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		var scmpEcho slayers.SCMPEcho
 		err = scmpEcho.DecodeFromBytes(scmpLayer.Payload, gopacket.NilDecodeFeedback)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
@@ -187,7 +186,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		}
 
 		if scmpEcho.Identifier != uint16(localPort) || scmpEcho.SeqNumber != 0 {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}
@@ -197,7 +196,7 @@ func SendPing(ctx context.Context, localAddr, remoteAddr udp.UDPAddr, path snet.
 		validSrc := scionLayer.SrcIA == remoteAddr.IA &&
 			ip.CompareIPs(scionLayer.RawSrcAddr, remoteAddr.Host.IP) == 0
 		if !validSrc {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				numRetries++
 				continue
 			}

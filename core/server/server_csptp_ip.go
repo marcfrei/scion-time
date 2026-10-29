@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"example.com/scion-time/base/logbase"
-	"example.com/scion-time/core/timebase"
 	"example.com/scion-time/net/csptp"
 	"example.com/scion-time/net/udp"
 )
@@ -83,7 +82,11 @@ func (q *csptpClientQueueIP) Pop() any {
 
 func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 	conn *udpConn, localHostIface string, localHostPort int, dscp uint8) {
-	err := udp.EnableTimestamping(conn.c, localHostIface, -1 /* index */)
+	tsclk, err := udp.NewTimestampClock(localHostIface, -1 /* index */)
+	if err != nil {
+		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
+	}
+	err = udp.EnableTimestamping(conn.c, localHostIface, -1 /* index */)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
@@ -115,11 +118,10 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 				slog.Any("local_addr", conn.c.LocalAddr()),
 				slog.Any("error", err))
 			if udp.HardwareTimestamping(localHostIface) {
-				// a substitute would come from a different clock
 				continue
 			}
 			oob = oob[:0]
-			rxt = timebase.Now()
+			rxt = tsclk.Now()
 		}
 		buf = buf[:n]
 
@@ -360,19 +362,16 @@ func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 			}
 			xtxid = followUpCtx.conn.txid
 			followUpCtx.conn.txid++
-			txTime1, id, err := udp.ReadTXTimestamp(followUpCtx.conn.c, xtxid)
+			_, id, err = udp.ReadTXTimestamp(followUpCtx.conn.c, xtxid)
 			if err != nil {
-				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Any("local_addr", conn.c.LocalAddr()),
 					slog.Any("error", err))
 			} else if id != xtxid {
-				txTime1 = timebase.Now()
 				log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp",
 					slog.Uint64("id", uint64(id)), slog.Uint64("expected", uint64(xtxid)))
 				followUpCtx.conn.txid = id + 1
 			}
-			_ = txTime1
 			followUpCtx.conn.mu.Unlock()
 		}
 	}

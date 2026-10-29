@@ -20,7 +20,7 @@ func RegisterClock(c timebase.SystemClock) {
 }
 
 func Now() time.Time {
-	c := lclk.Load().(timebase.SystemClock)
+	c, _ := lclk.Load().(timebase.SystemClock)
 	if c == nil {
 		panic("no local clock registered")
 	}
@@ -28,7 +28,7 @@ func Now() time.Time {
 }
 
 func Epoch() uint64 {
-	c := lclk.Load().(timebase.SystemClock)
+	c, _ := lclk.Load().(timebase.SystemClock)
 	if c == nil {
 		panic("no local clock registered")
 	}

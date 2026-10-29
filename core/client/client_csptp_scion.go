@@ -39,7 +39,7 @@ rxloop:
 		oob = oob[:cap(oob)]
 		n, oobn, flags, _, err := conn.ReadMsgUDPAddrPort(buf, oob)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 				continue
 			}
@@ -47,7 +47,7 @@ rxloop:
 		}
 		if flags != 0 {
 			err = errUnexpectedPacketFlags
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
 				continue
 			}
@@ -76,7 +76,7 @@ rxloop:
 		decoded := make([]gopacket.LayerType, 4)
 		err = parser.DecodeLayers(buf, &decoded)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
 				continue
 			}
@@ -86,7 +86,7 @@ rxloop:
 			decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
 		if !validType {
 			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
 				continue
 			}
@@ -98,14 +98,14 @@ rxloop:
 				slog.String("cause", "unexpected SCMP message type"),
 				slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
 				slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				continue
 			}
 			return err
 		}
 		if len(buf) < int(udpLayer.Length) {
 			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 				continue
 			}
@@ -117,7 +117,7 @@ rxloop:
 			ip.CompareIPs(scionLayer.RawDstAddr, localAddr.Host.IP) == 0
 		if !validSrc || !validDst {
 			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				if !validSrc {
 					log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
 				}
@@ -132,7 +132,7 @@ rxloop:
 		var respmsg csptp.Message
 		err = csptp.DecodeMessage(&respmsg, udpLayer.Payload)
 		if err != nil {
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 				continue
 			}
@@ -141,7 +141,7 @@ rxloop:
 
 		if len(udpLayer.Payload) != int(respmsg.MessageLength) {
 			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 				continue
 			}
@@ -150,7 +150,7 @@ rxloop:
 
 		if respmsg.SequenceID != sequenceID || respmsg.MessageType() != messageType {
 			err = errUnexpectedPacket
-			if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+			if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 				log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 				continue
 			}
@@ -163,7 +163,7 @@ rxloop:
 		case csptp.MessageTypeSync:
 			if udpLayer.SrcPort != csptp.EventPortSCION {
 				err = errUnexpectedPacketSource
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
 					continue
 				}
@@ -175,7 +175,7 @@ rxloop:
 				var tlvhdr csptp.TLVHeader
 				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 						continue rxloop
 					}
@@ -183,7 +183,7 @@ rxloop:
 				}
 				if len(tlvbuf) < int(tlvhdr.Length) {
 					err = errUnexpectedPacket
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 						continue rxloop
 					}
@@ -193,7 +193,7 @@ rxloop:
 			}
 			if len(tlvbuf) != 0 {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 					continue
 				}
@@ -202,7 +202,7 @@ rxloop:
 
 			if respmsg.FlagField&csptp.FlagTwoStep != csptp.FlagTwoStep { // TODO: support one-step
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "received one-step Sync message")
 					continue
 				}
@@ -216,7 +216,7 @@ rxloop:
 		case csptp.MessageTypeFollowUp:
 			if udpLayer.SrcPort != csptp.GeneralPortSCION {
 				err = errUnexpectedPacketSource
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet: unexpected source")
 					continue
 				}
@@ -229,7 +229,7 @@ rxloop:
 				var tlvhdr csptp.TLVHeader
 				err := csptp.DecodeTLVHeader(&tlvhdr, tlvbuf)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 						continue rxloop
 					}
@@ -237,7 +237,7 @@ rxloop:
 				}
 				if len(tlvbuf) < int(tlvhdr.Length) {
 					err = errUnexpectedPacket
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 						continue rxloop
 					}
@@ -247,7 +247,7 @@ rxloop:
 					var tlv csptp.ResponseTLV
 					err := csptp.DecodeResponseTLV(&tlv, tlvbuf)
 					if err != nil {
-						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 							log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 							continue rxloop
 						}
@@ -260,7 +260,7 @@ rxloop:
 						tlv.OrganizationSubType[1] != csptp.OrganizationSubTypeResponse1 ||
 						tlv.OrganizationSubType[2] != csptp.OrganizationSubTypeResponse2 {
 						err = errUnexpectedPacket
-						if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+						if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 							log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 							continue rxloop
 						}
@@ -272,7 +272,7 @@ rxloop:
 			}
 			if len(tlvbuf) != 0 {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 					continue
 				}
@@ -280,7 +280,7 @@ rxloop:
 			}
 			if !resptlvOk {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					log.LogAttrs(ctx, slog.LevelInfo, "received unexpected message")
 					continue
 				}

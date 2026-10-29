@@ -431,7 +431,7 @@ exchanges:
 					}
 					return time.Time{}, 0, err
 				}
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Any("error", err))
 					numRetries++
 					continue
@@ -444,7 +444,7 @@ exchanges:
 			}
 			if flags != 0 {
 				err = errUnexpectedPacketFlags
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to read packet", slog.Int("flags", flags))
 					numRetries++
 					continue
@@ -472,7 +472,7 @@ exchanges:
 			decoded := make([]gopacket.LayerType, 4)
 			err = parser.DecodeLayers(buf, &decoded)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.Any("error", err))
 					numRetries++
 					continue
@@ -484,7 +484,7 @@ exchanges:
 				decoded[len(decoded)-1] == slayers.LayerTypeSCMP)
 			if !validType {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet", slog.String("cause", "unexpected type or structure"))
 					numRetries++
 					continue
@@ -498,7 +498,7 @@ exchanges:
 					slog.String("cause", "unexpected SCMP message type"),
 					slog.Uint64("type", uint64(scmpLayer.TypeCode.Type())),
 					slog.Uint64("code", uint64(scmpLayer.TypeCode.Code())))
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					numRetries++
 					continue
 				}
@@ -507,7 +507,7 @@ exchanges:
 			}
 			if len(buf) < int(udpLayer.Length) {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue
@@ -521,7 +521,7 @@ exchanges:
 				ip.CompareIPs(scionLayer.RawDstAddr, localIP) == 0
 			if !validSrc || !validDst {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					if !validSrc {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet from unexpected source")
 					}
@@ -570,7 +570,7 @@ exchanges:
 							authenticated = subtle.ConstantTimeCompare(scion.PacketAuthOptMAC(authOpt), c.Auth.mac) != 0
 							if !authenticated {
 								err = errInvalidPacketAuthenticator
-								if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+								if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 									c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to authenticate packet", slog.Any("error", err))
 									numRetries++
 									continue
@@ -591,7 +591,7 @@ exchanges:
 			var ntpresp ntp.Packet
 			err = ntp.DecodePacket(&ntpresp, udpLayer.Payload)
 			if err != nil {
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode packet payload", slog.Any("error", err))
 					numRetries++
 					continue
@@ -605,7 +605,7 @@ exchanges:
 			if c.Auth.NTSEnabled {
 				err = nts.DecodePacket(&ntsresp, udpLayer.Payload)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to decode NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -616,7 +616,7 @@ exchanges:
 
 				err = nts.ProcessResponse(udpLayer.Payload, ntskeData.S2cKey, &c.Auth.NTSKEFetcher, &ntsresp, requestID)
 				if err != nil {
-					if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+					if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 						c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to process NTS packet", slog.Any("error", err))
 						numRetries++
 						continue
@@ -632,7 +632,7 @@ exchanges:
 				interleavedResp = true
 			} else if ntpresp.OriginTime != ntpreq.TransmitTime {
 				err = errUnexpectedPacket
-				if numRetries != maxNumRetries && deadlineSet && timebase.Now().Before(deadline) {
+				if numRetries != maxNumRetries && deadlineSet && time.Now().Before(deadline) {
 					c.Log.LogAttrs(ctx, slog.LevelInfo, "received packet with unexpected type or structure")
 					numRetries++
 					continue
