@@ -328,9 +328,6 @@ func (c *CSPTPClientIP) MeasureClockOffset(ctx context.Context, localAddr, remot
 		slog.Any("resptlv", &resptlv),
 	)
 
-	// With hardware timestamping, timestamps come from a PTP hardware clock,
-	// and a substitute from timebase.Now() would not. Samples must also not
-	// span a step of the clock.
 	if udp.HardwareTimestamping(localAddr.Zone()) && (!txtsOK || !syncReply.rxtOK) ||
 		timebase.Epoch() != epoch {
 		return time.Time{}, 0, errUnusableTimestamps

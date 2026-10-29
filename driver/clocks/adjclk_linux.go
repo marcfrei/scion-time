@@ -14,8 +14,6 @@ import (
 
 var maxFrequency = unixutil.FreqFromScaledPPM(32768000)
 
-// AdjustableClock is CLOCK_REALTIME or, given a device path such as
-// /dev/ptp0, a PTP hardware clock. Each step increments the epoch.
 type AdjustableClock struct {
 	log     *slog.Logger
 	clockID int32

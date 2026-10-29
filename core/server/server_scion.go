@@ -392,7 +392,6 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 				continue
 			}
 			if rxtErr != nil && hwts {
-				// the substitute receive time comes from a different clock
 				continue
 			}
 

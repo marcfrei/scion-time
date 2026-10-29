@@ -90,7 +90,6 @@ func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 		if err != nil {
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
 			if hwts {
-				// a substitute would come from a different clock
 				continue
 			}
 			oob = oob[:0]

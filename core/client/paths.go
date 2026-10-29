@@ -86,7 +86,6 @@ func pathInterfaces(p snet.Path) []snet.PathInterface {
 	return nil
 }
 
-// ExcludePaths removes the paths that traverse any of the given interfaces.
 func ExcludePaths(ps []snet.Path, ifaces []snet.PathInterface) []snet.Path {
 	if len(ifaces) == 0 {
 		return ps
