@@ -82,11 +82,12 @@ func (q *csptpClientQueueIP) Pop() any {
 
 func runCSPTPServerIP(ctx context.Context, log *slog.Logger,
 	conn *udpConn, localHostIface string, localHostPort int, dscp uint8) {
-	tsclk, err := udp.NewTimestampClock(localHostIface, -1 /* index */)
+	localHostIface, index := udp.SplitZone(localHostIface)
+	tsclk, err := udp.NewTimestampingClock(localHostIface, index)
 	if err != nil {
 		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
 	}
-	err = udp.EnableTimestamping(conn.c, localHostIface, -1 /* index */)
+	err = udp.EnableTimestamping(conn.c, localHostIface, index)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

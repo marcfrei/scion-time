@@ -36,7 +36,6 @@ import (
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/server"
 	"example.com/scion-time/core/sync"
-	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/driver/clocks"
 	"example.com/scion-time/driver/mbg"
@@ -469,19 +468,13 @@ func checkClocks(log *slog.Logger, cfg svcConfig, localAddr *snet.UDPAddr, serve
 		// nothing to synchronize to
 		return
 	}
-	iface, index := localAddr.Host.Zone, -1
-	if t := strings.Split(iface, "%"); len(t) == 2 {
-		i, err := strconv.Atoi(t[1])
-		if err == nil {
-			iface, index = t[0], i
-		}
-	}
-	tsclk, err := udp.NewTimestampClock(iface, index)
+	iface, index := udp.SplitZone(localAddr.Host.Zone)
+	tsclk, err := udp.NewTimestampingClock(iface, index)
 	if err != nil {
 		logbase.Fatal(log, "failed to open timestamping clock",
 			slog.String("iface", iface), slog.Any("error", err))
 	}
-	tsDev := clockDevice(tsclk.Dev())
+	tsDev := clockDevice(tsclk.Device())
 	syncDev := clockDevice(cfg.SyncClock)
 	name := func(dev string) string {
 		if dev == "" {
@@ -767,9 +760,6 @@ func runServer(configFile string) {
 	localAddr.Host.Port = 0
 	refClocks, peerClocks := createClocks(cfg, localAddr, log)
 
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
-
 	dscp := dscp(cfg)
 	tlsConfig := tlsConfig(cfg)
 	provider := ntske.NewProvider()
@@ -793,7 +783,7 @@ func runServer(configFile string) {
 		StepThreshold: sync.PIControllerDefaultStepThreshold,
 	}
 
-	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
+	go sync.Run(log, syncCfg, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
 	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
@@ -814,9 +804,6 @@ func runClient(configFile string) {
 	if len(peerClocks) != 0 {
 		logbase.Fatal(slog.Default(), "unexpected configuration", slog.Int("number of peers", len(peerClocks)))
 	}
-
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
 
 	scionClocksAvailable := false
 	for _, c := range refClocks {
@@ -841,7 +828,7 @@ func runClient(configFile string) {
 		StepThreshold: sync.PIControllerDefaultStepThreshold,
 	}
 
-	go sync.Run(log, syncCfg, lclk, adj, refClocks, peerClocks)
+	go sync.Run(log, syncCfg, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
 	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
@@ -852,9 +839,6 @@ func runClient(configFile string) {
 func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify, periodic bool) {
 	log := slog.Default()
-
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
 
 	laddr := localAddr.Host
 	raddr := remoteAddr.Host
@@ -880,7 +864,7 @@ func runToolIP(localAddr, remoteAddr *snet.UDPAddr, dscp uint8,
 		if !periodic {
 			break
 		}
-		lclk.Sleep(8 * time.Second)
+		time.Sleep(8 * time.Second)
 	}
 }
 
@@ -889,9 +873,6 @@ func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string
 	authModes []string, ntskeServer string, ntskeInsecureSkipVerify bool, periodic bool) {
 	ctx := context.Background()
 	log := slog.Default()
-
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
 
 	if dispatcherMode == dispatcherModeInternal {
 		server.StartSCIONDispatcher(ctx, log, snet.CopyUDPAddr(localAddr.Host))
@@ -946,7 +927,7 @@ func runToolSCION(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string
 		if !periodic {
 			break
 		}
-		lclk.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -954,9 +935,6 @@ func runPing(daemonAddr, apiAddr, topoFile, certsDir, dispatcherMode string,
 	localAddr, remoteAddr *snet.UDPAddr) {
 	ctx := context.Background()
 	log := slog.Default()
-
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
 
 	if remoteAddr.IA.IsZero() {
 		logbase.Fatal(slog.Default(), "ping subcommand only supports SCION addresses")

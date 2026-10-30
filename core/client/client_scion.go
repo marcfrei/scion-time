@@ -25,8 +25,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/timebase"
-
 	"example.com/scion-time/net/ip"
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
@@ -54,6 +52,7 @@ type SCIONClient struct {
 		NTSKEFetcher ntske.Fetcher
 	}
 	Filter *Filter
+	tsclk  *udp.TimestampingClock
 	prev   struct {
 		reference  string
 		path       string
@@ -155,17 +154,29 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 		// deadline, leaving room for the last exchange to complete.
 		sampleEnd = time.Now().Add(time.Until(deadline) * 4 / 5)
 	}
-	err = udp.EnableTimestamping(conn, localAddr.Host.Zone, -1 /* index */)
+	iface, index := udp.SplitZone(localAddr.Host.Zone)
+	if c.tsclk == nil {
+		c.tsclk, err = udp.NewTimestampingClock(iface, index)
+		if err != nil {
+			return time.Time{}, 0, err
+		}
+	}
+	err = udp.EnableTimestamping(conn, iface, index)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
-	hwts := udp.HardwareTimestamping(localAddr.Host.Zone)
+	hwts := udp.HardwareTimestamping(iface)
 	err = udp.SetDSCP(conn, c.DSCP)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
 	}
 
 	localPort := conn.LocalAddr().(*net.UDPAddr).Port
+	dispatcherIP, ok := netip.AddrFromSlice(localAddr.Host.IP)
+	if !ok {
+		panic(errUnexpectedAddrType)
+	}
+	dispatcherIP = dispatcherIP.Unmap()
 	localIP := localAddr.Host.IP
 	if publicIP != nil {
 		localIP = publicIP
@@ -234,8 +245,8 @@ func (c *SCIONClient) measureClockOffsetSCION(ctx context.Context, mtrcs *scionC
 	oob := make([]byte, udp.TimestampLen())
 exchanges:
 	for {
-		epoch := timebase.Epoch()
-		cTxTime0 := timebase.Now()
+		epoch := c.tsclk.Epoch()
+		cTxTime0 := c.tsclk.Now()
 		interleavedReq := false
 
 		ntpreq := ntp.Packet{}
@@ -421,7 +432,7 @@ exchanges:
 						continue exchanges
 					}
 					if c.Filter != nil {
-						off, ferr := c.Filter.Flush()
+						off, ferr := c.Filter.Flush(c.tsclk.Epoch())
 						if ferr == nil {
 							return lastRxTime, off, nil
 						}
@@ -455,7 +466,7 @@ exchanges:
 			oob = oob[:oobn]
 			cRxTime, rxtsErr := udp.TimestampFromOOBData(oob)
 			if rxtsErr != nil {
-				cRxTime = timebase.Now()
+				cRxTime = c.tsclk.Now()
 			}
 			buf = buf[:n]
 			mtrcs.pktsReceived.Inc()
@@ -539,7 +550,8 @@ exchanges:
 			if len(decoded) >= 3 &&
 				decoded[len(decoded)-2] == slayers.LayerTypeEndToEndExtn {
 				tsOpt, err := e2eLayer.FindOption(scion.OptTypeTimestamp)
-				if err == nil {
+				if err == nil && lastHop.Addr().Unmap() == dispatcherIP &&
+					lastHop.Port() == scion.EndhostPort {
 					cRxTime0, tsErr := udp.TimestampFromOOBData(tsOpt.OptData)
 					if tsErr == nil {
 						cRxTime = cRxTime0
@@ -659,20 +671,16 @@ exchanges:
 				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
 			)
 
-			// With hardware timestamping, timestamps come from a PTP hardware
-			// clock, and a substitute from timebase.Now() would not. Samples
-			// must also not span a step of the clock. An unusable sample ends
-			// the exchanges like a timeout.
-			tsOK := (!hwts || txtsOK && rxtsErr == nil) && timebase.Epoch() == epoch
+			tsOK := (!hwts || txtsOK && rxtsErr == nil) && c.tsclk.Epoch() == epoch
 			sampleOK := tsOK
 			if interleavedResp {
-				sampleOK = c.prev.timestamps.epoch == timebase.Epoch()
+				sampleOK = c.prev.timestamps.epoch == c.tsclk.Epoch()
 			}
 			if !sampleOK {
 				c.prev.timestamps.set = false
 				incFailures(c)
 				if c.Filter != nil {
-					off, ferr := c.Filter.Flush()
+					off, ferr := c.Filter.Flush(c.tsclk.Epoch())
 					if ferr == nil {
 						return lastRxTime, off, nil
 					}
@@ -734,9 +742,9 @@ exchanges:
 			lastRxTime = cRxTime
 
 			if c.Filter != nil {
-				off, err = c.Filter.Do(t0, t1, t2, t3)
+				off, err = c.Filter.Do(epoch, t0, t1, t2, t3)
 				if errors.Is(err, errFilterPending) && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
-					off, err = c.Filter.Flush()
+					off, err = c.Filter.Flush(c.tsclk.Epoch())
 				}
 				if errors.Is(err, errFilterPending) {
 					break

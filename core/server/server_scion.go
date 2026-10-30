@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 
 	"github.com/gopacket/gopacket"
 
@@ -77,14 +76,8 @@ func runSCIONServer(ctx context.Context, log *slog.Logger, mtrcs *scionServerMet
 	}
 	localConnPort := localAddr.Port
 
-	index := -1
-	if t := strings.Split(localHostIface, "%"); len(t) == 2 {
-		i, err := strconv.Atoi(t[1])
-		if err == nil {
-			localHostIface, index = t[0], i
-		}
-	}
-	tsclk, err := udp.NewTimestampClock(localHostIface, index)
+	localHostIface, index := udp.SplitZone(localHostIface)
+	tsclk, err := udp.NewTimestampingClock(localHostIface, index)
 	if err != nil {
 		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
 	}

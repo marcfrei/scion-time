@@ -11,8 +11,6 @@ import (
 	"github.com/scionproto/scion/pkg/snet"
 
 	"example.com/scion-time/core/client"
-	"example.com/scion-time/core/timebase"
-	"example.com/scion-time/driver/clocks"
 )
 
 func TestTimeserviceNTSChrony(t *testing.T) {
@@ -40,9 +38,6 @@ func TestTimeserviceNTSChrony(t *testing.T) {
 
 	ctx := context.Background()
 	log := slog.Default()
-
-	lclk := clocks.NewSystemClock(log)
-	timebase.RegisterClock(lclk)
 
 	laddr := localAddrSnet.Host
 	raddr := remoteAddrSnet.Host

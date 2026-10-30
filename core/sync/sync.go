@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"example.com/scion-time/base/metrics"
-	"example.com/scion-time/base/timebase"
 	"example.com/scion-time/base/timemath"
 
 	"example.com/scion-time/core/client"
@@ -44,8 +43,7 @@ func measureOffsetToRefClks(refClkClient client.ReferenceClockClient,
 	return m.Timestamp, m.Offset
 }
 
-func Run(log *slog.Logger, cfg Config,
-	clk timebase.SystemClock, adj *PIController,
+func Run(log *slog.Logger, cfg Config, adj *PIController,
 	refClks, peerClks []client.ReferenceClock) {
 	ctx := context.Background()
 	if cfg.ReferenceClockImpact <= 1.0 {
@@ -147,6 +145,6 @@ func Run(log *slog.Logger, cfg Config,
 			slog.Float64("peerClkMaxCorr", float64(peerClkMaxCorr)/1e9))
 		adj.Do(corr)
 		corrGauge.Set(float64(corr))
-		clk.Sleep(cfg.SyncInterval)
+		time.Sleep(cfg.SyncInterval)
 	}
 }

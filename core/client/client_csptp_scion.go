@@ -13,7 +13,6 @@ import (
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 
-	"example.com/scion-time/core/timebase"
 	"example.com/scion-time/net/csptp"
 	"example.com/scion-time/net/ip"
 	"example.com/scion-time/net/scion"
@@ -23,10 +22,11 @@ import (
 type CSPTPClientSCION struct {
 	Log        *slog.Logger
 	DSCP       uint8
+	tsclk      *udp.TimestampingClock
 	sequenceID uint16
 }
 
-func readCSPTPReplySCION(ctx context.Context, log *slog.Logger,
+func readCSPTPReplySCION(ctx context.Context, log *slog.Logger, tsclk *udp.TimestampingClock,
 	conn *net.UDPConn, localAddr, remoteAddr udp.UDPAddr, deadline time.Time, deadlineSet bool,
 	messageType uint8, sequenceID uint16, replies *csptpReplies) error {
 	buf := make([]byte, scion.MTU)
@@ -57,7 +57,7 @@ rxloop:
 		rxt, err := udp.TimestampFromOOBData(oob)
 		rxtOK := err == nil
 		if err != nil {
-			rxt = timebase.Now()
+			rxt = tsclk.Now()
 			log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", err))
 		}
 		buf = buf[:n]
@@ -303,15 +303,22 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	if !ok {
 		panic(errUnexpectedAddrType)
 	}
+	iface, index := udp.SplitZone(localAddr.Host.Zone)
+	if c.tsclk == nil {
+		c.tsclk, err = udp.NewTimestampingClock(iface, index)
+		if err != nil {
+			return time.Time{}, 0, err
+		}
+	}
 	deadline, deadlineSet := ctx.Deadline()
 	econn, err := openCSPTPConn(ctx, c.Log, c.DSCP,
-		laddr, localAddr.Host.Zone, csptp.EventPortSCION, deadline, deadlineSet)
+		laddr, iface, index, csptp.EventPortSCION, deadline, deadlineSet)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
 	defer func() { _ = econn.Close() }()
 	gconn, err := openCSPTPConn(ctx, c.Log, c.DSCP,
-		laddr, localAddr.Host.Zone, csptp.GeneralPortSCION, deadline, deadlineSet)
+		laddr, iface, index, csptp.GeneralPortSCION, deadline, deadlineSet)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -330,8 +337,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 			nextHop.Port())
 	}
 
-	var cTxTime0, cTxTime1 time.Time
-	epoch := timebase.Epoch()
+	epoch := c.tsclk.Epoch()
 
 	buf := make([]byte, scion.MTU)
 	var n int
@@ -414,7 +420,7 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	cTxTime0, id, err := udp.ReadTXTimestamp(econn, 0)
 	txtsOK := err == nil && id == 0
 	if err != nil || id != 0 {
-		cTxTime0 = timebase.Now()
+		cTxTime0 = c.tsclk.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
 	}
 
@@ -490,22 +496,20 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 	if n != len(buffer.Bytes()) {
 		return time.Time{}, 0, errWrite
 	}
-	cTxTime1, id, err = udp.ReadTXTimestamp(gconn, 0)
+	_, id, err = udp.ReadTXTimestamp(gconn, 0)
 	if err != nil || id != 0 {
-		cTxTime1 = timebase.Now()
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet tx timestamp", slog.Any("error", err))
 	}
-	_ = cTxTime1
 
 	var replies csptpReplies
 	rxerrch := make(chan error, 2)
 	go func() {
-		rxerrch <- readCSPTPReplySCION(ctx, c.Log,
+		rxerrch <- readCSPTPReplySCION(ctx, c.Log, c.tsclk,
 			econn, localAddr, remoteAddr, deadline, deadlineSet,
 			csptp.MessageTypeSync, c.sequenceID, &replies)
 	}()
 	go func() {
-		rxerrch <- readCSPTPReplySCION(ctx, c.Log,
+		rxerrch <- readCSPTPReplySCION(ctx, c.Log, c.tsclk,
 			gconn, localAddr, remoteAddr, deadline, deadlineSet,
 			csptp.MessageTypeFollowUp, c.sequenceID, &replies)
 	}()
@@ -538,8 +542,8 @@ func (c *CSPTPClientSCION) MeasureClockOffset(ctx context.Context, localAddr, re
 		slog.Any("resptlv", &resptlv),
 	)
 
-	if udp.HardwareTimestamping(localAddr.Host.Zone) && (!txtsOK || !syncReply.rxtOK) ||
-		timebase.Epoch() != epoch {
+	if udp.HardwareTimestamping(iface) && (!txtsOK || !syncReply.rxtOK) ||
+		c.tsclk.Epoch() != epoch {
 		return time.Time{}, 0, errUnusableTimestamps
 	}
 

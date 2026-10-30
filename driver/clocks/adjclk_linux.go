@@ -4,11 +4,13 @@ package clocks
 
 import (
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/unix"
 
 	"example.com/scion-time/base/logbase"
+	"example.com/scion-time/base/timebase"
 	"example.com/scion-time/base/unixutil"
 )
 
@@ -17,6 +19,7 @@ var maxFrequency = unixutil.FreqFromScaledPPM(32768000)
 type AdjustableClock struct {
 	log     *slog.Logger
 	clockID int32
+	epoch   *atomic.Uint64
 }
 
 func NewAdjustableClock(log *slog.Logger, dev string) *AdjustableClock {
@@ -31,6 +34,12 @@ func NewAdjustableClock(log *slog.Logger, dev string) *AdjustableClock {
 				slog.String("dev", dev), slog.Any("error", err))
 		}
 		c.clockID = (^int32(fd) << 3) | 3
+	}
+	var err error
+	c.epoch, err = timebase.ClockEpoch(c.clockID)
+	if err != nil {
+		logbase.Fatal(log, "failed to get clock epoch",
+			slog.String("dev", dev), slog.Any("error", err))
 	}
 	return c
 }
@@ -68,5 +77,5 @@ func (c *AdjustableClock) Step(offset time.Duration) {
 	if err != nil {
 		logbase.Fatal(c.log, "unix.ClockAdjtime failed", slog.Any("error", err))
 	}
-	epoch.Add(1)
+	c.epoch.Add(1)
 }

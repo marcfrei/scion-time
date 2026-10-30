@@ -27,7 +27,7 @@ type csptpReplies struct {
 }
 
 func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
-	localAddr netip.Addr, localZone string, localPort uint16, deadline time.Time, deadlineSet bool) (
+	localAddr netip.Addr, iface string, index int, localPort uint16, deadline time.Time, deadlineSet bool) (
 	*net.UDPConn, error) {
 	var lc net.ListenConfig
 	pconn, err := lc.ListenPacket(ctx, "udp", netip.AddrPortFrom(localAddr, localPort).String())
@@ -42,7 +42,7 @@ func openCSPTPConn(ctx context.Context, log *slog.Logger, dscp uint8,
 			return nil, err
 		}
 	}
-	err = udp.EnableTimestamping(conn, localZone, -1 /* index */)
+	err = udp.EnableTimestamping(conn, iface, index)
 	if err != nil {
 		log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}

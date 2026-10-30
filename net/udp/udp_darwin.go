@@ -37,18 +37,22 @@ func HardwareTimestamping(iface string) bool {
 	return false
 }
 
-type TimestampClock struct{}
+type TimestampingClock struct{}
 
-func NewTimestampClock(iface string, index int) (*TimestampClock, error) {
-	return &TimestampClock{}, nil
+func NewTimestampingClock(iface string, index int) (*TimestampingClock, error) {
+	return &TimestampingClock{}, nil
 }
 
-func (c *TimestampClock) Dev() string {
+func (c *TimestampingClock) Device() string {
 	return ""
 }
 
-func (c *TimestampClock) Now() time.Time {
+func (c *TimestampingClock) Now() time.Time {
 	return time.Now().UTC()
+}
+
+func (c *TimestampingClock) Epoch() uint64 {
+	return 0
 }
 
 func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {

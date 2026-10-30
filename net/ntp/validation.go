@@ -6,8 +6,9 @@ import (
 )
 
 var (
-	errUnexpectedRequest  = errors.New("unexpected request structure")
-	errUnexpectedResponse = errors.New("unexpected response structure")
+	errUnexpectedRequest       = errors.New("unexpected request structure")
+	errUnexpectedResponse      = errors.New("unexpected response structure")
+	errUnexpectedClockBehavior = errors.New("unexpected clock behavior")
 )
 
 func ValidateResponseMetadata(resp *Packet) error {
@@ -32,7 +33,7 @@ func ValidateResponseMetadata(resp *Packet) error {
 
 func ValidateResponseTimestamps(t0, t1, t2, t3 time.Time) error {
 	if t3.Sub(t0) < 0 {
-		panic("unexpected system clock behavior")
+		return errUnexpectedClockBehavior
 	}
 	if t2.Sub(t1) < 0 {
 		return errUnexpectedResponse

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -24,6 +26,18 @@ var (
 
 func seqLess(x, y uint32) bool {
 	return int32(x-y) < 0
+}
+
+// SplitZone splits the zone of a local address, "iface" or "iface%N", into
+// the network interface and the index N of the PTP hardware clock that
+// timestamps packets, or -1.
+func SplitZone(zone string) (iface string, index int) {
+	if t := strings.Split(zone, "%"); len(t) == 2 {
+		if i, err := strconv.Atoi(t[1]); err == nil {
+			return t[0], i
+		}
+	}
+	return zone, -1
 }
 
 var _ net.Addr = (*UDPAddr)(nil)

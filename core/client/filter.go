@@ -6,8 +6,6 @@ import (
 	"slices"
 	"time"
 
-	"example.com/scion-time/core/timebase"
-
 	"example.com/scion-time/net/ntp"
 )
 
@@ -53,10 +51,10 @@ func NewFilter(log *slog.Logger, size int, maxRTDExcess time.Duration) *Filter {
 	}
 }
 
-func (f *Filter) Do(cTx, sRx, sTx, cRx time.Time) (
+func (f *Filter) Do(epoch uint64, cTx, sRx, sTx, cRx time.Time) (
 	offset time.Duration, err error) {
-	if f.epoch != timebase.Epoch() {
-		f.epoch = timebase.Epoch()
+	if f.epoch != epoch {
+		f.epoch = epoch
 		f.buf = f.buf[:0]
 	}
 
@@ -71,9 +69,9 @@ func (f *Filter) Do(cTx, sRx, sTx, cRx time.Time) (
 	return f.pickLucky()
 }
 
-func (f *Filter) Flush() (offset time.Duration, err error) {
-	if f.epoch != timebase.Epoch() {
-		f.epoch = timebase.Epoch()
+func (f *Filter) Flush(epoch uint64) (offset time.Duration, err error) {
+	if f.epoch != epoch {
+		f.epoch = epoch
 		f.buf = f.buf[:0]
 	}
 
@@ -121,7 +119,6 @@ func (f *Filter) pickLucky() (time.Duration, error) {
 }
 
 func (f *Filter) Reset() {
-	f.epoch = timebase.Epoch()
 	f.buf = f.buf[:0]
 	f.picks = f.picks[:0]
 }

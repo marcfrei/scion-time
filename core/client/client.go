@@ -11,7 +11,6 @@ import (
 	"github.com/scionproto/scion/pkg/snet"
 
 	"example.com/scion-time/core/measurements"
-	"example.com/scion-time/core/timebase"
 
 	"example.com/scion-time/net/udp"
 )
@@ -91,9 +90,8 @@ loop:
 			break loop
 		}
 	}
-	ts := timebase.Now()
 	for j != n {
-		ms[j] = measurements.Measurement{Timestamp: ts}
+		ms[j] = measurements.Measurement{}
 		j++
 	}
 	go func(n int) { // drain channel

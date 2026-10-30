@@ -2,6 +2,7 @@ package udp
 
 import (
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"example.com/scion-time/base/timebase"
 )
 
 func TimestampFromOOBData(oob []byte) (time.Time, error) {
@@ -122,18 +125,23 @@ func HardwareTimestamping(iface string) bool {
 	return iface != ""
 }
 
-// TimestampClock is the clock that timestamps packets on sockets configured
+// TimestampingClock is the clock that timestamps packets on sockets configured
 // with EnableTimestamping(conn, iface, index): the PTP hardware clock with the
 // given index or, if index is negative, the one of network interface iface.
 // Without hardware timestamping, it is CLOCK_REALTIME.
-type TimestampClock struct {
+type TimestampingClock struct {
 	dev     string
 	clockID int32
+	epoch   *atomic.Uint64
 }
 
-func NewTimestampClock(iface string, index int) (*TimestampClock, error) {
+func NewTimestampingClock(iface string, index int) (*TimestampingClock, error) {
 	if !HardwareTimestamping(iface) {
-		return &TimestampClock{clockID: unix.CLOCK_REALTIME}, nil
+		epoch, err := timebase.ClockEpoch(unix.CLOCK_REALTIME)
+		if err != nil {
+			return nil, err
+		}
+		return &TimestampingClock{clockID: unix.CLOCK_REALTIME, epoch: epoch}, nil
 	}
 	if index < 0 {
 		fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, 0)
@@ -155,22 +163,33 @@ func NewTimestampClock(iface string, index int) (*TimestampClock, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TimestampClock{dev: dev, clockID: (^int32(fd) << 3) | 3}, nil
+	clockID := (^int32(fd) << 3) | 3
+	epoch, err := timebase.ClockEpoch(clockID)
+	if err != nil {
+		_ = unix.Close(fd)
+		return nil, err
+	}
+	return &TimestampingClock{dev: dev, clockID: clockID, epoch: epoch}, nil
 }
 
-// Dev returns the device path of the PTP hardware clock, or "" for
-// CLOCK_REALTIME.
-func (c *TimestampClock) Dev() string {
+// Device returns the device path of the PTP hardware clock,
+// or "" for CLOCK_REALTIME.
+func (c *TimestampingClock) Device() string {
 	return c.dev
 }
 
-func (c *TimestampClock) Now() time.Time {
+func (c *TimestampingClock) Now() time.Time {
 	var ts unix.Timespec
 	err := unix.ClockGettime(c.clockID, &ts)
 	if err != nil {
 		panic(err)
 	}
 	return time.Unix(ts.Unix()).UTC()
+}
+
+// Epoch returns the number of steps of the clock made by this process.
+func (c *TimestampingClock) Epoch() uint64 {
+	return c.epoch.Load()
 }
 
 func EnableRXTimestamping(conn syscall.Conn, iface string, index int) error {

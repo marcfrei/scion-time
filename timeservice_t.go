@@ -17,8 +17,6 @@ import (
 	"example.com/scion-time/base/logbase"
 	"example.com/scion-time/core/client"
 	"example.com/scion-time/core/server"
-	"example.com/scion-time/core/timebase"
-	"example.com/scion-time/driver/clocks"
 	"example.com/scion-time/net/udp"
 	"example.com/scion-time/service"
 )
@@ -48,9 +46,6 @@ func runT() {
 		log := slog.Default()
 
 		ctx := context.Background()
-
-		lclk := clocks.NewSystemClock(log)
-		timebase.RegisterClock(lclk)
 
 		if raddr == "" {
 			// Server mode
@@ -106,7 +101,7 @@ func runT() {
 						break
 					}
 					fmt.Printf("%s,%+.9f\n", ts.UTC().Format(time.RFC3339), off.Seconds())
-					lclk.Sleep(1 * time.Second)
+					time.Sleep(1 * time.Second)
 				}
 			} else {
 				if remoteAddr.IA != localAddr.IA {
@@ -134,7 +129,7 @@ func runT() {
 						break
 					}
 					fmt.Printf("%s,%+.9f\n", ts.UTC().Format(time.RFC3339), off.Seconds())
-					lclk.Sleep(1 * time.Second)
+					time.Sleep(1 * time.Second)
 				}
 			}
 		}

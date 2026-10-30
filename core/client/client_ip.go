@@ -14,8 +14,6 @@ import (
 
 	"example.com/scion-time/base/metrics"
 
-	"example.com/scion-time/core/timebase"
-
 	"example.com/scion-time/net/ntp"
 	"example.com/scion-time/net/nts"
 	"example.com/scion-time/net/ntske"
@@ -31,6 +29,7 @@ type IPClient struct {
 		NTSKEFetcher ntske.Fetcher
 	}
 	Filter *Filter
+	tsclk  *udp.TimestampingClock
 	prev   struct {
 		reference  string
 		timestamps struct {
@@ -120,11 +119,18 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 		// deadline, leaving room for the last exchange to complete.
 		sampleEnd = time.Now().Add(time.Until(deadline) * 4 / 5)
 	}
-	err = udp.EnableTimestamping(conn, localAddr.Zone, -1 /* index */)
+	iface, index := udp.SplitZone(localAddr.Zone)
+	if c.tsclk == nil {
+		c.tsclk, err = udp.NewTimestampingClock(iface, index)
+		if err != nil {
+			return time.Time{}, 0, err
+		}
+	}
+	err = udp.EnableTimestamping(conn, iface, index)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelError, "failed to enable timestamping", slog.Any("error", err))
 	}
-	hwts := udp.HardwareTimestamping(localAddr.Zone)
+	hwts := udp.HardwareTimestamping(iface)
 	err = udp.SetDSCP(conn, c.DSCP)
 	if err != nil {
 		c.Log.LogAttrs(ctx, slog.LevelInfo, "failed to set DSCP", slog.Any("error", err))
@@ -161,8 +167,8 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 	buf := make([]byte, ntp.PacketLen)
 	oob := make([]byte, udp.TimestampLen())
 	for {
-		epoch := timebase.Epoch()
-		cTxTime0 := timebase.Now()
+		epoch := c.tsclk.Epoch()
+		cTxTime0 := c.tsclk.Now()
 		interleavedReq := false
 
 		ntpreq := ntp.Packet{}
@@ -224,7 +230,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 					continue
 				}
 				if c.Filter != nil && errors.Is(err, os.ErrDeadlineExceeded) {
-					off, ferr := c.Filter.Flush()
+					off, ferr := c.Filter.Flush(c.tsclk.Epoch())
 					if ferr == nil {
 						return lastRxTime, off, nil
 					}
@@ -246,7 +252,7 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			oob = oob[:oobn]
 			cRxTime, rxtsErr := udp.TimestampFromOOBData(oob)
 			if rxtsErr != nil {
-				cRxTime = timebase.Now()
+				cRxTime = c.tsclk.Now()
 				c.Log.LogAttrs(ctx, slog.LevelError, "failed to read packet rx timestamp", slog.Any("error", rxtsErr))
 			}
 			buf = buf[:n]
@@ -325,19 +331,15 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 				slog.Any("data", ntp.PacketLogValuer{Pkt: &ntpresp}),
 			)
 
-			// With hardware timestamping, timestamps come from a PTP hardware
-			// clock, and a substitute from timebase.Now() would not. Samples
-			// must also not span a step of the clock. An unusable sample ends
-			// the exchanges like a timeout.
-			tsOK := (!hwts || txtsOK && rxtsErr == nil) && timebase.Epoch() == epoch
+			tsOK := (!hwts || txtsOK && rxtsErr == nil) && c.tsclk.Epoch() == epoch
 			sampleOK := tsOK
 			if interleavedResp {
-				sampleOK = c.prev.timestamps.epoch == timebase.Epoch()
+				sampleOK = c.prev.timestamps.epoch == c.tsclk.Epoch()
 			}
 			if !sampleOK {
 				c.prev.timestamps.set = false
 				if c.Filter != nil {
-					off, ferr := c.Filter.Flush()
+					off, ferr := c.Filter.Flush(c.tsclk.Epoch())
 					if ferr == nil {
 						return lastRxTime, off, nil
 					}
@@ -395,9 +397,9 @@ func (c *IPClient) measureClockOffsetIP(ctx context.Context, mtrcs *ipClientMetr
 			lastRxTime = cRxTime
 
 			if c.Filter != nil {
-				off, err = c.Filter.Do(t0, t1, t2, t3)
+				off, err = c.Filter.Do(epoch, t0, t1, t2, t3)
 				if errors.Is(err, errFilterPending) && !sampleEnd.IsZero() && !time.Now().Before(sampleEnd) {
-					off, err = c.Filter.Flush()
+					off, err = c.Filter.Flush(c.tsclk.Epoch())
 				}
 				if errors.Is(err, errFilterPending) {
 					break

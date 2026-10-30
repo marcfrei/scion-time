@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -49,14 +48,8 @@ func newIPServerMetrics() *ipServerMetrics {
 func runIPServer(ctx context.Context, log *slog.Logger, mtrcs *ipServerMetrics,
 	conn *net.UDPConn, iface string, dscp uint8, provider *ntske.Provider) {
 	defer func() { _ = conn.Close() }()
-	index := -1
-	if t := strings.Split(iface, "%"); len(t) == 2 {
-		i, err := strconv.Atoi(t[1])
-		if err == nil {
-			iface, index = t[0], i
-		}
-	}
-	tsclk, err := udp.NewTimestampClock(iface, index)
+	iface, index := udp.SplitZone(iface)
+	tsclk, err := udp.NewTimestampingClock(iface, index)
 	if err != nil {
 		logbase.FatalContext(ctx, log, "failed to open timestamping clock", slog.Any("error", err))
 	}
