@@ -1,4 +1,5 @@
 timeservice
+testnet/clockboard/clockboard
 testnet/journaltail/journaltail
 testnet/ntimed/ntimed-tool
 testnet/offplot/offplot
