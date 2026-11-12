@@ -1,6 +1,6 @@
 module example.com/scion-time
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/VictoriaMetrics/easyproto v1.2.0
