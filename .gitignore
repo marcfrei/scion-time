@@ -4,6 +4,8 @@ testnet/journaltail/journaltail
 testnet/ntimed/ntimed-tool
 testnet/offplot/offplot
 
+pilot/
+
 testnet/gen*/**/certs/
 testnet/gen*/**/crypto/
 testnet/gen*/**/keys/
