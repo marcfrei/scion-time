@@ -57,7 +57,9 @@ func ntlCTSOffConfig(log *slog.Logger, config string) (ctsDev string, idx0, idx1
 	return ctsDev, idx0, idx1, doff
 }
 
-func StartNTLCTSOff(log *slog.Logger, config string) {
+// StartNTLCTSOff logs the offset between two clocks of an NTL cross timestamper
+// once per second. If sink is not nil, it is also called with each offset.
+func StartNTLCTSOff(log *slog.Logger, config string, sink func(off time.Duration)) {
 	if config == "" {
 		return
 	}
@@ -145,6 +147,9 @@ func StartNTLCTSOff(log *slog.Logger, config string) {
 			off := ts0.Time.Sub(ts1.Time) + doff
 			slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "NTL CTS offset",
 				slog.String("offset", fmt.Sprintf("%+.9f", off.Seconds())))
+			if sink != nil {
+				sink(off)
+			}
 		}
 	}()
 }

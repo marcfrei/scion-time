@@ -86,18 +86,24 @@ func pathInterfaces(p snet.Path) []snet.PathInterface {
 	return nil
 }
 
-func ExcludePaths(ps []snet.Path, ifaces []snet.PathInterface) []snet.Path {
-	if len(ifaces) == 0 {
-		return ps
-	}
-	return slices.DeleteFunc(ps, func(p snet.Path) bool {
-		for _, iface := range pathInterfaces(p) {
-			if slices.Contains(ifaces, iface) {
-				return true
-			}
+func PathFingerprint(p snet.Path) string {
+	return snet.Fingerprint(pathInterfaces(p)).String()
+}
+
+func PathInterfaces(p snet.Path) []snet.PathInterface {
+	return pathInterfaces(p)
+}
+
+// PreselectedPaths returns the paths of ps whose fingerprints are listed in
+// fps, the preselection (e.g. by a path scan) that SelectPaths chooses from.
+func PreselectedPaths(ps []snet.Path, fps []string) []snet.Path {
+	var psps []snet.Path
+	for _, p := range ps {
+		if slices.Contains(fps, PathFingerprint(p)) {
+			psps = append(psps, p)
 		}
-		return false
-	})
+	}
+	return psps
 }
 
 func SelectPaths(ps []snet.Path, k int, preselected ...snet.Path) []snet.Path {

@@ -26,7 +26,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
-	"github.com/scionproto/scion/pkg/segment/iface"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
 
@@ -77,7 +76,7 @@ type svcConfig struct {
 	SCIONPersistTRCs        bool     `toml:"scion_persist_trcs,omitempty"`
 	SCIONDispatcherMode     string   `toml:"scion_dispatcher_mode,omitempty"`
 	SCIONPublicAddr         string   `toml:"scion_public_address,omitempty"`
-	SCIONExcludedIfaces     []string `toml:"scion_excluded_interfaces,omitempty"` // ISD-AS#IFID
+	SCIONPaths              []string `toml:"scion_paths,omitempty"`
 	RemoteAddr              string   `toml:"remote_address,omitempty"`
 	MBGReferenceClocks      []string `toml:"mbg_reference_clocks,omitempty"`
 	PHCReferenceClocks      []string `toml:"phc_reference_clocks,omitempty"`
@@ -113,13 +112,13 @@ type ntpReferenceClockIP struct {
 }
 
 type ntpReferenceClockSCION struct {
-	log            *slog.Logger
-	ntpcs          [scionRefClockNumClient]*client.SCIONClient
-	localAddr      udp.UDPAddr
-	remoteAddr     udp.UDPAddr
-	publicIP       net.IP
-	pather         *scion.Pather
-	excludedIfaces []snet.PathInterface
+	log        *slog.Logger
+	ntpcs      [scionRefClockNumClient]*client.SCIONClient
+	localAddr  udp.UDPAddr
+	remoteAddr udp.UDPAddr
+	publicIP   net.IP
+	pather     *scion.Pather
+	paths      []string
 }
 
 type tlsCertCache struct {
@@ -314,7 +313,14 @@ func (c *ntpReferenceClockSCION) MeasureClockOffset(ctx context.Context) (
 			NextHop:       c.remoteAddr.Host,
 		}}
 	} else {
-		ps = client.ExcludePaths(c.pather.Paths(c.remoteAddr.IA), c.excludedIfaces)
+		ps = c.pather.Paths(c.remoteAddr.IA)
+		if len(c.paths) != 0 {
+			if psps := client.PreselectedPaths(ps, c.paths); len(psps) != 0 {
+				ps = psps
+			} else {
+				c.log.LogAttrs(ctx, slog.LevelWarn, "no preselected path available, using all paths")
+			}
+		}
 	}
 	return client.MeasureClockOffsetSCION(
 		ctx, c.log, c.ntpcs[:], c.localAddr, c.remoteAddr, c.publicIP, ps)
@@ -395,29 +401,6 @@ func filterConfig(cfg svcConfig) (size int, maxRTDExcess time.Duration) {
 		logbase.Fatal(slog.Default(), "invalid filter configuration specified in config")
 	}
 	return
-}
-
-func excludedInterfaces(cfg svcConfig) []snet.PathInterface {
-	var ifaces []snet.PathInterface
-	for _, s := range cfg.SCIONExcludedIfaces {
-		iaStr, idStr, ok := strings.Cut(s, "#")
-		if !ok {
-			logbase.Fatal(slog.Default(), "unexpected excluded interface specification",
-				slog.String("interface", s))
-		}
-		ia, err := addr.ParseIA(iaStr)
-		if err != nil || ia.IsZero() {
-			logbase.Fatal(slog.Default(), "unexpected excluded interface ISD-AS",
-				slog.String("interface", s), slog.Any("error", err))
-		}
-		id, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil || id == 0 {
-			logbase.Fatal(slog.Default(), "unexpected excluded interface ID",
-				slog.String("interface", s), slog.Any("error", err))
-		}
-		ifaces = append(ifaces, snet.PathInterface{IA: ia, ID: iface.ID(id)})
-	}
-	return ifaces
 }
 
 func clockDrift(cfg svcConfig) time.Duration {
@@ -715,12 +698,11 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			logbase.Fatal(slog.Default(), "failed to start path discovery",
 				slog.Any("error", err))
 		}
-		excludedIfaces := excludedInterfaces(cfg)
 		for _, c := range refClocks {
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				scionclk.excludedIfaces = excludedIfaces
+				scionclk.paths = cfg.SCIONPaths
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
@@ -734,7 +716,6 @@ func createClocks(cfg svcConfig, localAddr *snet.UDPAddr, log *slog.Logger) (
 			scionclk, ok := c.(*ntpReferenceClockSCION)
 			if ok {
 				scionclk.pather = pather
-				scionclk.excludedIfaces = excludedIfaces
 				if slices.Contains(cfg.AuthModes, authModeSPAO) {
 					for i := range len(scionclk.ntpcs) {
 						scionclk.ntpcs[i].Auth.Enabled = true
@@ -786,7 +767,7 @@ func runServer(configFile string) {
 	go sync.Run(log, syncCfg, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
-	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
+	service.StartNTLCTSOff(log, cfg.NTLCTSOff, nil)
 
 	runMonitor(cfg)
 }
@@ -831,7 +812,7 @@ func runClient(configFile string) {
 	go sync.Run(log, syncCfg, adj, refClocks, peerClocks)
 
 	service.StartPHCSync(log, cfg.PHCSync)
-	service.StartNTLCTSOff(log, cfg.NTLCTSOff)
+	service.StartNTLCTSOff(log, cfg.NTLCTSOff, nil)
 
 	runMonitor(cfg)
 }
@@ -1116,6 +1097,8 @@ func main() {
 		ntskeInsecureSkipVerify bool
 		periodic                bool
 		selectK                 int
+		quick                   bool
+		scanOpts                quickScanOptions
 	)
 
 	infoFlags := flag.NewFlagSet("info", flag.ExitOnError)
@@ -1125,6 +1108,7 @@ func main() {
 	pingFlags := flag.NewFlagSet("ping", flag.ExitOnError)
 	showPathsFlags := flag.NewFlagSet("showpaths", flag.ExitOnError)
 	selectPathsFlags := flag.NewFlagSet("selectpaths", flag.ExitOnError)
+	preselectPathsFlags := flag.NewFlagSet("preselectpaths", flag.ExitOnError)
 	drkeyFlags := flag.NewFlagSet("drkey", flag.ExitOnError)
 
 	serverFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
@@ -1176,6 +1160,18 @@ func main() {
 	selectPathsFlags.StringVar(&certsDir, "certs", "", "Certificates directory")
 	selectPathsFlags.Var(&remoteIA, "remote", "Remote ISD-AS")
 	selectPathsFlags.IntVar(&selectK, "k", 7, "Number of paths to select")
+
+	preselectPathsFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
+	preselectPathsFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
+	preselectPathsFlags.StringVar(&configFile, "config", "", "Client config file")
+	preselectPathsFlags.BoolVar(&quick, "quick", false, "Run a quick scan with the client stopped")
+	preselectPathsFlags.StringVar(&scanOpts.out, "out", "", "Scan file (default path-quickscan-<UTC time>.csv)")
+	preselectPathsFlags.BoolVar(&scanOpts.update, "update", false, "Write the pool into the config file")
+	preselectPathsFlags.DurationVar(&scanOpts.tol, "tol", 250*time.Nanosecond, "Absolute tolerance of the pool cutoff")
+	preselectPathsFlags.Float64Var(&scanOpts.tolRel, "tol-rel", 0.25, "Relative tolerance of the pool cutoff")
+	preselectPathsFlags.DurationVar(&scanOpts.maxErr, "max-error", 0, "Fixed bound on the path error instead of the cutoff")
+	preselectPathsFlags.IntVar(&scanOpts.minPool, "min-pool", 10, "Minimum pool size")
+	preselectPathsFlags.IntVar(&scanOpts.remain, "remain", 5, "Pool paths that must avoid each interface")
 
 	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -1372,6 +1368,20 @@ func main() {
 		}
 		initLogger(logLevel())
 		runSelectPaths(daemonAddr, apiAddr, topoFile, certsDir, remoteIA, selectK)
+	case preselectPathsFlags.Name():
+		err := preselectPathsFlags.Parse(os.Args[2:])
+		if err != nil || preselectPathsFlags.NArg() != 0 {
+			exitWithUsage()
+		}
+		if configFile == "" || !quick {
+			exitWithUsage()
+		}
+		if scanOpts.tol < 0 || scanOpts.tolRel < 0 || scanOpts.maxErr < 0 ||
+			scanOpts.minPool < scionRefClockNumClient || scanOpts.remain < 1 {
+			exitWithUsage()
+		}
+		initLogger(logLevel())
+		runQuickScan(configFile, scanOpts)
 	case drkeyFlags.Name():
 		err := drkeyFlags.Parse(os.Args[2:])
 		if err != nil || drkeyFlags.NArg() != 0 {

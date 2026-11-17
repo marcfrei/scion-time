@@ -28,6 +28,10 @@ type pick struct {
 }
 
 type Filter struct {
+	// OnPick, if set, is called with every lucky packet and whether the round
+	// trip delay gate accepted it.
+	OnPick func(off, rtd, floor time.Duration, ok bool)
+
 	log          *slog.Logger
 	logCtx       context.Context
 	maxRTDExcess time.Duration
@@ -112,7 +116,11 @@ func (f *Filter) pickLucky() (time.Duration, error) {
 			slog.Duration("round trip delay floor", floor),
 		)
 	}
-	if (x.rtd - floor).Abs() > f.maxRTDExcess {
+	ok := (x.rtd - floor).Abs() <= f.maxRTDExcess
+	if f.OnPick != nil {
+		f.OnPick(off, x.rtd, floor, ok)
+	}
+	if !ok {
 		return 0, errFilterRejected
 	}
 	return off, nil
