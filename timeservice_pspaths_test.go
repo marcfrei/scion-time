@@ -333,3 +333,36 @@ func TestQuickScanPipeline(t *testing.T) {
 		t.Errorf("pool of %d paths, want the 10 stable symmetric ones", len(pool))
 	}
 }
+
+// TestSurveyProcess checks that the survey writes every pick at once, also
+// after the CTS offsets stopped, and neither keeps statistics nor fails, while
+// the quick scan waits for CTS samples and fails without them.
+func TestSurveyProcess(t *testing.T) {
+	for _, survey := range []bool{true, false} {
+		var buf bytes.Buffer
+		q := &quickScan{log: slog.Default(), k: 7, survey: survey, w: bufio.NewWriter(&buf), paths: map[string]*scanPath{}}
+		sp := testScanPath(0, 2, 1, 0)
+		sp.n, sp.sum, sp.sum2 = 0, 0, 0
+		q.paths[sp.fp] = sp
+		q.order = append(q.order, sp)
+		t0 := time.Now().Add(-time.Minute)
+		q.cts = []ctsSample{{t: t0, off: 0}, {t: t0.Add(time.Second), off: 0}}
+		for i := range 5 {
+			q.pending = append(q.pending, scanPick{t: t0.Add(time.Duration(i) * time.Second), fp: sp.fp,
+				round: i + 1, dwell: 1, off: 1000, ok: true})
+		}
+		q.process()
+		if err := q.w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		m := strings.Count(buf.String(), "m,")
+		switch {
+		case survey && (m != 5 || len(q.pending) != 0 || sp.n != 0 || q.err != nil):
+			t.Errorf("survey: %d picks written, %d pending, %d in the statistics, error %v; want 5, 0, 0, none",
+				m, len(q.pending), sp.n, q.err)
+		case !survey && (m != 1 || len(q.pending) != 4 || q.err == nil):
+			t.Errorf("quick scan: %d picks written, %d pending, error %v; want 1, 4 and an error",
+				m, len(q.pending), q.err)
+		}
+	}
+}

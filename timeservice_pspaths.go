@@ -1,5 +1,6 @@
 // Quick path scan: measures all SCION paths to the server in batches, ranks
 // them by their error against GNSS and selects a path pool for scion_paths.
+// The survey measures all paths in rotation for days, only to record them.
 // See doc/path-scan-design-2026-11-16.md.
 
 package main
@@ -63,13 +64,16 @@ var quickScanStages = []struct {
 }
 
 type quickScanOptions struct {
-	out     string
-	update  bool
-	tol     time.Duration
-	tolRel  float64
-	maxErr  time.Duration
-	minPool int
-	remain  int
+	out      string
+	update   bool
+	tol      time.Duration
+	tolRel   float64
+	maxErr   time.Duration
+	minPool  int
+	remain   int
+	survey   bool
+	dwell    time.Duration
+	duration time.Duration
 }
 
 type scanPath struct {
@@ -192,6 +196,7 @@ type quickScan struct {
 	interval time.Duration
 	timeout  time.Duration
 	k        int
+	survey   bool
 
 	configFile string
 	scanFile   string
@@ -255,14 +260,23 @@ func runQuickScan(configFile string, opts quickScanOptions) {
 		interval: syncCfg.SyncInterval,
 		timeout:  syncCfg.SyncTimeout,
 		k:        len(clk.ntpcs),
+		survey:   opts.survey,
 		paths:    map[string]*scanPath{},
 
 		configFile: configFile,
 	}
 
+	name := "quick path scan"
+	if opts.survey {
+		name = "path survey"
+	}
 	out := opts.out
 	if out == "" {
-		out = "path-quickscan-" + time.Now().UTC().Format("20060102T150405Z") + ".csv"
+		out = "path-quickscan-"
+		if opts.survey {
+			out = "path-survey-"
+		}
+		out += time.Now().UTC().Format("20060102T150405Z") + ".csv"
 	}
 	f, err := os.Create(out) // #nosec G304
 	if err != nil {
@@ -271,20 +285,11 @@ func runQuickScan(configFile string, opts quickScanOptions) {
 	q.w = bufio.NewWriter(f)
 	q.scanFile = out
 
-	for _, p := range clk.pather.Paths(clk.remoteAddr.IA) {
-		fp := client.PathFingerprint(p)
-		if q.paths[fp] != nil {
-			continue
-		}
-		sp := &scanPath{id: len(q.order), fp: fp, p: p, ifaces: client.PathInterfaces(p)}
-		q.paths[fp] = sp
-		q.order = append(q.order, sp)
-		q.writef("p,%d,%s,%s\n", sp.id, fp, hops(sp.ifaces))
-	}
-	if len(q.order) < opts.minPool {
+	q.addPaths()
+	if !opts.survey && len(q.order) < opts.minPool {
 		logbase.Fatal(log, "too few paths to the server", slog.Int("paths", len(q.order)))
 	}
-	log.LogAttrs(ctx, slog.LevelInfo, "starting quick path scan",
+	log.LogAttrs(ctx, slog.LevelInfo, "starting "+name,
 		slog.Int("paths", len(q.order)), slog.String("file", out))
 
 	for _, c := range clk.ntpcs {
@@ -302,7 +307,11 @@ func runQuickScan(configFile string, opts quickScanOptions) {
 	}
 	service.StartNTLCTSOff(log, cfg.NTLCTSOff, q.ctsSink)
 
-	err = q.run(opts)
+	if opts.survey {
+		err = q.runSurvey(opts.dwell, opts.duration)
+	} else {
+		err = q.run(opts)
+	}
 	q.mu.Lock()
 	ferr := errors.Join(q.w.Flush(), f.Close())
 	q.mu.Unlock()
@@ -310,11 +319,29 @@ func runQuickScan(configFile string, opts quickScanOptions) {
 		err = ferr
 	}
 	if err != nil {
-		logbase.Fatal(log, "quick path scan failed, configuration unchanged", slog.Any("error", err))
+		logbase.Fatal(log, name+" failed, configuration unchanged", slog.Any("error", err))
+	}
+	log.LogAttrs(ctx, slog.LevelInfo, name+" done")
+}
+
+// addPaths adds the paths to the server that are not known yet.
+func (q *quickScan) addPaths() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, p := range q.clk.pather.Paths(q.clk.remoteAddr.IA) {
+		fp := client.PathFingerprint(p)
+		if q.paths[fp] != nil {
+			continue
+		}
+		sp := &scanPath{id: len(q.order), fp: fp, p: p, ifaces: client.PathInterfaces(p)}
+		q.paths[fp] = sp
+		q.order = append(q.order, sp)
+		q.writef("p,%d,%s,%s\n", sp.id, fp, hops(sp.ifaces))
 	}
 }
 
-func (q *quickScan) run(opts quickScanOptions) error {
+// start runs the self-test, then steps the clock to GNSS and holds it there.
+func (q *quickScan) start() error {
 	time.Sleep(3 * time.Second)
 	q.mu.Lock()
 	n := len(q.cts)
@@ -352,6 +379,13 @@ func (q *quickScan) run(opts quickScanOptions) error {
 	q.mu.Lock()
 	q.steer = true
 	q.mu.Unlock()
+	return nil
+}
+
+func (q *quickScan) run(opts quickScanOptions) error {
+	if err := q.start(); err != nil {
+		return err
+	}
 
 	for si, st := range quickScanStages {
 		cands := q.inRace()
@@ -381,6 +415,40 @@ func (q *quickScan) run(opts quickScanOptions) error {
 			slog.Int("remaining", len(q.inRace())), slog.Duration("duration", time.Since(start)))
 	}
 	return q.finish(opts)
+}
+
+// runSurvey measures all paths in cycles until the duration has passed. Each
+// cycle shuffles the paths into batches and measures each batch for one dwell.
+// The survey only records: it keeps no statistics and stops for nothing but a
+// failed self-test or a write error, so that a server outage or a gap in the
+// CTS offsets costs only the data of that time.
+func (q *quickScan) runSurvey(dwell, duration time.Duration) error {
+	if err := q.start(); err != nil {
+		return err
+	}
+	end := time.Now().Add(duration)
+	for cycle := 1; time.Now().Before(end); cycle++ {
+		q.addPaths()
+		ps := slices.Clone(q.order)
+		rand.Shuffle(len(ps), func(i, j int) { ps[i], ps[j] = ps[j], ps[i] })
+		q.mu.Lock()
+		q.writef("s,%d,%d,%d\n", time.Now().UnixNano(), cycle, int(dwell.Seconds()))
+		q.mu.Unlock()
+		for _, b := range batches(ps, q.k) {
+			d := min(dwell, time.Until(end))
+			if d <= 0 {
+				break
+			}
+			if err := q.measure(b, d); err != nil {
+				return err
+			}
+		}
+		q.log.LogAttrs(context.Background(), slog.LevelInfo, "path survey cycle done",
+			slog.Int("cycle", cycle), slog.Int("paths", len(ps)))
+	}
+	time.Sleep(2 * time.Second)
+	q.process()
+	return nil
 }
 
 // writef writes to the scan file. The bufio.Writer keeps the first write
@@ -420,11 +488,7 @@ func (q *quickScan) measure(b []*scanPath, d time.Duration) error {
 		q.writef(",%d", sp.id)
 	}
 	q.writef("\n")
-	err := q.w.Flush()
 	q.mu.Unlock()
-	if err != nil {
-		return err
-	}
 	ia := q.clk.remoteAddr.IA
 	end := time.Now().Add(d)
 	for time.Now().Before(end) {
@@ -461,8 +525,12 @@ func (q *quickScan) measure(b []*scanPath, d time.Duration) error {
 			return q.err
 		}
 		q.mu.Lock()
-		unreachable := q.stageRounds >= 50 && 2*q.hitRounds < q.stageRounds
+		err := q.w.Flush()
+		unreachable := !q.survey && q.stageRounds >= 50 && 2*q.hitRounds < q.stageRounds
 		q.mu.Unlock()
+		if err != nil {
+			return err
+		}
 		if unreachable {
 			return errors.New("server unreachable: more than half of the rounds without any measurement")
 		}
@@ -482,7 +550,7 @@ func (q *quickScan) process() {
 	last := cts[len(cts)-1].t
 	var ready, rest []scanPick
 	for _, pk := range q.pending {
-		if pk.t.Before(last) {
+		if pk.t.Before(last) || q.survey {
 			ready = append(ready, pk)
 		} else {
 			rest = append(rest, pk)
@@ -506,6 +574,9 @@ func (q *quickScan) process() {
 		q.testPicks = append(q.testPicks, ready...)
 	}
 	q.mu.Unlock()
+	if q.survey && !testing {
+		return
+	}
 
 	if time.Since(last) > 5*time.Second {
 		q.err = errors.New("NTL CTS offset samples stopped")

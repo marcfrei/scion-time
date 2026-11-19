@@ -1165,13 +1165,16 @@ func main() {
 	preselectPathsFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
 	preselectPathsFlags.StringVar(&configFile, "config", "", "Client config file")
 	preselectPathsFlags.BoolVar(&quick, "quick", false, "Run a quick scan with the client stopped")
-	preselectPathsFlags.StringVar(&scanOpts.out, "out", "", "Scan file (default path-quickscan-<UTC time>.csv)")
+	preselectPathsFlags.StringVar(&scanOpts.out, "out", "", "Scan file (default path-quickscan-<UTC time>.csv or path-survey-<UTC time>.csv)")
 	preselectPathsFlags.BoolVar(&scanOpts.update, "update", false, "Write the pool into the config file")
 	preselectPathsFlags.DurationVar(&scanOpts.tol, "tol", 250*time.Nanosecond, "Absolute tolerance of the pool cutoff")
 	preselectPathsFlags.Float64Var(&scanOpts.tolRel, "tol-rel", 0.25, "Relative tolerance of the pool cutoff")
 	preselectPathsFlags.DurationVar(&scanOpts.maxErr, "max-error", 0, "Fixed bound on the path error instead of the cutoff")
 	preselectPathsFlags.IntVar(&scanOpts.minPool, "min-pool", 10, "Minimum pool size")
 	preselectPathsFlags.IntVar(&scanOpts.remain, "remain", 5, "Pool paths that must avoid each interface")
+	preselectPathsFlags.BoolVar(&scanOpts.survey, "survey", false, "Measure all paths in rotation and only record them")
+	preselectPathsFlags.DurationVar(&scanOpts.dwell, "dwell", 20*time.Minute, "Time per batch of the survey")
+	preselectPathsFlags.DurationVar(&scanOpts.duration, "duration", 168*time.Hour, "Duration of the survey")
 
 	drkeyFlags.BoolVar(&quiet, "quiet", false, "Disable logging")
 	drkeyFlags.BoolVar(&verbose, "verbose", false, "Verbose logging")
@@ -1373,11 +1376,12 @@ func main() {
 		if err != nil || preselectPathsFlags.NArg() != 0 {
 			exitWithUsage()
 		}
-		if configFile == "" || !quick {
+		if configFile == "" || quick == scanOpts.survey || scanOpts.survey && scanOpts.update {
 			exitWithUsage()
 		}
 		if scanOpts.tol < 0 || scanOpts.tolRel < 0 || scanOpts.maxErr < 0 ||
-			scanOpts.minPool < scionRefClockNumClient || scanOpts.remain < 1 {
+			scanOpts.minPool < scionRefClockNumClient || scanOpts.remain < 1 ||
+			scanOpts.dwell <= 0 || scanOpts.duration <= 0 {
 			exitWithUsage()
 		}
 		initLogger(logLevel())

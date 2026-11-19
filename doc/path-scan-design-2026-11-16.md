@@ -13,6 +13,7 @@ Everything is Go and lives in the `timeservice` binary:
 | Scan | `timeservice client`, config keys `scion_path_scan` and `scion_path_scan_dwell` | Rotates batches of 7 paths every 60 s and records each path's lucky packet per round together with the GNSS comparison. |
 | Ranking | new subcommand `timeservice preselectpaths -scan FILE` | Offline: per-path error statistics, pool selection with resilience constraints, expected clock error, config line. |
 | Quick scan | `timeservice preselectpaths -config FILE -quick` | Live, with the client stopped: narrows ~200 paths to a pool whose size follows from the measurements, in 30–60 minutes. |
+| Survey | `timeservice preselectpaths -config FILE -survey` | Live, with the client stopped: measures all paths in rotation for days and only records them, for an analysis of the paths themselves. |
 | Pool | `timeservice client`, config key `scion_paths` | Restricts the candidates of the existing path selection to the pool. |
 | Rescan trigger | `timeservice client`, systemd timer and path unit | Requests a quick scan after a route change; runs it weekly otherwise. |
 
@@ -521,6 +522,21 @@ WantedBy=paths.target
   - About 40 lines in the client.
   - A triggered daytime scan marks a confirmation as pending in the state file, so that the next night's run confirms the pool under quiet conditions.
 - **Not detected by the client:** an asymmetry change without a delay change. The weekly scan catches it. The weekday business-hours ramp (4–6 µs on some paths) is not seen by night scans; the week-long scan mode can check it.
+
+## Survey: `preselectpaths -survey`
+
+```text
+timeservice preselectpaths -config pilot/client-thun.toml -survey [-dwell 20m] [-duration 168h] [-out FILE]
+```
+
+Implemented on November 19 for the operator of AS 64-3303, who offered to analyse the asymmetries and oscillations on Thun's paths. A quick scan sees every path for 20–45 s at one time of day and drops the bad paths after its first stage; the client sees only its 7 paths. The survey measures every path repeatedly over days, long enough per window to resolve the 9.5-minute oscillation of uplink 2.
+
+- **Rules.** It takes all paths to the server and re-reads them at the start of each cycle. Each cycle shuffles the paths into batches of 7 and measures each batch continuously for `-dwell`. The clock is held on GNSS after the same self-test as in the quick scan. It stops after `-duration`.
+- **It only records.** No statistics, elimination, pool or config update. It does not stop for a server outage, discarded rounds, a gap in the CTS offsets or clock drift, only for a failed self-test or a write error. The analysis decides which data to use.
+- **File.** The scan file format, flushed after every round. The `s` row starts a cycle: `s,<t_ns>,<cycle>,<dwell_s>`. Rows before the first `s` row belong to the self-test. `p` rows of paths that appear later are written at the start of the cycle that first measures them. A path that disappeared stays in the rotation and yields no picks.
+- **Forward and return delay** of a pick, with e = offset − CTS interpolated at the pick: forward (client → server) = RTD/2 + e, return = RTD/2 − e. This splits run 12's uplink-2 oscillation into 6.7–7.6 µs forward and 1.7–2.5 µs return amplitude, and the Nov 10 reroute into −844 µs forward and −827 µs return.
+- **Coverage at Thun** (224 paths, 20 min dwell): 32 batches, 10.7 h per cycle, about 16 windows per path and week at varying times of day. 98.6 % of batches contain paths on both uplinks. A 20-minute mean is good to about 0.4 µs. About 1.1 MB per hour, 0.36 MB gzipped.
+- **Cost.** The site has no SCION time while the survey runs; its clock stays on GNSS.
 
 ## Part 3: `scion_paths` in the client
 
